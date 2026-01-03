@@ -1,8 +1,13 @@
-export type MessageRole = "user" | "assistant" | "system";
-
-export interface ChatMessage {
+export type ChatMessage = {
   id: string;
-  role: MessageRole;
-  content: string;
+  role: "system" | "user" | "assistant";
   createdAt: number;
+} & (
+    | { content: string; image?: string }
+    | { content?: string; image: string }
+  );
+
+export interface PendingScreenshot {
+  id: string;
+  base64: string;
 }
