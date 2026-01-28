@@ -72,14 +72,14 @@ function updateRegisterButtonText() {
 
 // 监听 i18n 更新事件，同步更新 data-text
 if (window.i18n) {
-    window.i18n.on('languageChanged', function() {
+    window.i18n.on('languageChanged', function () {
         updateFileButtonText();
         updateRegisterButtonText();
     });
     // 监听所有翻译更新
     const originalChangeLanguage = window.i18n.changeLanguage;
     if (originalChangeLanguage) {
-        window.i18n.changeLanguage = function(...args) {
+        window.i18n.changeLanguage = function (...args) {
             const result = originalChangeLanguage.apply(this, args);
             if (result && typeof result.then === 'function') {
                 result.then(() => {
@@ -100,16 +100,16 @@ if (window.i18n) {
 }
 
 // 使用 MutationObserver 监听文字内容变化
-const fileTextObserver = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
+const fileTextObserver = new MutationObserver(function (mutations) {
+    mutations.forEach(function (mutation) {
         if (mutation.type === 'childList' || mutation.type === 'characterData') {
             updateFileButtonText();
         }
     });
 });
 
-const registerTextObserver = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
+const registerTextObserver = new MutationObserver(function (mutations) {
+    mutations.forEach(function (mutation) {
         if (mutation.type === 'childList' || mutation.type === 'characterData') {
             updateRegisterButtonText();
         }
@@ -207,12 +207,19 @@ if (window.i18n && window.i18n.isInitialized) {
 })();
 
 function setFormDisabled(disabled) {
-    document.getElementById('audioFile').disabled = disabled;
-    document.getElementById('refLanguage').disabled = disabled;
-    document.getElementById('prefix').disabled = disabled;
+    const audioFile = document.getElementById('audioFile');
+    const refLanguage = document.getElementById('refLanguage');
+    const prefix = document.getElementById('prefix');
+    if (audioFile) audioFile.disabled = disabled;
+    if (refLanguage) refLanguage.disabled = disabled;
+    if (prefix) prefix.disabled = disabled;
     // 禁用所有按钮
     const buttons = document.querySelectorAll('button');
-    buttons.forEach(btn => btn.disabled = disabled);
+    if (buttons && buttons.length > 0) {
+        buttons.forEach(btn => {
+            if (btn) btn.disabled = disabled;
+        });
+    }
 }
 
 function registerVoice() {
@@ -241,87 +248,87 @@ function registerVoice() {
         method: 'POST',
         body: formData
     })
-    .then(async res => {
-        const data = await res.json();
-        if (!res.ok) {
-            // 从响应体中提取详细错误信息
-            const errorMsg = data.error || data.detail || `API returned ${res.status}`;
-            throw new Error(errorMsg);
-        }
-        return data;
-    })
-    .then(data => {
-        if (data.voice_id) {
-            resultDiv.textContent = window.t ? window.t('voice.registerSuccess', { voiceId: data.voice_id }) : '注册成功！voice_id: ' + data.voice_id;
-            // 刷新音色列表
-            setTimeout(() => {
-                if (typeof loadVoices === 'function') {
-                    loadVoices();
-                }
-            }, 1000);
-            // 自动更新voice_id到后端
-            const lanlanName = document.getElementById('lanlan_name').value;
-            if (lanlanName) {
-                fetch(`/api/characters/catgirl/voice_id/${encodeURIComponent(lanlanName)}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ voice_id: data.voice_id })
-                }).then(resp => {
-                    if (!resp.ok) {
-                        throw new Error(`API returned ${resp.status}`);
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) {
+                // 从响应体中提取详细错误信息
+                const errorMsg = data.error || data.detail || `API returned ${res.status}`;
+                throw new Error(errorMsg);
+            }
+            return data;
+        })
+        .then(data => {
+            if (data.voice_id) {
+                resultDiv.textContent = window.t ? window.t('voice.registerSuccess', { voiceId: data.voice_id }) : '注册成功！voice_id: ' + data.voice_id;
+                // 刷新音色列表
+                setTimeout(() => {
+                    if (typeof loadVoices === 'function') {
+                        loadVoices();
                     }
-                    return resp.json();
-                }).then(res => {
-                    if (!res.success) {
-                        const errorMsg = res.error || (window.t ? window.t('common.unknownError') : '未知错误');
+                }, 1000);
+                // 自动更新voice_id到后端
+                const lanlanName = document.getElementById('lanlan_name').value;
+                if (lanlanName) {
+                    fetch(`/api/characters/catgirl/voice_id/${encodeURIComponent(lanlanName)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ voice_id: data.voice_id })
+                    }).then(resp => {
+                        if (!resp.ok) {
+                            throw new Error(`API returned ${resp.status}`);
+                        }
+                        return resp.json();
+                    }).then(res => {
+                        if (!res.success) {
+                            const errorMsg = res.error || (window.t ? window.t('common.unknownError') : '未知错误');
+                            const errorSpan = document.createElement('span');
+                            errorSpan.className = 'error';
+                            errorSpan.textContent = (window.t ? window.t('voice.voiceIdSaveFailed', { error: errorMsg }) : 'voice_id自动保存失败: ' + errorMsg);
+                            resultDiv.appendChild(document.createElement('br'));
+                            resultDiv.appendChild(errorSpan);
+                        } else {
+                            const successMsg = document.createElement('span');
+                            successMsg.textContent = (window.t ? window.t('voice.voiceIdSaved') : 'voice_id已自动保存到角色');
+                            resultDiv.appendChild(document.createElement('br'));
+                            resultDiv.appendChild(successMsg);
+
+                            // 如果session被结束，页面会自动刷新
+                            const statusSpan = document.createElement('span');
+                            statusSpan.style.color = 'blue';
+                            if (res.session_restarted) {
+                                statusSpan.textContent = (window.t ? window.t('voice.pageWillRefresh') : '当前页面即将自动刷新以应用新语音');
+                            } else {
+                                statusSpan.textContent = (window.t ? window.t('voice.voiceWillTakeEffect') : '新语音将在下次对话时生效');
+                            }
+                            resultDiv.appendChild(document.createElement('br'));
+                            resultDiv.appendChild(statusSpan);
+
+                            // 通知父页面voice_id已更新
+                            if (window.parent !== window) {
+                                window.parent.postMessage({ type: 'voice_id_updated', voice_id: data.voice_id, session_restarted: res.session_restarted }, window.location.origin);
+                            }
+                        }
+                    }).catch(e => {
                         const errorSpan = document.createElement('span');
                         errorSpan.className = 'error';
-                        errorSpan.textContent = (window.t ? window.t('voice.voiceIdSaveFailed', { error: errorMsg }) : 'voice_id自动保存失败: ' + errorMsg);
+                        errorSpan.textContent = (window.t ? window.t('voice.voiceIdSaveRequestError') : 'voice_id自动保存请求出错');
                         resultDiv.appendChild(document.createElement('br'));
                         resultDiv.appendChild(errorSpan);
-                    } else {
-                        const successMsg = document.createElement('span');
-                        successMsg.textContent = (window.t ? window.t('voice.voiceIdSaved') : 'voice_id已自动保存到角色');
-                        resultDiv.appendChild(document.createElement('br'));
-                        resultDiv.appendChild(successMsg);
-
-                        // 如果session被结束，页面会自动刷新
-                        const statusSpan = document.createElement('span');
-                        statusSpan.style.color = 'blue';
-                        if (res.session_restarted) {
-                            statusSpan.textContent = (window.t ? window.t('voice.pageWillRefresh') : '当前页面即将自动刷新以应用新语音');
-                        } else {
-                            statusSpan.textContent = (window.t ? window.t('voice.voiceWillTakeEffect') : '新语音将在下次对话时生效');
-                        }
-                        resultDiv.appendChild(document.createElement('br'));
-                        resultDiv.appendChild(statusSpan);
-
-                        // 通知父页面voice_id已更新
-                        if (window.parent !== window) {
-                            window.parent.postMessage({ type: 'voice_id_updated', voice_id: data.voice_id, session_restarted: res.session_restarted }, window.location.origin);
-                        }
-                    }
-                }).catch(e => {
-                    const errorSpan = document.createElement('span');
-                    errorSpan.className = 'error';
-                    errorSpan.textContent = (window.t ? window.t('voice.voiceIdSaveRequestError') : 'voice_id自动保存请求出错');
-                    resultDiv.appendChild(document.createElement('br'));
-                    resultDiv.appendChild(errorSpan);
-                });
+                    });
+                }
+            } else {
+                const errorMsg = data.error || (window.t ? window.t('common.unknownError') : '未知错误');
+                resultDiv.textContent = window.t ? window.t('voice.registerFailed', { error: errorMsg }) : '注册失败：' + errorMsg;
+                resultDiv.className = 'result error';
             }
-        } else {
-            const errorMsg = data.error || (window.t ? window.t('common.unknownError') : '未知错误');
-            resultDiv.textContent = window.t ? window.t('voice.registerFailed', { error: errorMsg }) : '注册失败：' + errorMsg;
+            setFormDisabled(false);
+        })
+        .catch(err => {
+            const errorMsg = err?.message || err?.toString() || (window.t ? window.t('common.unknownError') : '未知错误');
+            resultDiv.textContent = window.t ? window.t('voice.requestError', { error: errorMsg }) : '请求出错：' + errorMsg;
             resultDiv.className = 'result error';
-        }
-        setFormDisabled(false);
-    })
-    .catch(err => {
-        const errorMsg = err?.message || err?.toString() || (window.t ? window.t('common.unknownError') : '未知错误');
-        resultDiv.textContent = window.t ? window.t('voice.requestError', { error: errorMsg }) : '请求出错：' + errorMsg;
-        resultDiv.className = 'result error';
-        setFormDisabled(false);
-    });
+            setFormDisabled(false);
+        });
 }
 
 // 监听API Key变更事件
@@ -405,7 +412,9 @@ async function loadVoices() {
             if (created_at) {
                 try {
                     const date = new Date(created_at);
-                    dateStr = date.toLocaleString('zh-CN', {
+                    // 使用 i18n locale，回退到 navigator.language，最后回退到 'en-US'
+                    const locale = (window.i18n && window.i18n.language) || navigator.language || 'en-US';
+                    dateStr = date.toLocaleString(locale, {
                         year: 'numeric',
                         month: '2-digit',
                         day: '2-digit',
@@ -488,7 +497,6 @@ async function deleteVoice(voiceId, voiceName) {
     if (refreshBtn) refreshBtn.disabled = true;
 
     // 显示删除中状态
-    const originalContent = container.innerHTML;
     container.textContent = '';
     const deletingDiv = document.createElement('div');
     deletingDiv.style.textAlign = 'center';
@@ -523,11 +531,10 @@ async function deleteVoice(voiceId, voiceName) {
                 }, 3000);
             }
         } else {
-            // 删除失败
+            // 删除失败，重新加载列表以恢复事件处理器
             const errorMsg = data.error || (window.t ? window.t('voice.deleteFailed') : '删除失败');
             alert(errorMsg);
-            // 恢复列表
-            container.innerHTML = originalContent;
+            await loadVoices();
         }
     } catch (error) {
         console.error('删除音色失败:', error);
@@ -535,8 +542,8 @@ async function deleteVoice(voiceId, voiceName) {
             ? window.t('voice.deleteError', { error: error.message })
             : `删除失败: ${error.message}`;
         alert(errorMsg);
-        // 恢复列表
-        container.innerHTML = originalContent;
+        // 重新加载列表以恢复事件处理器
+        await loadVoices();
     } finally {
         if (refreshBtn) refreshBtn.disabled = false;
     }
