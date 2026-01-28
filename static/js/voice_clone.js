@@ -37,7 +37,6 @@ function updateFileDisplay() {
     }
     if (fileInput.files.length > 0) {
         fileNameDisplay.textContent = fileInput.files[0].name;
-        console.log('文件已选择:', fileInput.files[0].name);
     } else {
         fileNameDisplay.textContent = window.t ? window.t('voice.noFileSelected') : '未选择文件';
     }
@@ -48,7 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const audioFile = document.getElementById('audioFile');
     if (audioFile) {
         audioFile.addEventListener('change', updateFileDisplay);
-        console.log('已绑定 audioFile change 事件');
     } else {
         console.error('未找到 audioFile 元素');
     }
@@ -196,7 +194,6 @@ if (window.i18n && window.i18n.isInitialized) {
 
         // 设置到隐藏字段
         document.getElementById('lanlan_name').value = lanlanName;
-        console.log('lanlan_name 已设置:', lanlanName);
     } catch (error) {
         console.error('获取 lanlan_name 失败:', error);
         document.getElementById('lanlan_name').value = "";

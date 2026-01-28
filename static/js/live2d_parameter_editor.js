@@ -337,7 +337,6 @@ function sendMessageToMainPage(action) {
             newValue: JSON.stringify(message)
         }));
     } catch (e) {
-        console.log('发送消息给主页面失败:', e);
     }
 }
 

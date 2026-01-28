@@ -2164,12 +2164,6 @@ function init_app() {
             // "请她离开"模式：隐藏所有内容
             console.log('[App] 执行"请她离开"模式逻辑');
 
-            // 重置 goodbyeClicked 标志（在处理完成后）
-            if (window.live2dManager) {
-                window.live2dManager._goodbyeClicked = false;
-            }
-            console.log('[App] 已重置 goodbyeClicked 标志为 false');
-
             // "请她离开"模式：隐藏所有内容
             const textInputArea = document.getElementById('text-input-area');
             textInputArea.classList.add('hidden');
@@ -2298,6 +2292,30 @@ function init_app() {
 
             // 使用 showCurrentModel() 统一处理模型显示（避免重复分叉）
             await showCurrentModel();
+
+            // 恢复对话区
+            const chatContainerEl = document.getElementById('chat-container');
+            if (chatContainerEl && (chatContainerEl.classList.contains('minimized') || chatContainerEl.classList.contains('mobile-collapsed'))) {
+                console.log('[App] 自动恢复对话区');
+                chatContainerEl.classList.remove('minimized');
+                chatContainerEl.classList.remove('mobile-collapsed');
+                
+                // 同步更新切换按钮的状态（图标和标题）
+                const toggleChatBtn = document.getElementById('toggle-chat-btn');
+                if (toggleChatBtn) {
+                    const iconImg = toggleChatBtn.querySelector('img');
+                    if (iconImg) {
+                        iconImg.src = '/static/icons/expand_icon.png';
+                        iconImg.alt = window.t ? window.t('common.minimize') : '最小化';
+                    }
+                    toggleChatBtn.title = window.t ? window.t('common.minimize') : '最小化';
+                    
+                    // 还原后滚动到底部
+                    if (typeof scrollToBottom === 'function') {
+                        setTimeout(scrollToBottom, 300);
+                    }
+                }
+            }
 
             // 启用所有基本输入按钮
             micButton.disabled = false;
@@ -3924,11 +3942,40 @@ function init_app() {
 
         // 第五步：自动折叠对话区
         const chatContainerEl = document.getElementById('chat-container');
-        const toggleChatBtn = document.getElementById('toggle-chat-btn');
-        if (chatContainerEl && !chatContainerEl.classList.contains('minimized')) {
-            // 如果对话区当前是展开的，模拟点击折叠按钮
+        const isMobile = typeof window.isMobileWidth === 'function' ? window.isMobileWidth() : (window.innerWidth <= 768);
+        const collapseClass = isMobile ? 'mobile-collapsed' : 'minimized';
+
+        console.log('[App] 请他离开 - 检查对话区状态 - 存在:', !!chatContainerEl, '当前类列表:', chatContainerEl ? chatContainerEl.className : 'N/A', '将添加类:', collapseClass);
+
+        if (chatContainerEl && !chatContainerEl.classList.contains(collapseClass)) {
+            console.log('[App] 自动折叠对话区');
+            chatContainerEl.classList.add(collapseClass);
+            console.log('[App] 折叠后类列表:', chatContainerEl.className);
+            
+            // 移动端还需要隐藏内容区
+            if (isMobile) {
+                const chatContentWrapper = document.getElementById('chat-content-wrapper');
+                const chatHeader = document.getElementById('chat-header');
+                if (chatContentWrapper) chatContentWrapper.style.display = 'none';
+                if (chatHeader) chatHeader.style.display = 'none';
+            }
+            
+            // 同步更新切换按钮的状态（图标和标题）
+            const toggleChatBtn = document.getElementById('toggle-chat-btn');
             if (toggleChatBtn) {
-                toggleChatBtn.click();
+                const iconImg = toggleChatBtn.querySelector('img');
+                if (iconImg) {
+                    iconImg.src = '/static/icons/expand_icon.png';
+                    iconImg.alt = window.t ? window.t('common.expand') : '展开';
+                }
+                toggleChatBtn.title = window.t ? window.t('common.expand') : '展开';
+                
+                // 移动端确保切换按钮可见
+                if (isMobile) {
+                    toggleChatBtn.style.display = 'block';
+                    toggleChatBtn.style.visibility = 'visible';
+                    toggleChatBtn.style.opacity = '1';
+                }
             }
         }
 
@@ -3944,8 +3991,8 @@ function init_app() {
         }
     });
 
-    // 请她回来按钮
-    window.addEventListener('live2d-return-click', async () => {
+    // 请她回来按钮（统一处理函数，同时支持 Live2D 和 VRM）
+    const handleReturnClick = async () => {
         console.log('[App] 请她回来按钮被点击，开始恢复所有界面');
 
         // 第一步：同步 window 中的设置值到局部变量（防止从 l2d 页面返回时值丢失）
@@ -4116,12 +4163,49 @@ function init_app() {
 
         // 第七步：恢复对话区
         const chatContainerEl = document.getElementById('chat-container');
-        const toggleChatBtn = document.getElementById('toggle-chat-btn');
-        if (chatContainerEl && chatContainerEl.classList.contains('minimized')) {
-            // 如果对话区当前是折叠的，模拟点击展开按钮
-            if (toggleChatBtn) {
-                toggleChatBtn.click();
+        const isMobile = typeof window.isMobileWidth === 'function' ? window.isMobileWidth() : (window.innerWidth <= 768);
+        const collapseClass = isMobile ? 'mobile-collapsed' : 'minimized';
+
+        console.log('[App] 检查对话区状态 - 存在:', !!chatContainerEl, '类列表:', chatContainerEl ? chatContainerEl.className : 'N/A', '目标类:', collapseClass);
+
+        if (chatContainerEl && chatContainerEl.classList.contains(collapseClass)) {
+            console.log('[App] 自动恢复对话区');
+            chatContainerEl.classList.remove('minimized');
+            chatContainerEl.classList.remove('mobile-collapsed');
+            console.log('[App] 恢复后类列表:', chatContainerEl.className);
+
+            // 移动端恢复内容区
+            if (isMobile) {
+                const chatContentWrapper = document.getElementById('chat-content-wrapper');
+                const chatHeader = document.getElementById('chat-header');
+                if (chatContentWrapper) chatContentWrapper.style.removeProperty('display');
+                if (chatHeader) chatHeader.style.removeProperty('display');
             }
+
+            // 同步更新切换按钮的状态（图标和标题）
+            const toggleChatBtn = document.getElementById('toggle-chat-btn');
+            if (toggleChatBtn) {
+                const iconImg = toggleChatBtn.querySelector('img');
+                if (iconImg) {
+                    iconImg.src = '/static/icons/expand_icon.png';
+                    iconImg.alt = window.t ? window.t('common.minimize') : '最小化';
+                }
+                toggleChatBtn.title = window.t ? window.t('common.minimize') : '最小化';
+
+                // 还原后滚动到底部
+                if (typeof scrollToBottom === 'function') {
+                    setTimeout(scrollToBottom, 300);
+                }
+
+                // 移动端恢复切换按钮样式
+                if (isMobile) {
+                    toggleChatBtn.style.removeProperty('display');
+                    toggleChatBtn.style.removeProperty('visibility');
+                    toggleChatBtn.style.removeProperty('opacity');
+                }
+            }
+        } else {
+            console.log('[App] ⚠️ 对话区未恢复 - 条件不满足');
         }
 
         // 第八步：恢复基本的按钮状态（但不自动开始新会话）
@@ -4203,7 +4287,11 @@ function init_app() {
         }, 500);
 
         console.log('[App] 请她回来完成，未自动开始会话，等待用户主动发起对话');
-    });
+    };
+
+    // 同时监听 Live2D 和 VRM 的回来事件
+    window.addEventListener('live2d-return-click', handleReturnClick);
+    window.addEventListener('vrm-return-click', handleReturnClick);
 
     // Agent控制逻辑
 
@@ -6658,11 +6746,20 @@ function init_app() {
 
     // 处理猫娘切换的逻辑（支持 VRM 和 Live2D 双模型类型热切换）
     async function handleCatgirlSwitch(newCatgirl, oldCatgirl) {
+        console.log('[猫娘切换] ========== 开始切换 ==========');
+        console.log('[猫娘切换] 从', oldCatgirl, '切换到', newCatgirl);
+        console.log('[猫娘切换] isSwitchingCatgirl:', isSwitchingCatgirl);
+
         if (isSwitchingCatgirl) {
+            console.log('[猫娘切换] 正在切换中，忽略本次请求');
             return;
         }
-        if (!newCatgirl) return;
+        if (!newCatgirl) {
+            console.log('[猫娘切换] newCatgirl为空，返回');
+            return;
+        }
         isSwitchingCatgirl = true;
+        console.log('[猫娘切换] 设置 isSwitchingCatgirl = true');
 
         try {
             // 0. 紧急制动：立即停止所有渲染循环
@@ -6841,6 +6938,12 @@ function init_app() {
             // 3. 准备新环境
             showStatusToast(window.t ? window.t('app.switchingCatgirl', { name: newCatgirl }) : `正在切换到 ${newCatgirl}...`, 3000);
 
+            // 清空聊天记录
+            const chatContainer = document.getElementById('chatContainer');
+            if (chatContainer) {
+                chatContainer.innerHTML = '';
+            }
+
             // 清理连接与状态
             if (autoReconnectTimeoutId) clearTimeout(autoReconnectTimeoutId);
             if (isRecording) {
@@ -6864,8 +6967,10 @@ function init_app() {
             document.title = `${newCatgirl} Terminal - Project N.E.K.O.`;
 
             // 4. 根据模型类型加载相应的模型
+            console.log('[猫娘切换] 检测到模型类型:', modelType);
             if (modelType === 'vrm') {
                 // 加载 VRM 模型
+                console.log('[猫娘切换] 进入VRM加载分支');
 
                 // 安全获取 VRM 模型路径，处理各种边界情况
                 let vrmModelPath = null;
@@ -6949,7 +7054,9 @@ function init_app() {
                 }
 
                 // 确保 VRM 管理器已初始化
+                console.log('[猫娘切换] 检查VRM管理器 - 存在:', !!window.vrmManager, '已初始化:', window.vrmManager?._isInitialized);
                 if (!window.vrmManager || !window.vrmManager._isInitialized) {
+                    console.log('[猫娘切换] VRM管理器需要初始化');
 
                     // 等待 VRM 模块加载（双保险：事件 + 轮询）
                     if (typeof window.VRMManager === 'undefined') {
@@ -7078,7 +7185,19 @@ function init_app() {
                 }
 
                 // 加载 VRM 模型（vrm-core.js 内部已实现备用路径机制，会自动尝试 /user_vrm/ 和 /static/vrm/）
+                console.log('[猫娘切换] 开始加载VRM模型:', modelUrl);
                 await window.vrmManager.loadModel(modelUrl);
+                console.log('[猫娘切换] VRM模型加载完成');
+
+                // 【关键修复】确保VRM渲染循环已启动（loadModel内部会调用startAnimation，但为了保险再次确认）
+                if (!window.vrmManager._animationFrameId) {
+                    console.log('[猫娘切换] VRM渲染循环未启动，手动启动');
+                    if (typeof window.vrmManager.startAnimation === 'function') {
+                        window.vrmManager.startAnimation();
+                    }
+                } else {
+                    console.log('[猫娘切换] VRM渲染循环已启动，ID:', window.vrmManager._animationFrameId);
+                }
 
                 // 应用角色的光照配置
                 if (catgirlConfig.lighting && window.vrmManager) {
@@ -7170,11 +7289,19 @@ function init_app() {
                 const vrmContainer = document.getElementById('vrm-container');
                 const live2dContainer = document.getElementById('live2d-container');
 
+                console.log('[猫娘切换] 显示VRM容器 - vrmContainer存在:', !!vrmContainer, 'live2dContainer存在:', !!live2dContainer);
+
                 if (vrmContainer) {
                     vrmContainer.classList.remove('hidden');
                     vrmContainer.style.display = 'block';
                     vrmContainer.style.visibility = 'visible';
                     vrmContainer.style.pointerEvents = 'auto';
+                    console.log('[猫娘切换] VRM容器已设置为可见');
+
+                    // 检查容器的实际状态
+                    const computedStyle = window.getComputedStyle(vrmContainer);
+                    console.log('[猫娘切换] VRM容器状态 - display:', computedStyle.display, 'visibility:', computedStyle.visibility, 'opacity:', computedStyle.opacity, 'zIndex:', computedStyle.zIndex);
+                    console.log('[猫娘切换] VRM容器子元素数量:', vrmContainer.children.length);
                 }
 
                 if (live2dContainer) {
@@ -7185,21 +7312,41 @@ function init_app() {
                 // 确保 VRM 渲染器可见
                 if (window.vrmManager && window.vrmManager.renderer && window.vrmManager.renderer.domElement) {
                     window.vrmManager.renderer.domElement.style.display = 'block';
+                    window.vrmManager.renderer.domElement.style.visibility = 'visible';
                     window.vrmManager.renderer.domElement.style.opacity = '1';
+                    console.log('[猫娘切换] VRM渲染器已设置为可见');
+
+                    // 检查canvas的实际状态
+                    const canvas = window.vrmManager.renderer.domElement;
+                    const computedStyle = window.getComputedStyle(canvas);
+                    console.log('[猫娘切换] VRM Canvas状态 - display:', computedStyle.display, 'visibility:', computedStyle.visibility, 'opacity:', computedStyle.opacity, 'zIndex:', computedStyle.zIndex);
+                } else {
+                    console.warn('[猫娘切换] ⚠️ VRM渲染器不存在或未初始化');
                 }
 
                 const chatContainer = document.getElementById('chat-container');
                 const textInputArea = document.getElementById('text-input-area');
+                console.log('[猫娘切换] VRM - 恢复对话框 - chatContainer存在:', !!chatContainer, '当前类:', chatContainer ? chatContainer.className : 'N/A');
                 if (chatContainer) chatContainer.classList.remove('minimized');
                 if (textInputArea) textInputArea.classList.remove('hidden');
+                console.log('[猫娘切换] VRM - 对话框已恢复，当前类:', chatContainer ? chatContainer.className : 'N/A');
 
                 // 确保 VRM 按钮和锁图标可见
                 setTimeout(() => {
                     const vrmButtons = document.getElementById('vrm-floating-buttons');
+                    console.log('[猫娘切换] VRM按钮检查 - 存在:', !!vrmButtons);
                     if (vrmButtons) {
                         vrmButtons.style.setProperty('display', 'flex', 'important');
                         vrmButtons.style.visibility = 'visible';
                         vrmButtons.style.opacity = '1';
+                        console.log('[猫娘切换] VRM按钮已设置为可见');
+                    } else {
+                        console.warn('[猫娘切换] ⚠️ VRM浮动按钮不存在，尝试重新创建');
+                        if (window.vrmManager && typeof window.vrmManager.setupFloatingButtons === 'function') {
+                            window.vrmManager.setupFloatingButtons();
+                            const newVrmButtons = document.getElementById('vrm-floating-buttons');
+                            console.log('[猫娘切换] 重新创建后VRM按钮存在:', !!newVrmButtons);
+                        }
                     }
 
                     // 【关键】显示 VRM 锁图标

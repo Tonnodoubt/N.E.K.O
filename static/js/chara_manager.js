@@ -1356,7 +1356,6 @@ function showCatgirlForm(key, container) {
         e.preventDefault();
         // 防止重复提交
         if (form.dataset.submitting === 'true') {
-            console.log('表单正在提交中，忽略重复提交');
             return;
         }
         form.dataset.submitting = 'true';
@@ -1422,7 +1421,6 @@ function showCatgirlForm(key, container) {
                 }
             }
 
-            console.log('提交数据:', data);
             const response = await fetch('/api/characters/catgirl' + (isNew ? '' : '/' + encodeURIComponent(key)), {
                 method: isNew ? 'POST' : 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -1449,7 +1447,6 @@ function showCatgirlForm(key, container) {
             }
 
             const result = await response.json();
-            console.log('保存结果:', result);
 
             if (result.success === false) {
                 await showAlert(result.error || (window.t ? window.t('character.saveFailed') : '保存失败'));
@@ -1786,9 +1783,7 @@ function sendBeacon() {
         const blob = new Blob([payload], { type: 'application/json' });
         const success = navigator.sendBeacon('/api/beacon/shutdown', blob);
 
-        if (success) {
-            console.log('Beacon信号已发送');
-        } else {
+        if (!success) {
             console.warn('Beacon发送失败，尝试使用fetch');
             // 备用方案：使用fetch
             fetch('/api/beacon/shutdown', {
@@ -1799,10 +1794,10 @@ function sendBeacon() {
                     action: 'shutdown'
                 }),
                 keepalive: true // 确保请求在页面关闭时仍能发送
-            }).catch(err => console.log('备用beacon发送失败:', err));
+            }).catch(() => {});
         }
     } catch (e) {
-        console.log('Beacon发送异常:', e);
+        // 忽略异常
     }
 }
 
@@ -1913,14 +1908,11 @@ async function initPage() {
     // 3. 延迟执行工坊角色卡扫描
     // 使用 setTimeout 将其放到任务队列末尾，并等待几秒钟，让浏览器优先处理页面渲染和交互
     setTimeout(() => {
-        console.log('[工坊扫描] 开始异步扫描工坊角色卡...');
         autoScanWorkshopCharacterCards().then(async (hasNewCards) => {
             if (hasNewCards) {
-                console.log('[工坊扫描] 发现新角色卡，正在更新列表...');
                 // 发现新卡时才刷新数据
                 await loadCharacterData();
             } else {
-                console.log('[工坊扫描] 未发现新角色卡');
             }
         }).catch(err => {
             console.error('[工坊扫描] 扫描过程中发生错误:', err);

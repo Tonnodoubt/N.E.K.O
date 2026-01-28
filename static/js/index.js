@@ -29,7 +29,6 @@ function loadVRMPathsConfig() {
                 user_vrm: paths.user_vrm,
                 static_vrm: paths.static_vrm
             };
-            console.log('[主页] VRM 路径配置已从 vrm-init.js 加载:', VRM_PATHS_CACHE);
         }
         window.removeEventListener('vrm-paths-loaded', handleVRMPathsLoaded);
     };
@@ -112,11 +111,6 @@ async function loadPageConfig() {
             // 动态设置页面标题
             document.title = `${lanlan_config.lanlan_name} Terminal - Project N.E.K.O.`;
 
-            console.log('页面配置加载成功:', {
-                lanlan_name: lanlan_config.lanlan_name,
-                live2d_model: cubism4Model,
-                vrm_model: vrmModel
-            });
             return true;
         } else {
             console.error('获取页面配置失败:', data.error);

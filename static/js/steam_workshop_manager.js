@@ -128,7 +128,6 @@ function updateModelDisplayAndUploadState() {
 
 // 上传区域切换功能 - 改为显示modal
 function toggleUploadSection() {
-    console.log('toggleUploadSection函数被调用');
 
     // 检查是否为默认模型
     if (isDefaultModel()) {
@@ -146,14 +145,11 @@ function toggleUploadSection() {
             if (window.updatePageTexts) {
                 window.updatePageTexts();
             }
-            console.log('上传modal已显示');
         } else {
             // 隐藏modal时调用closeUploadModal以处理临时文件
             closeUploadModal();
-            console.log('上传modal已隐藏');
         }
     } else {
-        console.log('未找到上传modal');
     }
 }
 
@@ -293,7 +289,6 @@ function applyWorkshopSyncData() {
         const workshopSyncDataStr = localStorage.getItem('workshopSyncData');
         if (workshopSyncDataStr) {
             const workshopSyncData = JSON.parse(workshopSyncDataStr);
-            console.log('从localStorage加载的同步数据:', workshopSyncData);
 
             // 1. 填充标签
             const tagsContainer = document.getElementById('tags-container');
@@ -313,12 +308,10 @@ function applyWorkshopSyncData() {
             const itemDescription = document.getElementById('item-description');
             if (itemDescription) {
                 itemDescription.textContent = workshopSyncData.description || '';
-                console.log('设置的描述内容:', workshopSyncData.description);
             } else {
                 console.error('未找到创意工坊描述元素');
             }
         } else {
-            console.log('localStorage中没有同步数据');
         }
     } catch (error) {
         console.error('应用同步数据时出错:', error);
@@ -452,11 +445,9 @@ async function selectFolderForInput(inputId) {
 
 // 扫描本地物品 - 现在仅使用默认路径
 function scanLocalItems() {
-    console.log('开始扫描本地物品...');
 
     // 显示扫描开始提示
     const startMessage = showMessage(window.t ? window.t('steam.scanningWorkshop') : '正在扫描Workshop物品...', 'info');
-    console.log('已显示扫描开始提示');
 
     // 调用API扫描本地文件夹中的物品
     fetch('/api/steam/workshop/local-items/scan', {
@@ -473,7 +464,6 @@ function scanLocalItems() {
         return response.json();
     })
     .then(data => {
-        console.log('扫描完成，数据返回:', data);
 
         if (data.success) {
             // 获取本地物品列表
@@ -485,7 +475,6 @@ function scanLocalItems() {
 
             // 直接显示扫描完成提示，使用简单清晰的消息
             const successMessage = window.t ? window.t('steam.scanComplete', {count: localItems.length}) : `扫描完成，共找到 ${localItems.length} 个物品`;
-            console.log('准备显示成功提示:', successMessage);
 
             // 使用独立的提示元素，确保与开始提示分开
             const messageElement = document.createElement('div');
@@ -523,7 +512,6 @@ function scanLocalItems() {
                 }, 300);
             }, 3000);
 
-            console.log('成功提示已显示');
         } else {
             const errorMessage = window.t ? window.t('steam.scanFailed', { error: data.error || (window.t ? window.t('common.unknownError') : '未知错误') }) : `扫描失败: ${data.error || '未知错误'}`;
             showMessage(errorMessage, 'error', 3000);
@@ -1391,7 +1379,6 @@ function uploadItem() {
 
                 // 上传成功后，自动删除临时目录
                 if (currentUploadTempFolder) {
-                    console.log('上传成功，自动删除临时目录:', currentUploadTempFolder);
                     cleanupTempFolder(currentUploadTempFolder, true);
                 }
 
@@ -2066,7 +2053,6 @@ function loadProcessedAudioFiles() {
         if (stored) {
             const files = JSON.parse(stored);
             processedAudioFiles = new Set(files);
-            console.log(`已从localStorage恢复 ${processedAudioFiles.size} 个已处理音频文件记录`);
         }
     } catch (error) {
         console.error('从localStorage加载已处理音频文件失败:', error);
@@ -2090,7 +2076,6 @@ loadProcessedAudioFiles();
 // 自动扫描创意工坊角色卡并添加到系统
 async function autoScanAndAddWorkshopCharacterCards() {
     try {
-        console.log('开始自动扫描创意工坊角色卡...');
 
         // 1. 获取所有订阅的创意工坊物品
         const subscribedResponse = await fetch('/api/steam/workshop/subscribed-items');
@@ -2102,21 +2087,18 @@ async function autoScanAndAddWorkshopCharacterCards() {
         }
 
         const subscribedItems = subscribedResult.items;
-        console.log(`找到 ${subscribedItems.length} 个订阅物品`);
 
         let addedCount = 0;
 
         // 2. 遍历所有已安装的物品
         for (const item of subscribedItems) {
             if (!item.installedFolder) {
-                console.log(`物品 ${item.title} (${item.publishedFileId}) 未安装，跳过`);
                 continue;
             }
 
             const itemId = item.publishedFileId;
             const folderPath = item.installedFolder;
 
-            console.log(`检查物品 ${item.title} (${itemId}) 的安装目录: ${folderPath}`);
 
             // 3. 使用新的API扫描目录中所有.chara.json文件
             try {
@@ -2124,7 +2106,6 @@ async function autoScanAndAddWorkshopCharacterCards() {
                 const listResult = await listResponse.json();
 
                 if (listResult.success && listResult.files.length > 0) {
-                    console.log(`在目录 ${folderPath} 中找到 ${listResult.files.length} 个角色卡文件:`);
 
                     // 4. 遍历所有找到的.chara.json文件
                     for (const file of listResult.files) {
@@ -2132,7 +2113,6 @@ async function autoScanAndAddWorkshopCharacterCards() {
                         await scanCharaFile(file.path, itemId, item.title);
                     }
                 } else {
-                    console.log(`在目录 ${folderPath} 中未找到角色卡文件`);
                 }
             } catch (listError) {
                 console.error(`扫描目录 ${folderPath} 中的角色卡文件失败:`, listError);
@@ -2144,7 +2124,6 @@ async function autoScanAndAddWorkshopCharacterCards() {
                 const audioListResult = await audioListResponse.json();
 
                 if (audioListResult.success && audioListResult.files.length > 0) {
-                    console.log(`在目录 ${folderPath} 中找到 ${audioListResult.files.length} 个音频文件:`);
 
                     // 6. 遍历所有找到的音频文件
                     for (const audioFile of audioListResult.files) {
@@ -2152,14 +2131,12 @@ async function autoScanAndAddWorkshopCharacterCards() {
                         await scanAudioFile(audioFile.path, audioFile.prefix, itemId, item.title);
                     }
                 } else {
-                    console.log(`在目录 ${folderPath} 中未找到音频文件`);
                 }
             } catch (audioListError) {
                 console.error(`扫描目录 ${folderPath} 中的音频文件失败:`, audioListError);
             }
         }
 
-        console.log('自动扫描创意工坊角色卡完成');
 
     } catch (error) {
         console.error('自动扫描和添加角色卡失败:', error);
@@ -2170,7 +2147,6 @@ async function autoScanAndAddWorkshopCharacterCards() {
 async function scanAudioFile(filePath, prefix, itemId, itemTitle) {
     // 检查文件是否已处理
     if (processedAudioFiles.has(filePath)) {
-        console.log(`音频文件 ${filePath} 已处理，跳过注册`);
         return;
     }
 
@@ -2212,7 +2188,6 @@ async function scanAudioFile(filePath, prefix, itemId, itemTitle) {
             const cloneResult = await cloneResponse.json();
 
             if (cloneResponse.ok) {
-                console.log(`成功克隆音频文件 ${filePath}:`, cloneResult);
                 // 标记文件为已处理
                 processedAudioFiles.add(filePath);
                 // 保存到localStorage以持久化
@@ -2241,7 +2216,6 @@ async function scanCharaFile(filePath, itemId, itemTitle) {
 
             // 档案名是必需字段，用作 characters.json 中的 key
             if (!charaData['档案名']) {
-                console.log(`角色卡 ${filePath} 缺少"档案名"字段，跳过`);
                 return;
             }
 
@@ -2290,7 +2264,6 @@ async function scanCharaFile(filePath, itemId, itemTitle) {
             const addResult = await addResponse.json();
 
             if (addResult.success) {
-                console.log(`成功添加角色卡: ${charaName} (来自物品: ${itemTitle})`);
                 // 延迟刷新角色卡列表，确保数据已保存
                 setTimeout(() => {
                     loadCharacterCards();
@@ -2687,7 +2660,6 @@ async function fetchWorkshopStatus(characterName) {
                 uploadBtnText.setAttribute('data-i18n', 'steam.updateToWorkshop');
             }
 
-            console.log('已加载 Workshop 状态:', data.meta);
         }
     } catch (error) {
         console.error('获取 Workshop 状态失败:', error);
@@ -2780,7 +2752,6 @@ function closeWorkshopSnapshotModal(event) {
 // 加载角色卡
 function loadCharacterCard() {
     // 这里将实现加载角色卡的逻辑
-    console.log('加载角色卡');
     showMessage('角色卡已加载', 'info');
 }
 
@@ -2803,7 +2774,6 @@ function cleanupTempFolder(tempFolder, shouldDelete) {
             })
         })
         .then(response => {
-            console.log('删除临时目录API响应状态:', response.status);
             if (!response.ok) {
                 return response.json().then(data => {
                     throw new Error(data.error || `HTTP错误，状态码: ${response.status}`);
@@ -2813,7 +2783,6 @@ function cleanupTempFolder(tempFolder, shouldDelete) {
         })
         .then(result => {
             if (result.success) {
-                console.log('临时目录已成功删除');
                 showMessage('临时目录已删除', 'success');
             } else {
                 console.error('删除临时目录失败:', result.error);
@@ -2839,7 +2808,6 @@ function cleanupTempFolder(tempFolder, shouldDelete) {
 }
 
 async function handleUploadToWorkshop() {
-    console.log('handleUploadToWorkshop函数被调用');
 
     try {
         // 检查是否为默认模型
@@ -2976,13 +2944,11 @@ async function handleUploadToWorkshop() {
 
 // 执行上传
 async function performUpload(data) {
-    console.log('performUpload被调用，数据:', data);
     // 显示准备上传状态
     showMessage(window.t ? window.t('steam.preparingUpload') : '正在准备上传...', 'info');
 
     try {
         // 步骤1: 调用API创建临时目录并复制文件
-        console.log('开始调用API准备上传');
         // 保存上传数据的名称，供错误处理使用（避免回调中的参数覆盖）
         const uploadDataName = data.name;
         fetch('/api/steam/workshop/prepare-upload', {
@@ -2998,7 +2964,6 @@ async function performUpload(data) {
             })
         })
         .then(response => {
-            console.log('准备上传API响应:', response);
             if (!response.ok) {
                 return response.json().then(data => {
                     // 如果是已上传的错误，显示modal提示
@@ -3027,9 +2992,7 @@ async function performUpload(data) {
             return response.json();
         })
         .then(result => {
-            console.log('准备上传API响应数据:', result);
             if (result.success) {
-                console.log('上传准备成功:', result);
                 // 不再显示"上传准备完成"消息，模态框弹出本身就表明准备工作已完成
 
                 // 保存临时目录路径
@@ -3038,13 +3001,11 @@ async function performUpload(data) {
                 isUploadCompleted = false;
 
                 // 步骤2: 填充上传表单并打开填写信息窗口
-                console.log('开始填充上传表单');
                 const itemTitle = document.getElementById('item-title');
                 const itemDescription = document.getElementById('item-description');
                 const contentFolder = document.getElementById('content-folder');
                 const tagsContainer = document.getElementById('tags-container');
 
-                console.log('找到的表单元素:', { itemTitle, itemDescription, contentFolder, tagsContainer });
 
                 // 从data中获取名称和描述
                 const cardName = data.name || '';
@@ -3054,7 +3015,6 @@ async function performUpload(data) {
                 if (itemTitle) itemTitle.textContent = cardName;
                 if (itemDescription) {
                     itemDescription.textContent = cardDescription;
-                    console.log('设置的完整描述内容:', cardDescription);
                 }
                 // 使用临时目录路径（隐藏字段）
                 if (contentFolder) contentFolder.value = result.temp_folder;
@@ -3098,13 +3058,11 @@ async function performUpload(data) {
                 }
 
                 // 步骤3: 打开填写信息窗口（modal）
-                console.log('打开上传信息填写窗口');
                 // 先确保本地物品标签页可见
                 switchTab('local-items-content');
                 // 然后显示上传表单区域
                 toggleUploadSection();
             } else {
-                console.log('准备上传API返回失败:', result.error);
                 showMessage(`准备上传失败: ${result.error || '未知错误'}`, 'error');
             }
         })
@@ -3152,7 +3110,6 @@ async function scanModels() {
         // 存储可上传模型列表到全局变量（用于上传检查）
         availableModels = uploadableModels;
 
-        console.log(`扫描完成：共 ${models.length} 个模型，其中 ${uploadableModels.length} 个可上传`);
 
     } catch (error) {
         console.error('扫描模型失败:', error);
@@ -3274,7 +3231,6 @@ function updateFileDisplay() {
         } else {
             document.getElementById('lanlan_name').value = lanlanName;
         }
-        console.log('lanlan_name 已设置:', lanlanName);
     } catch (error) {
         console.error('获取 lanlan_name 失败:', error);
         if (!document.getElementById('lanlan_name')) {
@@ -3444,7 +3400,6 @@ async function clearLive2DPreview(showModelNotSetMessage = false) {
             }
         }
 
-        console.log('Live2D预览已清除');
     } catch (error) {
         console.error('清除Live2D预览失败:', error);
     }
@@ -3464,7 +3419,6 @@ async function loadLive2DModelByName(modelName, modelInfo = null) {
             const container = document.getElementById('live2d-preview-content');
             if (container && container.clientWidth > 0 && container.clientHeight > 0) {
                 live2dPreviewManager.pixi_app.renderer.resize(container.clientWidth, container.clientHeight);
-                console.log('PIXI canvas resized to:', container.clientWidth, 'x', container.clientHeight);
             }
         }
 
@@ -3493,8 +3447,6 @@ async function loadLive2DModelByName(modelName, modelInfo = null) {
 
         // 确保获取正确的steam_id，优先使用modelInfo中的item_id
         let finalSteamId = modelInfo.item_id;
-        console.log('modelInfo:', modelInfo);
-        console.log('finalSteamId:', finalSteamId);
         showMessage((window.t && window.t('live2d.loadingModel', { model: modelName })) || `正在加载模型: ${modelName}...`, 'info');
 
         // 1. Fetch files list
@@ -3502,7 +3454,6 @@ async function loadLive2DModelByName(modelName, modelInfo = null) {
         // 根据modelInfo的source字段和finalSteamId决定使用哪个API端点
         if (modelInfo.source === 'user_mods') {
             // 对于用户mod模型，使用modelName构建URL
-            console.log('Fetching model files for user mod:', modelName);
             filesRes = await fetch(`/api/live2d/model_files/${encodeURIComponent(modelName)}`);
         } else if (finalSteamId && finalSteamId !== 'undefined') {
             // 如果提供了finalSteamId，调用专门的API端点
@@ -3519,20 +3470,16 @@ async function loadLive2DModelByName(modelName, modelInfo = null) {
         // 优先使用后端返回的model_config_url（如果有）
         if (filesData.model_config_url) {
             modelJsonUrl = filesData.model_config_url;
-            console.log('使用后端返回的模型配置URL:', modelJsonUrl);
         } else if (modelInfo.source === 'user_mods') {
             // 对于用户mod模型，直接使用modelInfo.path（已经包含/user_mods/路径）
             modelJsonUrl = modelInfo.path;
-            console.log('使用用户mod模型路径:', modelJsonUrl);
         } else if (finalSteamId && finalSteamId !== 'undefined') {
             // 如果提供了finalSteamId但没有model_config_url，使用兼容模式构建URL
             // 注意：上传后的目录结构是 workshop/{item_id}/{model_name}/{model_name}.model3.json
             modelJsonUrl = `/workshop/${finalSteamId}/${modelName}/${modelName}.model3.json`;
-            console.log('兼容模式 - 构建的模型URL(带steam_id):', modelJsonUrl);
         } else {
             // 否则使用原来的路径
             modelJsonUrl = modelInfo.path;
-            console.log('构建的模型URL(本地):', modelJsonUrl);
         }
         const modelConfigRes = await fetch(modelJsonUrl);
         if (!modelConfigRes.ok) throw new Error((window.t && window.t('live2d.modelConfigFetchFailed', { status: modelConfigRes.statusText })) || `无法获取模型配置: ${modelConfigRes.statusText}`);
@@ -3594,7 +3541,6 @@ async function loadLive2DModelByName(modelName, modelInfo = null) {
             }
         }, 100);
 
-        console.log('Live2D模型加载成功:', modelName);
         // 更新全局selectedModelInfo变量
         selectedModelInfo = modelInfo;
         showMessage((window.t && window.t('live2d.modelLoadSuccess', { model: modelName })) || `模型 ${modelName} 加载成功`, 'success');
@@ -3759,7 +3705,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 添加标签（角色卡用）
 function addCharacterCardTag(type, tagValue) {
-    console.log('addCharacterCardTag被调用:', type, tagValue);
     const tagInput = document.getElementById(`${type}-tag-input`);
     const tagText = tagValue.trim();
 
@@ -3886,7 +3831,6 @@ async function initLive2DPreview() {
         // 添加窗口大小变化监听
         window.addEventListener('resize', resizePreviewModel);
 
-        console.log('Live2D preview environment initialized');
     } catch (error) {
         console.error('Failed to initialize Live2D preview:', error);
         showMessage(window.t('steam.live2dInitFailed'), 'error');
@@ -3961,7 +3905,6 @@ async function loadLive2DModelFromFolder(files) {
         // 加载模型 - 禁用所有交互功能
         currentPreviewModel = await live2dPreviewManager.loadModelFromFiles(modelConfig, modelFiles, {
             onProgress: (progress) => {
-                console.log('Model loading progress:', progress);
             },
             dragEnabled: false,
             wheelEnabled: false,
@@ -3990,7 +3933,6 @@ async function loadLive2DModelFromFolder(files) {
             previewOverlay.style.pointerEvents = 'auto';
         }
 
-        console.log('Live2D model loaded successfully');
         showMessage(window.t('steam.live2dPreviewLoaded'), 'success');
 
     } catch (error) {
@@ -4118,7 +4060,6 @@ if (playMotionBtn) {
 
         try {
             currentPreviewModel.motion('PreviewAll', motionIndex, 3);
-            console.log('Playing motion:', motionIndex);
         } catch (error) {
             console.error('Failed to play motion:', error);
             showMessage(window.t('live2d.playMotionFailed', {motion: motionIndex}), 'error');
@@ -4139,7 +4080,6 @@ if (playExpressionBtn) {
 
         try {
             currentPreviewModel.expression(expressionName);
-            console.log('Playing expression:', expressionName);
         } catch (error) {
             console.error('Failed to play expression:', error);
             showMessage(window.t('live2d.playExpressionFailed', {expression: expressionName}), 'error');
@@ -4290,7 +4230,6 @@ function selectPreviewImage() {
                 if (data.success) {
                     // 设置服务器返回的临时文件路径
                     document.getElementById('preview-image').value = data.file_path;
-                    console.log("Uploaded preview image path:", data.file_path);
                     showMessage(window.t ? window.t('steam.previewImageUploaded') : '预览图片上传成功', 'success');
                 } else {
                     console.error("上传预览图片失败:", data.message);

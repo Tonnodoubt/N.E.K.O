@@ -669,7 +669,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 defaultText: window.i18next?.t('live2d.modelType') || '模型类型',
                 defaultTextKey: 'live2d.modelType',
                 iconAlt: window.i18next?.t('live2d.modelType') || '模型类型',
-                alwaysShowDefault: true
+                alwaysShowDefault: false
             });
         }
         
@@ -1016,7 +1016,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentModelInfo && currentModelInfo.name) {
         const exists = availableModels.some(m => m.name === currentModelInfo.name);
         if (exists && modelSelect.value !== currentModelInfo.name) {
-            console.log('下拉框值未正确设置，执行补救:', currentModelInfo.name);
             modelSelect.value = currentModelInfo.name;
         }
     }
@@ -1050,7 +1049,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const lanlanName = await getLanlanName();
                 if (lanlanName) {
                     paramEditorBtn.href = `/live2d_parameter_editor?lanlan_name=${encodeURIComponent(lanlanName)}`;
-                    console.log('参数编辑器链接已更新，角色:', lanlanName);
                 }
             }
         } catch (error) {
@@ -1093,7 +1091,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         currentModelInfo.path !== 'null' &&
                         !currentModelInfo.path.toLowerCase().includes('undefined')) {
                         modelName = currentModelInfo.path;
-                        console.log('[模型管理] 已从 currentModelInfo 修复路径:', modelName);
                     } else if (currentModelInfo && currentModelInfo.name &&
                         currentModelInfo.name !== 'undefined' &&
                         currentModelInfo.name !== 'null' &&
@@ -1103,7 +1100,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                             ? currentModelInfo.name
                             : `${currentModelInfo.name}.vrm`;
                         modelName = ModelPathHelper.normalizeModelPath(filename, 'model');
-                        console.log('[模型管理] 已根据文件名修复路径:', modelName);
                     } else {
                         // 如果无法修复，抛出错误
                         const errorMsg = t('live2d.vrmModelPathInvalid', 'VRM 模型路径无效，无法保存。请重新选择模型。');
@@ -1169,7 +1165,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (itemId) charData.item_id = itemId;
             }
 
-            console.log('准备保存的完整数据:', charData);
 
             // 4. 🔥 使用【通用更新接口】发送数据（这个接口支持保存任意字段）
             // 后端 API: PUT /api/characters/catgirl/{name}
@@ -1204,6 +1199,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentModelType = type;
         localStorage.setItem('modelType', type);
         if (modelTypeSelect) modelTypeSelect.value = type;
+        
+        // 更新模型类型按钮文字
+        if (modelTypeManager) {
+            modelTypeManager.updateButtonText();
+        }
 
         if (type === 'live2d') {
             // 【新增】清理VRM资源
@@ -2608,10 +2608,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 只处理直接保存的 lighting 对象
             if (lighting) {
-                console.log('加载角色打光配置:', lighting);
                 applyLightingValues(lighting);
             } else {
-                console.log('角色无自定义打光，使用默认值');
             }
         } catch (error) {
             console.error('加载打光配置失败:', error);
@@ -2707,8 +2705,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 确保获取正确的steam_id，优先使用传入的，然后从modelInfo中获取
         let finalSteamId = steam_id || modelInfo.item_id;
-        console.log('modelInfo:', modelInfo);
-        console.log('finalSteamId:', finalSteamId);
         showStatus(t('live2d.loadingModel', `正在加载模型: ${modelName}...`, { model: modelName }));
         setControlsDisabled(true);
 
@@ -2732,19 +2728,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 优先使用后端返回的model_config_url（如果有）
             if (filesData.model_config_url) {
                 modelJsonUrl = filesData.model_config_url;
-                console.log('使用后端返回的模型配置URL:', modelJsonUrl);
             } else if (modelInfo.source === 'user_mods') {
                 // 对于用户mod模型，直接使用modelInfo.path（已经包含/user_mods/路径）
                 modelJsonUrl = modelInfo.path;
-                console.log('使用用户mod模型路径:', modelJsonUrl);
             } else if (finalSteamId && finalSteamId !== 'undefined') {
                 // 如果提供了finalSteamId但没有model_config_url，使用原来的方式构建URL（兼容模式）
                 modelJsonUrl = `/workshop/${finalSteamId}/${modelName}.model3.json`;
-                console.log('兼容模式 - 构建的模型URL(带steam_id):', modelJsonUrl);
             } else {
                 // 否则使用原来的路径
                 modelJsonUrl = modelInfo.path;
-                console.log('构建的模型URL(本地):', modelJsonUrl);
             }
             // 使用 RequestHelper 确保统一的错误处理和超时（模型配置文件也是JSON格式）
             const modelConfig = await RequestHelper.fetchJson(modelJsonUrl);
@@ -2772,10 +2764,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 5. Load preferences
             const preferences = await window.live2dManager.loadUserPreferences();
-            console.log('加载的偏好设置:', preferences);
-            console.log('当前模型路径:', modelInfo.path);
             const modelPreferences = preferences.find(p => p && p.model_path === modelInfo.path) || null;
-            console.log('匹配的模型偏好:', modelPreferences);
 
             // 6. Load model FROM THE MODIFIED OBJECT
             await window.live2dManager.loadModel(modelConfig, {
@@ -2945,7 +2934,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 从完整路径中提取表情名称（去掉路径和扩展名）
         const expressionName = expressionSelect.value.split('/').pop().replace('.exp3.json', '');
-        console.log('播放表情:', expressionName); // 添加调试信息
 
         try {
             // expression 方法是异步的，需要使用 await
@@ -2954,7 +2942,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Live2D SDK 的 expression 方法成功时可能返回 falsy 值，这里改为检查是否抛出异常
             // 如果没有抛出异常，就认为播放成功
             showStatus(t('live2d.playingExpression', `播放表情: ${expressionName}`, { expression: expressionName }), 1000);
-            console.log('表情播放完成:', expressionName, '返回值:', result);
         } catch (error) {
             console.error('播放表情失败:', error);
             showStatus(t('live2d.playExpressionFailed', `播放表情失败: ${expressionName}`, { expression: expressionName }), 2000);
@@ -2999,9 +2986,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // 添加调试信息
-            console.log('保存设置 - 模型路径:', currentModelInfo.path);
-            console.log('保存设置 - 当前位置:', { x: live2dModel.x, y: live2dModel.y });
-            console.log('保存设置 - 当前缩放:', { x: live2dModel.scale.x, y: live2dModel.scale.y });
 
             // 保存位置和缩放
             positionSuccess = await window.live2dManager.saveUserPreferences(
@@ -3062,14 +3046,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const message = t('dialogs.unsavedChanges', '您有未保存的设置，确定要离开吗？');
             const title = t('dialogs.confirmLeave', '确认离开');
             const confirmLeave = await showConfirm(message, title, { danger: true });
-            console.log('用户选择:', confirmLeave ? '确定离开' : '取消');
             if (!confirmLeave) {
                 return; // 用户取消，不离开
             }
             // 用户确认离开，重置未保存状态，避免被 beforeunload 拦截
             window.hasUnsavedChanges = false;
         } else {
-            console.log('没有未保存的更改，直接返回');
         }
 
         // 如果处于全屏状态，先退出全屏
@@ -3427,11 +3409,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 uploadStatus.style.color = '#28a745';
 
                 // 【新增】在上传成功后，先检测并修正模型朝向，然后再添加到列表
-                console.log(`[上传] 上传成功，result:`, result);
-                console.log(`[上传] 检查条件 - result.model_path:`, result.model_path, `VRMOrientationDetector:`, !!window.VRMOrientationDetector, `vrmManager:`, !!window.vrmManager);
 
                 if (result.model_path && window.VRMOrientationDetector && window.vrmManager) {
-                    console.log(`[上传] ✅ 开始检测模型朝向`);
                     try {
                         uploadStatus.textContent = t('live2d.vrmUpload.detectingOrientation', '正在检测并修正模型朝向...');
 
@@ -4045,15 +4024,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 智能检测并修正 VRM 模型朝向
     // 【强力调试版】智能检测并修正 VRM 模型朝向
     function autoCorrectVRMOrientation(vrm) {
-        console.log("【调试开始】准备检测模型朝向...");
-        console.log("【调试】传入的 vrm 对象是:", vrm);
 
         // 1. 检查对象是否存在
         if (!vrm) {
             console.error("【调试失败】传入的 vrm 是空的 (null/undefined)！无法检测。");
             // 尝试去 vrmManager 里找一下备用的
             if (window.vrmManager && window.vrmManager.model) {
-                console.log("【调试】尝试使用 window.vrmManager.model 替补...");
                 vrm = window.vrmManager.model;
             } else {
                 return;
@@ -4070,7 +4046,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const humanoid = vrm.humanoid;
             const scene = vrm.scene;
 
-            console.log("【调试】正在强制刷新骨骼矩阵...");
             scene.updateMatrixWorld(true);
 
             const footNode = humanoid.getNormalizedBoneNode('leftFoot');
@@ -4083,13 +4058,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 footNode.getWorldPosition(footPos);
                 toesNode.getWorldPosition(toesPos);
 
-                console.log(`【VRM Check】数据读取成功 -> 脚跟Z: ${footPos.z.toFixed(4)}, 脚尖Z: ${toesPos.z.toFixed(4)}`);
 
                 if (toesPos.z < footPos.z - 0.001) {
-                    console.log('【VRM Check】判定结果：背对屏幕 -> 🔄 执行旋转 180 度');
                     scene.rotation.y = Math.PI;
                 } else {
-                    console.log('【VRM Check】判定结果：正对屏幕 -> ✅ 保持原样');
                     scene.rotation.y = 0;
                 }
             } else {
@@ -4105,7 +4077,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 获取角色名称
             const lanlanName = await getLanlanName();
             if (!lanlanName) {
-                console.log('未找到角色名称，跳过自动加载');
                 return;
             }
 
@@ -4114,7 +4085,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const catgirlConfig = charactersData['猫娘']?.[lanlanName];
 
             if (!catgirlConfig) {
-                console.log(`未找到角色 ${lanlanName} 的配置`);
                 return;
             }
 
@@ -4163,7 +4133,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     );
                     if (fixResult.success) {
-                        console.log(`[模型管理] 已自动修复角色 ${lanlanName} 的模型类型配置`);
                         // 更新本地配置对象
                         catgirlConfig.model_type = 'live2d';
                         // 修复后，将 modelType 设置为 'live2d'，继续执行后续逻辑
@@ -4223,9 +4192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         if (matchedOption) {
                             vrmModelSelect.value = matchedOption.value;
-                            console.log(`[模型管理] 已设置VRM模型选择器为: ${matchedOption.value}，等待用户确认加载`);
                         } else {
-                            console.log(`[模型管理] 未在下拉列表中找到匹配的VRM模型选项: ${vrmModelPath}`);
                         }
                     }
                     return; // 在模型管理页面不自动加载，直接返回
@@ -4292,7 +4259,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                             const fixedPath = matchedOption.getAttribute('data-path');
                             if (fixedPath && fixedPath !== 'undefined' && fixedPath !== 'null') {
                                 vrmModelPath = fixedPath;
-                                console.log(`[模型管理] 已在下拉列表中找到匹配项，修复路径为: ${vrmModelPath}`);
 
                                 // 自动修复后端配置（使用 RequestHelper 确保统一的错误处理和超时）
                                 try {
@@ -4308,7 +4274,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         }
                                     );
                                     if (fixResult.success) {
-                                        console.log(`[模型管理] 已自动修复角色 ${lanlanName} 的 VRM 模型路径配置`);
                                     }
                                 } catch (fixError) {
                                     console.warn('[模型管理] 自动修复配置时出错:', fixError);
@@ -4329,7 +4294,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
 
-                console.log(`自动加载角色 ${lanlanName} 的 VRM 模型: ${vrmModelPath}`);
                 showStatus(t('live2d.loadingCharacterModel', `正在加载角色 ${lanlanName} 的 VRM 模型...`, { name: lanlanName }));
 
                 // 设置模型选择器
@@ -4424,7 +4388,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // 注意：模型朝向会自动检测并保存，无需手动处理
                     await vrmManager.loadModel(modelUrl, { autoPlay: false, addShadow: false });
 
-                    console.log('模型加载完成，已重置为 T-Pose 等待指令');
 
                 } else {
                     // 如果 vrmManager 还未初始化，触发 change 事件来加载模型
@@ -4460,7 +4423,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const currentModelData = await RequestHelper.fetchJson(apiUrl);
 
                 if (!currentModelData.success) {
-                    console.log('无法获取当前角色模型信息:', currentModelData.error);
                     return;
                 }
 
@@ -4468,7 +4430,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (model_name && model_info) {
                     // 如果角色有设置的模型，自动加载
-                    console.log(`自动加载角色 ${catgirl_name} 的模型: ${model_name}`);
                     showStatus(t('live2d.loadingCharacterModel', `正在加载角色 ${catgirl_name} 的模型: ${model_name}...`, { name: catgirl_name, model: model_name }));
 
                     // 设置模型选择器
@@ -4481,7 +4442,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     showStatus(t('live2d.modelLoaded', `已加载角色 ${catgirl_name} 的模型: ${model_name}`, { name: catgirl_name, model: model_name }));
                 } else {
                     // 如果角色没有设置模型，显示提示信息
-                    console.log(`角色 ${catgirl_name} 未设置Live2D模型`);
                     showStatus(t('live2d.modelNotSet', `角色 ${catgirl_name} 未设置模型，请手动选择`, { name: catgirl_name }));
                 }
             }

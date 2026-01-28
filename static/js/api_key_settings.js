@@ -918,7 +918,6 @@ function autoFillCoreApiKey() {
         // 如果找到了有效的API Key，自动填充到核心API Key输入框
         if (sourceApiKey) {
             apiKeyInput.value = sourceApiKey;
-            console.log(`已自动将API Key填充到核心API Key输入框`);
 
             // 显示提示信息
             const autoFillMsg = window.t ? window.t('api.autoFillCoreApiKey') : '已自动填充核心API Key';
@@ -952,9 +951,7 @@ function sendBeacon() {
             action: 'shutdown'
         }));
 
-        if (success) {
-            console.log('Beacon信号已发送');
-        } else {
+        if (!success) {
             console.warn('Beacon发送失败，尝试使用fetch');
             // 备用方案：使用fetch
             fetch('/api/beacon/shutdown', {
@@ -965,10 +962,10 @@ function sendBeacon() {
                     action: 'shutdown'
                 }),
                 keepalive: true // 确保请求在页面关闭时仍能发送
-            }).catch(err => console.log('备用beacon发送失败:', err));
+            }).catch(() => {});
         }
     } catch (e) {
-        console.log('Beacon发送异常:', e);
+        // 忽略异常
     }
 }
 
@@ -1126,7 +1123,6 @@ async function waitForI18n(timeout = 3000) {
 async function initializePage() {
     // 防止重复初始化
     if (window.apiKeySettingsInitialized) {
-        console.log('API Key设置页面已初始化，跳过重复执行');
         return;
     }
 
@@ -1234,7 +1230,6 @@ async function initializePage() {
             loadingOverlay.style.display = 'none';
         }
 
-        console.log('API Key设置页面初始化完成');
 
         // 标记页面已初始化完成，防止重复执行
         window.apiKeySettingsInitialized = true;
