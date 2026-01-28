@@ -44,14 +44,17 @@
                     // 如果是当前猫娘，自动选择
                     if (currentCatgirl && catName === currentCatgirl && !foundCurrentCatgirl) {
                         foundCurrentCatgirl = true;
-                        // 延迟一下确保DOM已渲染
-                        setTimeout(() => {
+                        // 使用requestAnimationFrame确保DOM已渲染
+                        requestAnimationFrame(() => {
                             selectMemoryFile(f, li, catName);
-                        }, 100);
+                        });
                     }
                 });
             } else {
-                ul.innerHTML = `<li style="color:#888; padding: 8px;">${window.t ? window.t('memory.noFiles') : '无文件'}</li>`;
+                const li = document.createElement('li');
+                li.style.cssText = 'color:#888; padding: 8px;';
+                li.textContent = window.t ? window.t('memory.noFiles') : '无文件';
+                ul.appendChild(li);
             }
         } catch (e) {
             ul.innerHTML = `<li style="color:#e74c3c; padding: 8px;">${window.t ? window.t('memory.loadFailed') : '加载失败'}</li>`;
@@ -158,17 +161,6 @@
         renderChatEdit();
     }
 
-    // 新增：AI输入框内容变更时，自动拼接时间戳
-    function updateAIContent(idx, value) {
-        const msg = chatData[idx];
-        const m = msg.text.match(/^(\[[^\]]+\])/);
-        if (m) {
-            chatData[idx].text = m[1] + (m[1].endsWith(' ') || value.startsWith(' ') ? '' : ' ') + value;
-        } else {
-            chatData[idx].text = value;
-        }
-    }
-
     function updateSystemContent(idx, value) {
         // 存储时加上前缀
         const memoPrefix = window.t ? window.t('memory.previousMemo') : '先前对话的备忘录: ';
@@ -228,14 +220,22 @@
                     return;
                 }
                 chatData = [];
-                editDiv.innerHTML = '<div style="color:#888; padding: 20px; text-align: center;">' + (window.t ? window.t('memory.noChatContent') : '无聊天内容') + '</div>';
+                const emptyDiv = document.createElement('div');
+                emptyDiv.style.cssText = 'color:#888; padding: 20px; text-align: center;';
+                emptyDiv.textContent = window.t ? window.t('memory.noChatContent') : '无聊天内容';
+                editDiv.innerHTML = '';
+                editDiv.appendChild(emptyDiv);
             }
         } catch (e) {
             if (requestId !== memoryFileRequestId) {
                 return;
             }
             chatData = [];
-            editDiv.innerHTML = '<div style="color:#e74c3c; padding: 20px; text-align: center;">' + (window.t ? window.t('memory.loadFailed') : '加载失败') + '</div>';
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'color:#e74c3c; padding: 20px; text-align: center;';
+            errorDiv.textContent = window.t ? window.t('memory.loadFailed') : '加载失败';
+            editDiv.innerHTML = '';
+            editDiv.appendChild(errorDiv);
         }
     }
     document.getElementById('save-memory-btn').onclick = async function () {
@@ -358,6 +358,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
+    // Electron白屏修复：强制触发重绘以解决某些情况下页面不显示的问题
+    // 通过访问offsetHeight属性强制浏览器重新计算布局
     window.addEventListener('load', function () {
         // 再次强制重绘以确保资源加载后显示
         if (document.body) void document.body.offsetHeight;

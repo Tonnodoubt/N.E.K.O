@@ -6956,6 +6956,10 @@ function init_app() {
             // 重置聊天相关的全局状态
             window.currentGeminiMessage = null;
             window._geminiTurnFullText = '';
+            // 清空realistic synthesis队列和缓冲区，防止旧角色的语音继续播放
+            window._realisticGeminiQueue = [];
+            window._realisticGeminiBuffer = '';
+            window._realisticGeminiTimestamp = null;
 
             // 清理连接与状态
             if (autoReconnectTimeoutId) clearTimeout(autoReconnectTimeoutId);

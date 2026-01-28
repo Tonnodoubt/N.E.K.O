@@ -109,6 +109,12 @@ async function clearVoiceIds() {
             headers: { 'Content-Type': 'application/json' }
         });
 
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`自动清除Voice ID记录失败: HTTP ${response.status}`, errorText);
+            return;
+        }
+
         const data = await response.json();
 
         if (data.success) {
@@ -223,6 +229,17 @@ async function loadCurrentApiKey() {
                 showCurrentApiKey(window.t ? window.t('api.currentNoApiKey') : '当前暂未设置API Key', '', false);
             }
 
+            // 辅助函数：设置输入框的值和占位符
+            function setInputValue(elementId, value, placeholder) {
+                const element = document.getElementById(elementId);
+                if (typeof value === 'string' && element) {
+                    element.value = value;
+                    if (placeholder !== undefined) {
+                        element.placeholder = value || placeholder;
+                    }
+                }
+            }
+
             // 设置核心API Key输入框的值（重要：必须在显示提示后设置）
             if (apiKeyInput && data.api_key) {
                 if (data.api_key === 'free-access' || data.coreApi === 'free' || data.assistApi === 'free') {
@@ -255,113 +272,47 @@ async function loadCurrentApiKey() {
                     waitForOptions(assistApiSelect, data.assistApi);
                 }
             }
-            if (typeof data.assistApiKeyQwen === 'string' && document.getElementById('assistApiKeyInputQwen')) {
-                document.getElementById('assistApiKeyInputQwen').value = data.assistApiKeyQwen;
-                document.getElementById('assistApiKeyInputQwen').placeholder = data.assistApiKeyQwen || (window.t ? window.t('api.assistApiKeyPlaceholder') : '可选，默认为核心API Key');
-            }
-            if (typeof data.assistApiKeyOpenai === 'string' && document.getElementById('assistApiKeyInputOpenai')) {
-                document.getElementById('assistApiKeyInputOpenai').value = data.assistApiKeyOpenai;
-                document.getElementById('assistApiKeyInputOpenai').placeholder = data.assistApiKeyOpenai || (window.t ? window.t('api.assistApiKeyPlaceholder') : '可选，默认为核心API Key');
-            }
-            if (typeof data.assistApiKeyGlm === 'string' && document.getElementById('assistApiKeyInputGlm')) {
-                document.getElementById('assistApiKeyInputGlm').value = data.assistApiKeyGlm;
-                document.getElementById('assistApiKeyInputGlm').placeholder = data.assistApiKeyGlm || (window.t ? window.t('api.assistApiKeyPlaceholder') : '可选，默认为核心API Key');
-            }
-            if (typeof data.assistApiKeyStep === 'string' && document.getElementById('assistApiKeyInputStep')) {
-                document.getElementById('assistApiKeyInputStep').value = data.assistApiKeyStep;
-                document.getElementById('assistApiKeyInputStep').placeholder = data.assistApiKeyStep || (window.t ? window.t('api.assistApiKeyPlaceholder') : '可选，默认为核心API Key');
-            }
-            if (typeof data.assistApiKeySilicon === 'string' && document.getElementById('assistApiKeyInputSilicon')) {
-                document.getElementById('assistApiKeyInputSilicon').value = data.assistApiKeySilicon;
-                document.getElementById('assistApiKeyInputSilicon').placeholder = data.assistApiKeySilicon || (window.t ? window.t('api.assistApiKeyPlaceholder') : '可选，默认为核心API Key');
-            }
+            const assistApiKeyPlaceholder = window.t ? window.t('api.assistApiKeyPlaceholder') : '可选，默认为核心API Key';
+            setInputValue('assistApiKeyInputQwen', data.assistApiKeyQwen, assistApiKeyPlaceholder);
+            setInputValue('assistApiKeyInputOpenai', data.assistApiKeyOpenai, assistApiKeyPlaceholder);
+            setInputValue('assistApiKeyInputGlm', data.assistApiKeyGlm, assistApiKeyPlaceholder);
+            setInputValue('assistApiKeyInputStep', data.assistApiKeyStep, assistApiKeyPlaceholder);
+            setInputValue('assistApiKeyInputSilicon', data.assistApiKeySilicon, assistApiKeyPlaceholder);
 
             // 加载用户自定义API配置
-            if (typeof data.summaryModelProvider === 'string' && document.getElementById('summaryModelProvider')) {
-                document.getElementById('summaryModelProvider').value = data.summaryModelProvider;
-            }
-            if (typeof data.summaryModelUrl === 'string' && document.getElementById('summaryModelUrl')) {
-                document.getElementById('summaryModelUrl').value = data.summaryModelUrl;
-            }
-            if (typeof data.summaryModelId === 'string' && document.getElementById('summaryModelId')) {
-                document.getElementById('summaryModelId').value = data.summaryModelId;
-            }
-            if (typeof data.summaryModelApiKey === 'string' && document.getElementById('summaryModelApiKey')) {
-                document.getElementById('summaryModelApiKey').value = data.summaryModelApiKey;
-            }
+            setInputValue('summaryModelProvider', data.summaryModelProvider);
+            setInputValue('summaryModelUrl', data.summaryModelUrl);
+            setInputValue('summaryModelId', data.summaryModelId);
+            setInputValue('summaryModelApiKey', data.summaryModelApiKey);
 
-            if (typeof data.correctionModelProvider === 'string' && document.getElementById('correctionModelProvider')) {
-                document.getElementById('correctionModelProvider').value = data.correctionModelProvider;
-            }
-            if (typeof data.correctionModelUrl === 'string' && document.getElementById('correctionModelUrl')) {
-                document.getElementById('correctionModelUrl').value = data.correctionModelUrl;
-            }
-            if (typeof data.correctionModelId === 'string' && document.getElementById('correctionModelId')) {
-                document.getElementById('correctionModelId').value = data.correctionModelId;
-            }
-            if (typeof data.correctionModelApiKey === 'string' && document.getElementById('correctionModelApiKey')) {
-                document.getElementById('correctionModelApiKey').value = data.correctionModelApiKey;
-            }
+            setInputValue('correctionModelProvider', data.correctionModelProvider);
+            setInputValue('correctionModelUrl', data.correctionModelUrl);
+            setInputValue('correctionModelId', data.correctionModelId);
+            setInputValue('correctionModelApiKey', data.correctionModelApiKey);
 
-            if (typeof data.emotionModelProvider === 'string' && document.getElementById('emotionModelProvider')) {
-                document.getElementById('emotionModelProvider').value = data.emotionModelProvider;
-            }
-            if (typeof data.emotionModelUrl === 'string' && document.getElementById('emotionModelUrl')) {
-                document.getElementById('emotionModelUrl').value = data.emotionModelUrl;
-            }
-            if (typeof data.emotionModelId === 'string' && document.getElementById('emotionModelId')) {
-                document.getElementById('emotionModelId').value = data.emotionModelId;
-            }
-            if (typeof data.emotionModelApiKey === 'string' && document.getElementById('emotionModelApiKey')) {
-                document.getElementById('emotionModelApiKey').value = data.emotionModelApiKey;
-            }
+            setInputValue('emotionModelProvider', data.emotionModelProvider);
+            setInputValue('emotionModelUrl', data.emotionModelUrl);
+            setInputValue('emotionModelId', data.emotionModelId);
+            setInputValue('emotionModelApiKey', data.emotionModelApiKey);
 
-            if (typeof data.visionModelProvider === 'string' && document.getElementById('visionModelProvider')) {
-                document.getElementById('visionModelProvider').value = data.visionModelProvider;
-            }
-            if (typeof data.visionModelUrl === 'string' && document.getElementById('visionModelUrl')) {
-                document.getElementById('visionModelUrl').value = data.visionModelUrl;
-            }
-            if (typeof data.visionModelId === 'string' && document.getElementById('visionModelId')) {
-                document.getElementById('visionModelId').value = data.visionModelId;
-            }
-            if (typeof data.visionModelApiKey === 'string' && document.getElementById('visionModelApiKey')) {
-                document.getElementById('visionModelApiKey').value = data.visionModelApiKey;
-            }
+            setInputValue('visionModelProvider', data.visionModelProvider);
+            setInputValue('visionModelUrl', data.visionModelUrl);
+            setInputValue('visionModelId', data.visionModelId);
+            setInputValue('visionModelApiKey', data.visionModelApiKey);
 
-            if (typeof data.omniModelProvider === 'string' && document.getElementById('omniModelProvider')) {
-                document.getElementById('omniModelProvider').value = data.omniModelProvider;
-            }
-            if (typeof data.omniModelUrl === 'string' && document.getElementById('omniModelUrl')) {
-                document.getElementById('omniModelUrl').value = data.omniModelUrl;
-            }
-            if (typeof data.omniModelId === 'string' && document.getElementById('omniModelId')) {
-                document.getElementById('omniModelId').value = data.omniModelId;
-            }
-            if (typeof data.omniModelApiKey === 'string' && document.getElementById('omniModelApiKey')) {
-                document.getElementById('omniModelApiKey').value = data.omniModelApiKey;
-            }
+            setInputValue('omniModelProvider', data.omniModelProvider);
+            setInputValue('omniModelUrl', data.omniModelUrl);
+            setInputValue('omniModelId', data.omniModelId);
+            setInputValue('omniModelApiKey', data.omniModelApiKey);
 
-            if (typeof data.ttsModelProvider === 'string' && document.getElementById('ttsModelProvider')) {
-                document.getElementById('ttsModelProvider').value = data.ttsModelProvider;
-            }
-            if (typeof data.ttsModelUrl === 'string' && document.getElementById('ttsModelUrl')) {
-                document.getElementById('ttsModelUrl').value = data.ttsModelUrl;
-            }
-            if (typeof data.ttsModelId === 'string' && document.getElementById('ttsModelId')) {
-                document.getElementById('ttsModelId').value = data.ttsModelId;
-            }
-            if (typeof data.ttsModelApiKey === 'string' && document.getElementById('ttsModelApiKey')) {
-                document.getElementById('ttsModelApiKey').value = data.ttsModelApiKey;
-            }
-            if (typeof data.ttsVoiceId === 'string' && document.getElementById('ttsVoiceId')) {
-                document.getElementById('ttsVoiceId').value = data.ttsVoiceId;
-            }
+            setInputValue('ttsModelProvider', data.ttsModelProvider);
+            setInputValue('ttsModelUrl', data.ttsModelUrl);
+            setInputValue('ttsModelId', data.ttsModelId);
+            setInputValue('ttsModelApiKey', data.ttsModelApiKey);
+            setInputValue('ttsVoiceId', data.ttsVoiceId);
 
             // 加载MCPR_TOKEN
-            if (typeof data.mcpToken === 'string' && document.getElementById('mcpTokenInput')) {
-                document.getElementById('mcpTokenInput').value = data.mcpToken;
-            }
+            setInputValue('mcpTokenInput', data.mcpToken);
 
             // 加载自定义API启用状态
             if (typeof data.enableCustomApi === 'boolean' && document.getElementById('enableCustomApi')) {
@@ -505,7 +456,8 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
     const assistApiSelect = document.getElementById('assistApiSelect');
 
     // 获取自定义API启用状态（用于推断逻辑，优先判断非自定义模式）
-    const enableCustomApi = document.getElementById('enableCustomApi') ? document.getElementById('enableCustomApi').checked : false;
+    const enableCustomApiElement = document.getElementById('enableCustomApi');
+    const enableCustomApi = enableCustomApiElement ? enableCustomApiElement.checked : false;
 
     // 优先从选择器获取值，如果选择器被禁用或值为空，则从当前显示状态推断
     let coreApi = coreApiSelect ? coreApiSelect.value : '';
@@ -947,22 +899,23 @@ function sendBeacon() {
     beaconSent = true;
 
     try {
-        // 使用navigator.sendBeacon确保信号不被拦截
-        const success = navigator.sendBeacon('/api/beacon/shutdown', JSON.stringify({
+        // 构建JSON payload
+        const payload = JSON.stringify({
             timestamp: Date.now(),
             action: 'shutdown'
-        }));
+        });
+
+        // 使用navigator.sendBeacon确保信号不被拦截，传入Blob以设置正确的Content-Type
+        const blob = new Blob([payload], { type: 'application/json' });
+        const success = navigator.sendBeacon('/api/beacon/shutdown', blob);
 
         if (!success) {
             console.warn('Beacon发送失败，尝试使用fetch');
-            // 备用方案：使用fetch
+            // 备用方案：使用fetch，复用相同的payload
             fetch('/api/beacon/shutdown', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    timestamp: Date.now(),
-                    action: 'shutdown'
-                }),
+                body: payload,
                 keepalive: true // 确保请求在页面关闭时仍能发送
             }).catch(() => {});
         }
@@ -1280,12 +1233,6 @@ window.addEventListener('load', () => {
     const fixWhiteScreen = () => {
         if (document.body) {
             void document.body.offsetHeight;
-            // 微小透明度变化触发重绘
-            const currentOpacity = document.body.style.opacity || '1';
-            document.body.style.opacity = '0.99';
-            requestAnimationFrame(() => {
-                document.body.style.opacity = currentOpacity;
-            });
         }
     };
     if (document.readyState === 'loading') {
