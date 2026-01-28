@@ -163,7 +163,7 @@
         const msg = chatData[idx];
         const m = msg.text.match(/^(\[[^\]]+\])/);
         if (m) {
-            chatData[idx].text = m[1] + value;
+            chatData[idx].text = m[1] + (m[1].endsWith(' ') || value.startsWith(' ') ? '' : ' ') + value;
         } else {
             chatData[idx].text = value;
         }

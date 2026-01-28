@@ -29,6 +29,7 @@ function loadVRMPathsConfig() {
                 user_vrm: paths.user_vrm,
                 static_vrm: paths.static_vrm
             };
+            window.VRM_PATHS.isLoaded = true;
         }
         window.removeEventListener('vrm-paths-loaded', handleVRMPathsLoaded);
     };
@@ -42,7 +43,7 @@ function loadVRMPathsConfig() {
     } else {
         // 超时保护：如果 5 秒后仍未加载，使用默认值
         setTimeout(() => {
-            if (!VRM_PATHS_CACHE || !VRM_PATHS_CACHE.user_vrm) {
+            if (!window.VRM_PATHS?.isLoaded) {
                 console.warn('[主页] VRM 路径配置加载超时，使用默认值');
                 window.removeEventListener('vrm-paths-loaded', handleVRMPathsLoaded);
             }

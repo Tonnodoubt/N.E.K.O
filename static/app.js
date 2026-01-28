@@ -2299,7 +2299,17 @@ function init_app() {
                 console.log('[App] 自动恢复对话区');
                 chatContainerEl.classList.remove('minimized');
                 chatContainerEl.classList.remove('mobile-collapsed');
-                
+
+                // 恢复子元素可见性
+                const chatContentWrapper = chatContainerEl.querySelector('.chat-content-wrapper');
+                const chatHeader = chatContainerEl.querySelector('.chat-header');
+                if (chatContentWrapper) {
+                    chatContentWrapper.style.display = '';
+                }
+                if (chatHeader) {
+                    chatHeader.style.display = '';
+                }
+
                 // 同步更新切换按钮的状态（图标和标题）
                 const toggleChatBtn = document.getElementById('toggle-chat-btn');
                 if (toggleChatBtn) {
@@ -2309,7 +2319,7 @@ function init_app() {
                         iconImg.alt = window.t ? window.t('common.minimize') : '最小化';
                     }
                     toggleChatBtn.title = window.t ? window.t('common.minimize') : '最小化';
-                    
+
                     // 还原后滚动到底部
                     if (typeof scrollToBottom === 'function') {
                         setTimeout(scrollToBottom, 300);
@@ -6938,11 +6948,14 @@ function init_app() {
             // 3. 准备新环境
             showStatusToast(window.t ? window.t('app.switchingCatgirl', { name: newCatgirl }) : `正在切换到 ${newCatgirl}...`, 3000);
 
-            // 清空聊天记录
+            // 清空聊天记录和相关全局状态
             const chatContainer = document.getElementById('chatContainer');
             if (chatContainer) {
                 chatContainer.innerHTML = '';
             }
+            // 重置聊天相关的全局状态
+            window.currentGeminiMessage = null;
+            window._geminiTurnFullText = '';
 
             // 清理连接与状态
             if (autoReconnectTimeoutId) clearTimeout(autoReconnectTimeoutId);

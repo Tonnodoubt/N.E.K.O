@@ -175,6 +175,8 @@ if (window.i18n && window.i18n.isInitialized) {
         });
     }
 
+    const lanlanInput = document.getElementById('lanlan_name');
+
     try {
         // 优先从 URL 获取 lanlan_name
         const urlParams = new URLSearchParams(window.location.search);
@@ -193,10 +195,14 @@ if (window.i18n && window.i18n.isInitialized) {
         }
 
         // 设置到隐藏字段
-        document.getElementById('lanlan_name').value = lanlanName;
+        if (lanlanInput) {
+            lanlanInput.value = lanlanName;
+        }
     } catch (error) {
         console.error('获取 lanlan_name 失败:', error);
-        document.getElementById('lanlan_name').value = "";
+        if (lanlanInput) {
+            lanlanInput.value = "";
+        }
     }
 })();
 

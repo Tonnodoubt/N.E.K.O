@@ -132,7 +132,8 @@ async function loadApiProviders() {
                 const coreSelect = document.getElementById('coreApiSelect');
                 if (coreSelect) {
                     coreSelect.innerHTML = ''; // 清空现有选项
-                    data.core_api_providers.forEach(provider => {
+                    const coreList = Array.isArray(data.core_api_providers) ? data.core_api_providers : [];
+                    coreList.forEach(provider => {
                         const option = document.createElement('option');
                         option.value = provider.key;
                         // 使用翻译键获取显示名称
@@ -151,7 +152,8 @@ async function loadApiProviders() {
                 const assistSelect = document.getElementById('assistApiSelect');
                 if (assistSelect) {
                     assistSelect.innerHTML = ''; // 清空现有选项
-                    data.assist_api_providers.forEach(provider => {
+                    const assistList = Array.isArray(data.assist_api_providers) ? data.assist_api_providers : [];
+                    assistList.forEach(provider => {
                         const option = document.createElement('option');
                         option.value = provider.key;
                         // 使用翻译键获取显示名称
@@ -1018,8 +1020,13 @@ function positionTooltip(iconElement, tooltipElement) {
 // 二级折叠功能：切换模型配置的展开/折叠状态
 function toggleModelConfig(modelType) {
     const content = document.getElementById(`${modelType}-model-content`);
-    const header = document.querySelector(`#${modelType}-model-content`).previousElementSibling;
+    if (!content) return;
+
+    const header = content.previousElementSibling;
+    if (!header) return;
+
     const icon = header.querySelector('.toggle-icon');
+    if (!icon) return;
 
     if (content.classList.contains('expanded')) {
         // 折叠
