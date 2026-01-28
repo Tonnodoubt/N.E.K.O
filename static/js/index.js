@@ -139,3 +139,16 @@ async function loadPageConfig() {
 
 // 标记配置是否已加载
 window.pageConfigReady = loadPageConfig();
+
+// 对话区提示自动消失功能
+function initChatTooltipAutoHide() {
+    const tooltip = document.getElementById('chat-tooltip');
+    if (tooltip) {
+        setTimeout(() => {
+            tooltip.classList.add('hidden');
+        }, 3000);
+    }
+}
+
+// 页面加载完成后初始化提示框自动消失
+window.addEventListener('load', initChatTooltipAutoHide);
