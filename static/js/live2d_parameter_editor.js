@@ -62,6 +62,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // 监听语言变化事件
     window.addEventListener('localechange', function () {
         updatePageTranslations();
+        updateModelSelectButtonText();
+        updateModelDropdown();
     });
 
     // 延迟更新（等待i18next完全初始化）
@@ -493,7 +495,7 @@ function updateModelDropdown() {
 function updateModelSelectButtonText() {
     if (!modelSelectText || !modelSelect) return;
     const selectedOption = modelSelect.options[modelSelect.selectedIndex];
-    const text = selectedOption ? selectedOption.textContent : t('live2d.parameterEditor.pleaseSelectModel', '请选择模型');
+    const text = selectedOption ? selectedOption.textContent : t('live2d.parameterEditor.pleaseSelectModel', '选择模型');
     modelSelectText.textContent = text;
     modelSelectText.setAttribute('data-text', text);
 }
@@ -533,7 +535,7 @@ async function loadModelList() {
 
 function renderModelList(models) {
     if (models.length > 0) {
-        modelSelect.innerHTML = `<option value="">${t('live2d.parameterEditor.pleaseSelectModelOption', '请选择模型')}</option>`;
+        modelSelect.innerHTML = `<option value="">${t('live2d.parameterEditor.pleaseSelectModelOption', '选择模型')}</option>`;
         models.forEach(model => {
             const option = document.createElement('option');
             option.value = model.name;

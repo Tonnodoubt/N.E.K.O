@@ -109,7 +109,7 @@ class DropdownManager {
             this.ensureButtonStructure();
             if (!this.textSpan) return;
         }
-        
+
         // 动态获取翻译文本（如果配置了 i18n key）
         let defaultText = this.config.defaultText;
         if (this.config.defaultTextKey && window.t && typeof window.t === 'function') {
@@ -118,27 +118,32 @@ class DropdownManager {
                 defaultText = translated;
             }
         }
-        
+
         let text = defaultText;
+
         // 如果配置了 alwaysShowDefault，始终显示默认文字
         if (this.config.alwaysShowDefault) {
             text = defaultText;
         } else if (this.select) {
+            console.log('[DropdownManager] select.value:', this.select.value, 'options.length:', this.select.options.length);
             if (this.select.value) {
                 // 有选择的值，显示选中的选项
                 const selectedOption = this.select.options[this.select.selectedIndex];
                 if (selectedOption) {
                     text = this.config.getText(selectedOption);
+                    console.log('[DropdownManager] 显示选中的选项:', text);
                 }
             } else if (this.select.options.length > 0) {
                 // 没有选择，但有选项，显示第一个选项（跳过空值选项）
                 const firstOption = Array.from(this.select.options).find(opt => opt.value !== '');
                 if (firstOption) {
                     text = this.config.getText(firstOption);
+                    console.log('[DropdownManager] 显示第一个选项:', text);
                 }
             }
         }
-        
+
+        console.log('[DropdownManager] 最终设置的文本:', text, 'buttonId:', this.config.buttonId);
         this.textSpan.textContent = text;
         this.textSpan.setAttribute('data-text', text);
     }
@@ -635,8 +640,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 更新Live2D模型选择器按钮文字的函数（使用统一管理器）
     function updateLive2DModelSelectButtonText() {
+        console.log('[updateLive2DModelSelectButtonText] 被调用, live2dModelManager:', live2dModelManager);
         if (live2dModelManager) {
             live2dModelManager.updateButtonText();
+        } else {
+            console.warn('[updateLive2DModelSelectButtonText] live2dModelManager 未初始化');
         }
     }
 
@@ -674,6 +682,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         if (!live2dModelManager) {
+            console.log('[Model Manager] 初始化 live2dModelManager');
             live2dModelManager = new DropdownManager({
                 buttonId: 'live2d-model-select-btn',
                 selectId: 'model-select',
@@ -682,10 +691,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 iconClass: 'live2d-model-select-icon',
                 iconSrc: '/static/icons/live2d_model_select_icon.png?v=1',
                 defaultText: window.i18next?.t('live2d.selectModel') || '选择模型',
+                defaultTextKey: 'live2d.selectModel',  // i18n key
                 iconAlt: window.i18next?.t('live2d.selectModel') || '选择模型',
+                alwaysShowDefault: false,  // 显示选中的模型名字，而不是默认文本
                 shouldSkipOption: (option) => {
                     return option.value === '' && (
-                        option.textContent.includes('请选择') || 
+                        option.textContent.includes('请选择') ||
                         option.textContent.includes('选择模型') ||
                         option.textContent.includes('Select')
                     );
@@ -694,6 +705,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     updateLive2DModelSelectButtonText();
                 }
             });
+            console.log('[Model Manager] live2dModelManager 初始化完成:', live2dModelManager);
         }
         
         if (!motionManager) {
@@ -915,6 +927,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateUploadButtonText();
         updateModelTypeButtonText();
         updatePersistentExpressionButtonText();
+        updateLive2DModelSelectButtonText();
+        updateVRMModelSelectButtonText();
     });
     
     // 监听i18next的languageChanged事件（更可靠）
@@ -923,6 +937,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateUploadButtonText();
             updateModelTypeButtonText();
             updatePersistentExpressionButtonText();
+            updateLive2DModelSelectButtonText();
+            updateVRMModelSelectButtonText();
         });
     }
 
