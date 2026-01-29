@@ -4178,7 +4178,7 @@ function init_app() {
 
         console.log('[App] 检查对话区状态 - 存在:', !!chatContainerEl, '类列表:', chatContainerEl ? chatContainerEl.className : 'N/A', '目标类:', collapseClass);
 
-        if (chatContainerEl && chatContainerEl.classList.contains(collapseClass)) {
+        if (chatContainerEl && (chatContainerEl.classList.contains('minimized') || chatContainerEl.classList.contains('mobile-collapsed'))) {
             console.log('[App] 自动恢复对话区');
             chatContainerEl.classList.remove('minimized');
             chatContainerEl.classList.remove('mobile-collapsed');
