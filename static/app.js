@@ -2163,6 +2163,7 @@ function init_app() {
         } else {
             // "请她离开"模式：隐藏所有内容
             console.log(window.t('console.executingGoodbyeMode'));
+            console.log('[App] 执行"请她离开"模式逻辑');
 
             // "请她离开"模式：隐藏所有内容
             const textInputArea = document.getElementById('text-input-area');
@@ -2296,7 +2297,7 @@ function init_app() {
             // 恢复对话区
             const chatContainerEl = document.getElementById('chat-container');
             if (chatContainerEl && (chatContainerEl.classList.contains('minimized') || chatContainerEl.classList.contains('mobile-collapsed'))) {
-                console.log(window.t('console.autoRestoreDialogArea'));
+                console.log('[App] 自动恢复对话区');
                 chatContainerEl.classList.remove('minimized');
                 chatContainerEl.classList.remove('mobile-collapsed');
 
