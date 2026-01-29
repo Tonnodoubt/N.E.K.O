@@ -309,12 +309,12 @@ function applyWorkshopSyncData() {
             if (itemDescription) {
                 itemDescription.textContent = workshopSyncData.description || '';
             } else {
-                console.error('未找到创意工坊描述元素');
+                console.error(window.t('steam.workshopDescriptionElementNotFound'));
             }
         } else {
         }
     } catch (error) {
-        console.error('应用同步数据时出错:', error);
+        console.error(window.t('steam.applySyncDataError', {error: error}));
     }
 }
         
@@ -436,7 +436,7 @@ async function selectFolderForInput(inputId) {
             // 用户取消了选择
             showMessage(window.t ? window.t('steam.folderSelectionCancelled') : '已取消目录选择', 'info');
         } else {
-            console.error('选择目录失败:', error);
+            console.error(window.t('steam.selectFolderFailed', {error: error}));
             showMessage(window.t ? window.t('steam.folderSelectionError') : '选择目录失败', 'error');
         }
     }
@@ -518,7 +518,7 @@ function scanLocalItems() {
         }
     })
     .catch(error => {
-        console.error('扫描本地物品失败:', error);
+        console.error(window.t('steam.scanLocalItemsFailed', {error: error}));
         showMessage(window.t ? window.t('steam.workshopScanError', { error: error.message }) : `扫描时出错: ${error.message}`, 'error', 3000);
     });
 }
@@ -556,7 +556,7 @@ async function findPreviewImage(folderPath) {
             return result.imagePath;
         }
     } catch (error) {
-        console.error('查找预览图片失败:', error);
+        console.error(window.t('steam.findPreviewImageFailed', {error: error}));
     }
 
     return null;
@@ -579,7 +579,7 @@ async function compareLocalWithWorkshop(localItem) {
             }
         }
     } catch (error) {
-        console.error('创意工坊对比失败:', error);
+        console.error(window.t('steam.workshopComparisonFailed', {error: error}));
     }
 
     return { exists: false };
@@ -612,7 +612,7 @@ async function getWorkshopItems() {
             return data.items;
         }
     } catch (error) {
-        console.error('获取创意工坊物品失败:', error);
+        console.error(window.t('steam.getWorkshopItemsFailed', {error: error}));
     }
     return [];
 }
@@ -697,7 +697,7 @@ function checkUploadStatusForLocalItems() {
                 }
             })
             .catch(error => {
-                console.error('检查上传标记文件失败:', error);
+                console.error(window.t('steam.checkUploadMarkerFailed', {error: error}));
             });
         }
     });
@@ -737,7 +737,7 @@ function prepareItemForUpload(itemId, folderPath) {
         }
     })
     .catch(error => {
-        console.error('准备上传失败:', error);
+        console.error(window.t('steam.prepareUploadFailed', {error: error}));
         showMessage(window.t ? window.t('steam.prepareUploadError', { error: error.message }) : `准备上传出错: ${error.message}`, 'error');
     });
 }
@@ -816,7 +816,7 @@ function addTag(tagText, type = '', locked = false) {
     const containerId = type ? `${type}-tags-container` : 'tags-container';
     const tagsContainer = document.getElementById(containerId);
     if (!tagsContainer) {
-        console.error(`Tags container ${containerId} not found`);
+        console.error(window.t('steam.tagsContainerNotFound', {containerId: containerId}));
         return;
     }
 
@@ -872,7 +872,7 @@ function removeTag(tagElement, type = '') {
     if (tagElement && tagElement.parentElement) {
         tagElement.parentElement.remove();
     } else {
-        console.error('Invalid tag element');
+        console.error(window.t('steam.invalidTagElement'));
     }
 }
 
@@ -1395,7 +1395,7 @@ function uploadItem() {
                         window.open(url);
                     }
                 } catch (e) {
-                    console.error('无法打开Steam overlay:', e);
+                    console.error(window.t('steam.cannotOpenSteamOverlay', {error: e}));
                 }
 
                 // 延迟关闭modal并跳转到角色卡页面
@@ -1482,7 +1482,7 @@ function uploadItem() {
         }
     })
     .catch(error => {
-        console.error('上传失败:', error);
+        console.error(window.t('steam.uploadFailed', {error: error}));
 
         // 上传失败，重置上传完成标志
         isUploadCompleted = false;
@@ -1573,7 +1573,7 @@ function loadSubscriptions() {
         updatePagination();
     })
     .catch(error => {
-        console.error('获取订阅物品失败:', error);
+        console.error(window.t('steam.getSubscribedItemsFailed', {error: error}));
         subscriptionsList.innerHTML = `<div class="empty-state"><p>${window.t ? window.t('steam.fetchFailed') : '获取订阅物品失败'}: ${error.message}</p></div>`;
         showMessage(window.t ? window.t('steam.cannotConnectToServer') : '无法连接到服务器，请稍后重试', 'error');
     });
@@ -1879,7 +1879,7 @@ function viewItemDetails(itemId) {
     })
     .then(data => {
         if (!data.success) {
-            showMessage(`获取物品详情失败: ${data.error || '未知错误'}`, 'error');
+            showMessage(window.t('steam.getItemDetailsFailedWithError', {error: data.error || (window.t ? window.t('common.unknownError') : '未知错误')}), 'error');
             return;
         }
 
@@ -1969,7 +1969,7 @@ function viewItemDetails(itemId) {
         openModal();
     })
     .catch(error => {
-        console.error('获取物品详情失败:', error);
+        console.error(window.t('steam.getItemDetailsFailed', {error: error}));
         showMessage(window.t ? window.t('steam.cannotLoadItemDetails') : '无法加载物品详情', 'error');
     });
 }
@@ -2033,7 +2033,7 @@ function unsubscribeItem(itemId, itemName) {
             }
         })
         .catch(error => {
-            console.error('取消订阅失败:', error);
+            console.error(window.t('steam.unsubscribeFailed', {error: error}));
             showMessage(window.t ? window.t('steam.unsubscribeError') : '取消订阅失败', 'error');
         });
     }
@@ -2055,7 +2055,7 @@ function loadProcessedAudioFiles() {
             processedAudioFiles = new Set(files);
         }
     } catch (error) {
-        console.error('从localStorage加载已处理音频文件失败:', error);
+        console.error(window.t('steam.loadProcessedAudioFilesFailed', {error: error}));
         processedAudioFiles = new Set();
     }
 }
@@ -2066,7 +2066,7 @@ function saveProcessedAudioFiles() {
         const files = Array.from(processedAudioFiles);
         localStorage.setItem('neko_processed_audio_files', JSON.stringify(files));
     } catch (error) {
-        console.error('保存已处理音频文件到localStorage失败:', error);
+        console.error(window.t('steam.saveProcessedAudioFilesFailed', {error: error}));
     }
 }
 
@@ -2082,7 +2082,7 @@ async function autoScanAndAddWorkshopCharacterCards() {
         const subscribedResult = await subscribedResponse.json();
 
         if (!subscribedResult.success) {
-            console.error('获取订阅物品失败:', subscribedResult.error);
+            console.error(window.t('steam.getSubscribedItemsFailedInScan', {error: subscribedResult.error}));
             return;
         }
 
@@ -2115,7 +2115,7 @@ async function autoScanAndAddWorkshopCharacterCards() {
                 } else {
                 }
             } catch (listError) {
-                console.error(`扫描目录 ${folderPath} 中的角色卡文件失败:`, listError);
+                console.error(window.t('steam.scanCharacterCardsFailed', {folderPath: folderPath, error: listError}));
             }
 
             // 5. 使用新的API扫描目录中所有音频文件(.mp3, .wav)
@@ -2133,13 +2133,13 @@ async function autoScanAndAddWorkshopCharacterCards() {
                 } else {
                 }
             } catch (audioListError) {
-                console.error(`扫描目录 ${folderPath} 中的音频文件失败:`, audioListError);
+                console.error(window.t('steam.scanAudioFilesFailed', {folderPath: folderPath, error: audioListError}));
             }
         }
 
 
     } catch (error) {
-        console.error('自动扫描和添加角色卡失败:', error);
+        console.error(window.t('steam.autoScanAddCharacterCardsFailed', {error: error}));
     }
 }
 
@@ -2193,13 +2193,13 @@ async function scanAudioFile(filePath, prefix, itemId, itemTitle) {
                 // 保存到localStorage以持久化
                 saveProcessedAudioFiles();
             } else {
-                console.error(`克隆音频文件 ${filePath} 失败:`, cloneResult.error);
+                console.error(window.t('steam.cloneAudioFileFailed', {filePath: filePath, error: cloneResult.error}));
             }
         } else {
-            console.error(`读取音频文件 ${filePath} 失败:`, readResult.error);
+            console.error(window.t('steam.readAudioFileFailed', {filePath: filePath, error: readResult.error}));
         }
     } catch (error) {
-        console.error(`处理音频文件 ${filePath} 时出错:`, error);
+        console.error(window.t('steam.processAudioFileError', {filePath: filePath, error: error}));
     }
 }
 
@@ -2274,11 +2274,11 @@ async function scanCharaFile(filePath, itemId, itemTitle) {
                 showMessage(errorMsg, 'warning');
             }
         } else if (readResult.error !== '文件不存在') {
-            console.error(`读取角色卡文件 ${filePath} 失败:`, readResult.error);
+            console.error(window.t('steam.readCharacterCardFileFailed', {filePath: filePath, error: readResult.error}));
         }
     } catch (error) {
         if (error.message !== 'Failed to fetch') {
-            console.error(`处理角色卡文件 ${filePath} 时出错:`, error);
+            console.error(window.t('steam.processCharacterCardFileError', {filePath: filePath, error: error}));
         }
     }
 }
@@ -2330,8 +2330,8 @@ async function loadCharacterData() {
         const resp = await fetch('/api/characters/');
         return await resp.json();
     } catch (error) {
-        console.error('加载角色数据失败:', error);
-        showMessage('加载角色数据失败', 'error');
+        console.error(window.t('steam.loadCharacterDataFailed', {error: error}));
+        showMessage(window.t('steam.loadCharacterDataFailedMessage'), 'error');
         return null;
     }
 }
@@ -2413,7 +2413,7 @@ async function loadCharacterCards() {
             }
         }
     } catch (error) {
-        console.error('从character_cards文件夹加载角色卡失败:', error);
+        console.error(window.t('steam.loadCharacterCardsFromFolderFailed', {error: error}));
     }
 
     // 扫描模型文件夹中的character_settings JSON文件（兼容旧格式）
@@ -2454,13 +2454,13 @@ async function loadCharacterCards() {
                                 }
                             }
                         } catch (fileError) {
-                            console.error(`解析文件${file}失败:`, fileError);
+                            console.error(window.t('steam.parseFileFailed', {file: file, error: fileError}));
                         }
                     }
                 }
             }
         } catch (error) {
-            console.error(`获取模型${model.name}文件列表失败:`, error);
+            console.error(window.t('steam.getModelFileListFailed', {modelName: model.name, error: error}));
         }
     }
 
@@ -2662,7 +2662,7 @@ async function fetchWorkshopStatus(characterName) {
 
         }
     } catch (error) {
-        console.error('获取 Workshop 状态失败:', error);
+        console.error(window.t('steam.getWorkshopStatusFailed', {error: error}));
     }
 }
 
@@ -2752,7 +2752,7 @@ function closeWorkshopSnapshotModal(event) {
 // 加载角色卡
 function loadCharacterCard() {
     // 这里将实现加载角色卡的逻辑
-    showMessage('角色卡已加载', 'info');
+    showMessage(window.t('steam.characterCardLoaded'), 'info');
 }
 
 // 存储临时上传目录路径，供上传时使用
@@ -2783,24 +2783,24 @@ function cleanupTempFolder(tempFolder, shouldDelete) {
         })
         .then(result => {
             if (result.success) {
-                showMessage('临时目录已删除', 'success');
+                showMessage(window.t('steam.tempDirectoryDeleted'), 'success');
             } else {
-                console.error('删除临时目录失败:', result.error);
-                showMessage(`删除临时目录失败: ${result.error}`, 'error');
+                console.error(window.t('steam.deleteTempDirectoryFailed', {error: result.error}));
+                showMessage(window.t('steam.deleteTempDirectoryFailedWithMessage', {message: result.error}), 'error');
             }
             // 清除临时目录路径和上传状态
             currentUploadTempFolder = null;
             isUploadCompleted = false;
         })
         .catch(error => {
-            console.error('删除临时目录失败:', error);
-            showMessage(`删除临时目录失败: ${error.message}`, 'error');
+            console.error(window.t('steam.deleteTempDirectoryFailed', {error: error}));
+            showMessage(window.t('steam.deleteTempDirectoryFailedWithMessage', {message: error.message}), 'error');
             // 即使删除失败，也清除临时目录路径和上传状态
             currentUploadTempFolder = null;
             isUploadCompleted = false;
         });
     } else {
-        showMessage('临时目录已保留', 'info');
+        showMessage(window.t('steam.tempDirectoryRetained'), 'info');
         // 清除临时目录路径和上传状态
         currentUploadTempFolder = null;
         isUploadCompleted = false;
@@ -2913,7 +2913,7 @@ async function handleUploadToWorkshop() {
             } else if (availableModels.length > 0) {
                 selectedModelName = availableModels[0].name;
             } else {
-                showMessage('没有可用的模型', 'error');
+                showMessage(window.t('steam.noAvailableModels'), 'error');
                 return;
             }
         }
@@ -2937,7 +2937,7 @@ async function handleUploadToWorkshop() {
         // 直接进行上传（不再需要保存确认，因为使用的是 rawData 中的原始数据）
         await performUpload(uploadData);
     } catch (error) {
-        console.error('handleUploadToWorkshop执行出错:', error);
+        console.error(window.t('steam.handleUploadToWorkshopError', {error: error}));
         showMessage(window.t ? window.t('steam.prepareUploadError', { error: error.message }) : `上传准备出错: ${error.message}`, 'error');
     }
 }
@@ -3063,16 +3063,16 @@ async function performUpload(data) {
                 // 然后显示上传表单区域
                 toggleUploadSection();
             } else {
-                showMessage(`准备上传失败: ${result.error || '未知错误'}`, 'error');
+                showMessage(window.t('steam.prepareUploadFailedWithError', {error: result.error || (window.t ? window.t('common.unknownError') : '未知错误')}), 'error');
             }
         })
         .catch(error => {
-            console.error('准备上传失败:', error);
-            showMessage(`准备上传失败: ${error.message}`, 'error');
+            console.error(window.t('steam.prepareUploadFailed', {error: error}));
+            showMessage(window.t('steam.prepareUploadFailedWithMessage', {message: error.message}), 'error');
         });
     } catch (error) {
-        console.error('performUpload执行出错:', error);
-        showMessage(`上传执行出错: ${error.message}`, 'error');
+        console.error(window.t('steam.performUploadError', {error: error}));
+        showMessage(window.t('steam.uploadExecutionError', {message: error.message}), 'error');
     }
 }
 
@@ -3085,7 +3085,7 @@ function editCharacterCardModal() {
         // 调用编辑角色卡函数
         editCharacterCard(currentCharacterCardId);
     } else {
-        showMessage('未选择要编辑的角色卡', 'error');
+        showMessage(window.t('steam.noCharacterCardSelectedForEdit'), 'error');
     }
 }
 
@@ -3112,7 +3112,7 @@ async function scanModels() {
 
 
     } catch (error) {
-        console.error('扫描模型失败:', error);
+        console.error(window.t('steam.scanModelsFailed', {error: error}));
         showMessage(window.t ? window.t('steam.modelScanError') : '扫描模型失败', 'error');
     }
 }
@@ -3178,7 +3178,7 @@ async function loadVoices() {
             }, 3000);
         }
     } catch (error) {
-        console.error('加载音色列表失败:', error);
+        console.error(window.t('steam.loadVoiceListFailed', {error: error}));
         showMessage(window.t ? window.t('steam.voiceScanError') : '扫描音色失败', 'error');
     }
 }
@@ -3232,7 +3232,7 @@ function updateFileDisplay() {
             document.getElementById('lanlan_name').value = lanlanName;
         }
     } catch (error) {
-        console.error('获取 lanlan_name 失败:', error);
+        console.error(window.t('steam.getLanlanNameFailed', {error: error}));
         if (!document.getElementById('lanlan_name')) {
             const hiddenInput = document.createElement('input');
             hiddenInput.type = 'hidden';
@@ -3401,7 +3401,7 @@ async function clearLive2DPreview(showModelNotSetMessage = false) {
         }
 
     } catch (error) {
-        console.error('清除Live2D预览失败:', error);
+        console.error(window.t('steam.clearLive2DPreviewFailed', {error: error}));
     }
 }
 
@@ -3545,7 +3545,7 @@ async function loadLive2DModelByName(modelName, modelInfo = null) {
         selectedModelInfo = modelInfo;
         showMessage((window.t && window.t('live2d.modelLoadSuccess', { model: modelName })) || `模型 ${modelName} 加载成功`, 'success');
     } catch (error) {
-        console.error('Failed to load Live2D model by name:', error);
+        console.error(window.t('steam.failedToLoadLive2DModelByName', {error: error}));
         showMessage((window.t && window.t('live2d.modelLoadFailed', { model: modelName })) || `加载模型 ${modelName} 失败`, 'error');
 
         // 在加载失败时隐藏预览控件
@@ -3573,7 +3573,7 @@ async function updatePreviewControlsAfterModelLoad(filesData) {
 
     // 检查filesData是否存在
     if (!filesData || !filesData.motion_files || !filesData.expression_files) {
-        console.error('Invalid filesData object:', filesData);
+        console.error(window.t('steam.invalidFilesDataObject', {filesData: filesData}));
         return;
     }
 
@@ -3604,7 +3604,7 @@ async function updatePreviewControlsAfterModelLoad(filesData) {
     try {
         updatePreviewControls(filesData.motion_files, filesData.expression_files);
     } catch (error) {
-        console.error('Failed to update preview controls:', error);
+        console.error(window.t('steam.failedToUpdatePreviewControls', {error: error}));
     }
 }
 
@@ -3714,13 +3714,13 @@ function addCharacterCardTag(type, tagValue) {
         // 检查标签数量是否超过限制（最多4个）
         const existingTags = tagsContainer.querySelectorAll('.tag');
         if (existingTags.length >= 4) {
-            alert('标签数量不能超过4个！');
+            alert(window.t ? window.t('steam.tagLimitReached') : '标签数量不能超过4个！');
             return;
         }
 
         // 检查标签字数是否超过限制（最多30字）
         if (tagText.length > 30) {
-            alert('标签字数不能超过30字！');
+            alert(window.t ? window.t('steam.tagTooLong') : '标签字数不能超过30字！');
             return;
         }
 
@@ -3823,7 +3823,7 @@ async function initLive2DPreview() {
                         }
                     }
                 } catch (error) {
-                    console.error('Error removing model:', error);
+                    console.error(window.t('steam.errorRemovingModel', {error: error}));
                 }
             };
         }
@@ -3832,7 +3832,7 @@ async function initLive2DPreview() {
         window.addEventListener('resize', resizePreviewModel);
 
     } catch (error) {
-        console.error('Failed to initialize Live2D preview:', error);
+        console.error(window.t('steam.failedToInitializeLive2DPreview', {error: error}));
         showMessage(window.t('steam.live2dInitFailed'), 'error');
     }
 }
@@ -3936,7 +3936,7 @@ async function loadLive2DModelFromFolder(files) {
         showMessage(window.t('steam.live2dPreviewLoaded'), 'success');
 
     } catch (error) {
-        console.error('Failed to load Live2D model:', error);
+        console.error(window.t('steam.failedToLoadLive2DModel', {error: error}));
         showMessage(window.t('steam.live2dPreviewLoadFailed', {error: error.message}), 'error');
 
         // 在加载失败时隐藏预览控件
@@ -3990,7 +3990,7 @@ function updatePreviewControls(motionFiles, expressionFiles) {
 
     // 检查必要的DOM元素是否存在
     if (!motionSelect || !expressionSelect || !playMotionBtn || !playExpressionBtn) {
-        console.error('Missing required DOM elements for preview controls');
+        console.error(window.t('steam.missingRequiredDOMElements'));
         return;
     }
 
@@ -4061,7 +4061,7 @@ if (playMotionBtn) {
         try {
             currentPreviewModel.motion('PreviewAll', motionIndex, 3);
         } catch (error) {
-            console.error('Failed to play motion:', error);
+            console.error(window.t('steam.failedToPlayMotion', {error: error}));
             showMessage(window.t('live2d.playMotionFailed', {motion: motionIndex}), 'error');
         }
     });
@@ -4081,7 +4081,7 @@ if (playExpressionBtn) {
         try {
             currentPreviewModel.expression(expressionName);
         } catch (error) {
-            console.error('Failed to play expression:', error);
+            console.error(window.t('steam.failedToPlayExpression', {error: error}));
             showMessage(window.t('live2d.playExpressionFailed', {expression: expressionName}), 'error');
         }
     });
@@ -4123,13 +4123,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // 检查标签数量是否超过限制（最多4个）
             if (notesTags.length >= 4) {
-                alert('标签数量不能超过4个！');
+                alert(window.t ? window.t('steam.tagLimitReached') : '标签数量不能超过4个！');
                 return;
             }
 
             // 检查标签字数是否超过限制（最多30字）
             if (tag.length > 30) {
-                alert('标签字数不能超过30字！');
+                alert(window.t ? window.t('steam.tagTooLong') : '标签字数不能超过30字！');
                 return;
             }
 
@@ -4232,12 +4232,12 @@ function selectPreviewImage() {
                     document.getElementById('preview-image').value = data.file_path;
                     showMessage(window.t ? window.t('steam.previewImageUploaded') : '预览图片上传成功', 'success');
                 } else {
-                    console.error("上传预览图片失败:", data.message);
+                    console.error(window.t('steam.uploadPreviewImageFailed', {message: data.message}));
                     showMessage(window.t ? window.t('steam.previewImageUploadFailed', {error: data.message}) : `预览图片上传失败: ${data.message}`, 'error');
                 }
             })
             .catch(error => {
-                console.error("上传预览图片出错:", error);
+                console.error(window.t('steam.uploadPreviewImageError', {error: error}));
                 showMessage(window.t ? window.t('steam.previewImageUploadError', {error: error.message}) : `预览图片上传出错: ${error.message}`, 'error');
             });
         }

@@ -111,7 +111,7 @@ def _get_steam_language() -> Optional[str]:
         # Steam 语言代码到我们的语言代码的映射
         STEAM_TO_LANG_MAP = {
             'schinese': 'zh',
-            'tchinese': 'zh',
+            'tchinese': 'zh-TW',
             'english': 'en',
             'japanese': 'ja',
             'ja': 'ja'
@@ -277,7 +277,7 @@ def normalize_language_code(lang: str, format: str = 'short') -> str:
     # 参考: https://partner.steamgames.com/doc/store/localization/languages
     STEAM_LANG_MAP = {
         'schinese': 'zh',      # 简体中文
-        'tchinese': 'zh',      # 繁体中文（映射到简体中文）
+        'tchinese': 'zh-TW',   # 繁体中文
         'english': 'en',       # 英文
         'japanese': 'ja',      # 日语
     }
@@ -291,7 +291,11 @@ def normalize_language_code(lang: str, format: str = 'short') -> str:
     
     # 标准语言代码处理
     if lang_lower.startswith('zh'):
-        return 'zh' if format == 'short' else 'zh-CN'
+        # 区分简体和繁体中文
+        if 'tw' in lang_lower or 'hant' in lang_lower or 'hk' in lang_lower:
+            return 'zh-TW' if format == 'full' else 'zh'
+        else:
+            return 'zh' if format == 'short' else 'zh-CN'
     elif lang_lower.startswith('ja'):
         return 'ja'
     elif lang_lower.startswith('en'):

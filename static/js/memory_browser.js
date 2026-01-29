@@ -104,10 +104,12 @@
                 speaker.textContent = catLabel;
                 contentWrapper.appendChild(speaker);
 
-                const bubble = document.createElement('div');
-                bubble.className = 'chat-bubble';
-                bubble.textContent = content;
-                contentWrapper.appendChild(bubble);
+                // 使用 textarea 替代 div，使 AI 消息可编辑
+                const ta = document.createElement('textarea');
+                ta.className = 'chat-bubble editable-message';
+                ta.value = content;
+                ta.addEventListener('change', function () { updateAIContent(i, this.value); });
+                contentWrapper.appendChild(ta);
 
                 if (timeStr) {
                     const timeDiv = document.createElement('div');
@@ -134,10 +136,12 @@
                 speaker.textContent = window.t ? window.t('memory.me') : '我：';
                 contentWrapper.appendChild(speaker);
 
-                const bubble = document.createElement('div');
-                bubble.className = 'chat-bubble';
-                bubble.textContent = msg.text;
-                contentWrapper.appendChild(bubble);
+                // 使用 textarea 替代 div，使 human 消息可编辑
+                const ta = document.createElement('textarea');
+                ta.className = 'chat-bubble editable-message';
+                ta.value = msg.text;
+                ta.addEventListener('change', function () { updateHumanContent(i, this.value); });
+                contentWrapper.appendChild(ta);
 
                 const deleteWrapper = document.createElement('div');
                 deleteWrapper.className = 'delete-btn-wrapper';
@@ -171,6 +175,9 @@
         // 存储时加上前缀
         const memoPrefix = window.t ? window.t('memory.previousMemo') : '先前对话的备忘录: ';
         chatData[idx].text = memoPrefix + value;
+    }
+    function updateHumanContent(idx, value) {
+        chatData[idx].text = value;
     }
     async function selectMemoryFile(filename, li, catName) {
         const requestId = ++memoryFileRequestId;

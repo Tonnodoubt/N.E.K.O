@@ -17,7 +17,7 @@ async function getOggOpusDecoder() {
             const result = await oggOpusDecoderReady;
             if (result !== null) return result;
         } catch (e) {
-            console.warn('[OGG OPUS] 初始化 Promise 失败，将允许重试:', e);
+            console.warn(window.t('console.oggOpusInitFailed'), e);
         }
         oggOpusDecoderReady = null;
     }
@@ -25,18 +25,18 @@ async function getOggOpusDecoder() {
     oggOpusDecoderReady = (async () => {
         const module = window["ogg-opus-decoder"];
         if (!module || !module.OggOpusDecoder) {
-            console.error('ogg-opus-decoder 未加载，请检查 index.html');
+            console.error(window.t('console.oggOpusNotLoaded'));
             return null;
         }
 
         try {
             const decoder = new module.OggOpusDecoder();
             await decoder.ready;
-            console.log('OGG OPUS WASM 解码器已就绪');
+            console.log(window.t('console.oggOpusReady'));
             oggOpusDecoder = decoder;
             return decoder;
         } catch (e) {
-            console.error('创建 OGG OPUS 解码器失败:', e);
+            console.error(window.t('console.oggOpusCreateFailed'), e);
             return null;
         }
     })();
@@ -49,7 +49,7 @@ async function getOggOpusDecoder() {
         // Promise reject 会"毒化缓存"，需要清空缓存允许重试
         oggOpusDecoderReady = null;
         oggOpusDecoder = null;
-        console.warn('[OGG OPUS] 初始化失败（reject），已清缓存:', e);
+        console.warn(window.t('console.oggOpusInitRejected'), e);
         return null;
     }
 }
@@ -62,7 +62,7 @@ async function resetOggOpusDecoder() {
             // reset() 是异步的，用于重置解码器状态以处理新的音频流
             await oggOpusDecoder.reset();
         } catch (e) {
-            console.warn('[OGG OPUS] 重置解码器失败:', e);
+            console.warn(window.t('console.oggOpusResetFailed'), e);
             oggOpusDecoder = null;
             oggOpusDecoderReady = null;
         }
@@ -131,7 +131,7 @@ function init_app() {
     // Status 气泡框显示函数
     let statusToastTimeout = null;
     function showStatusToast(message, duration = 3000) {
-        console.log('[Status Toast] 显示消息:', message, '持续时间:', duration);
+        console.log(window.t('console.statusToastShow'), message, window.t('console.statusToastDuration'), duration);
 
         if (!message || message.trim() === '') {
             // 如果消息为空，隐藏气泡框
@@ -146,7 +146,7 @@ function init_app() {
         }
 
         if (!statusToast) {
-            console.error('[Status Toast] statusToast 元素不存在！');
+            console.error(window.t('console.statusToastNotFound'));
             return;
         }
 
@@ -168,7 +168,7 @@ function init_app() {
         // 使用 setTimeout 确保样式更新
         setTimeout(() => {
             statusToast.classList.add('show');
-            console.log('[Status Toast] 已添加 show 类，元素:', statusToast, '类列表:', statusToast.classList);
+            console.log(window.t('console.statusToastClassAdded'), statusToast, window.t('console.statusToastClassList'), statusToast.classList);
         }, 10);
 
         // 自动隐藏
@@ -323,11 +323,11 @@ function init_app() {
     function connectWebSocket() {
         const protocol = window.location.protocol === "https:" ? "wss" : "ws";
         const wsUrl = `${protocol}://${window.location.host}/ws/${lanlan_config.lanlan_name}`;
-        console.log('[WebSocket] 正在连接，猫娘名称:', lanlan_config.lanlan_name, 'URL:', wsUrl);
+        console.log(window.t('console.websocketConnecting'), lanlan_config.lanlan_name, window.t('console.websocketUrl'), wsUrl);
         socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
-            console.log('WebSocket连接已建立');
+            console.log(window.t('console.websocketConnected'));
 
             // 启动心跳保活机制
             if (heartbeatInterval) {
@@ -340,7 +340,7 @@ function init_app() {
                     }));
                 }
             }, HEARTBEAT_INTERVAL);
-            console.log('心跳保活机制已启动');
+            console.log(window.t('console.heartbeatStarted'));
         };
 
         socket.onmessage = (event) => {
@@ -349,7 +349,7 @@ function init_app() {
                 // 处理二进制音频数据
                 // [Performance] 减少高频二进制数据的日志输出
                 if (window.DEBUG_AUDIO) {
-                    console.log("[WebSocket] 收到二进制音频块, 大小:", event.data.size, "bytes");
+                    console.log(window.t('console.audioBinaryReceived'), event.data.size, window.t('console.audioBinaryBytes'));
                 }
                 handleAudioBlob(event.data);
                 return;
@@ -359,7 +359,7 @@ function init_app() {
                 const response = JSON.parse(event.data);
                 // 调试：记录所有收到的WebSocket消息类型
                 if (response.type === 'catgirl_switched') {
-                    console.log('[WebSocket] 📨 收到catgirl_switched消息:', response);
+                    console.log(window.t('console.catgirlSwitchedReceived'), response);
                 }
 
 
@@ -378,14 +378,14 @@ function init_app() {
                     clearAudioQueueWithoutDecoderReset();
                 } else if (response.type === 'audio_chunk') {
                     if (window.DEBUG_AUDIO) {
-                        console.log('[WebSocket] 收到 audio_chunk 头信息:', response);
+                        console.log(window.t('console.audioChunkHeaderReceived'), response);
                     }
                     // 精确打断控制：根据 speech_id 决定是否接收此音频
                     const speechId = response.speech_id;
                     
                     // 检查是否是被打断的旧音频，如果是则丢弃
                     if (speechId && interruptedSpeechId && speechId === interruptedSpeechId) {
-                        console.log('丢弃被打断的旧音频:', speechId);
+                        console.log(window.t('console.discardInterruptedAudio'), speechId);
                         skipNextAudioBlob = true;  // 标记跳过后续的二进制数据
                         return;
                     }
@@ -394,7 +394,7 @@ function init_app() {
                     if (speechId && speechId !== currentPlayingSpeechId) {
                         // 新轮对话开始，在此时重置解码器（确保有新的头信息）
                         if (pendingDecoderReset) {
-                            console.log('新轮对话开始，重置解码器:', speechId);
+                            console.log(window.t('console.newConversationResetDecoder'), speechId);
                             // 使用立即执行的异步函数等待重置完成，避免竞态条件
                             (async () => {
                                 await resetOggOpusDecoder();
@@ -410,7 +410,7 @@ function init_app() {
                     skipNextAudioBlob = false;  // 允许接收后续的二进制数据
                 } else if (response.type === 'cozy_audio') {
                     // 处理音频响应
-                    console.log("收到新的音频头")
+                    console.log(window.t('console.newAudioHeaderReceived'))
                     const isNewMessage = response.isNewMessage || false;
 
                     if (isNewMessage) {
@@ -454,20 +454,20 @@ function init_app() {
                     // 处理猫娘切换通知（从后端WebSocket推送）
                     const newCatgirl = response.new_catgirl;
                     const oldCatgirl = response.old_catgirl;
-                    console.log('[WebSocket] ✅ 收到猫娘切换通知，从', oldCatgirl, '切换到', newCatgirl);
-                    console.log('[WebSocket] 当前前端猫娘:', lanlan_config.lanlan_name);
+                    console.log(window.t('console.catgirlSwitchNotification'), oldCatgirl, window.t('console.catgirlSwitchTo'), newCatgirl);
+                    console.log(window.t('console.currentFrontendCatgirl'), lanlan_config.lanlan_name);
                     handleCatgirlSwitch(newCatgirl, oldCatgirl);
                 } else if (response.type === 'status') {
                     // 如果正在切换模式且收到"已离开"消息，则忽略
                     if (isSwitchingMode && response.message.includes('已离开')) {
-                        console.log('模式切换中，忽略"已离开"状态消息');
+                        console.log(window.t('console.modeSwitchingIgnoreLeft'));
                         return;
                     }
 
                     // 检测严重错误，自动隐藏准备提示（兜底机制）
                     const criticalErrorKeywords = ['连续失败', '已停止', '自动重试', '崩溃', '欠费', 'API Key被'];
                     if (criticalErrorKeywords.some(keyword => response.message.includes(keyword))) {
-                        console.log('检测到严重错误，隐藏准备提示');
+                        console.log(window.t('console.seriousErrorHidePreparing'));
                         hideVoicePreparingToast();
                     }
 
@@ -524,7 +524,7 @@ function init_app() {
                                                 socket.send(JSON.stringify({
                                                     action: 'end_session'
                                                 }));
-                                                console.log('[Auto Restart Timeout] 已向后端发送 end_session 消息');
+                                                console.log(window.t('console.autoRestartTimeoutEndSession'));
                                             }
                                             
                                             rejecter(new Error(window.t ? window.t('app.sessionTimeout') : 'Session启动超时'));
@@ -553,14 +553,14 @@ function init_app() {
                                     
                                     showStatusToast(window.t ? window.t('app.restartComplete', { name: lanlan_config.lanlan_name }) : `重启完成，${lanlan_config.lanlan_name}回来了！`, 4000);
                                 } catch (error) {
-                                    console.error("重启时出错:", error);
+                                    console.error(window.t('console.restartError'), error);
                                     
                                     // 重启失败时向后端发送 end_session 消息
                                     if (socket.readyState === WebSocket.OPEN) {
                                         socket.send(JSON.stringify({
                                             action: 'end_session'
                                         }));
-                                        console.log('[Auto Restart Failed] 已向后端发送 end_session 消息');
+                                        console.log(window.t('console.autoRestartFailedEndSession'));
                                     }
                                     
                                     hideVoicePreparingToast(); // 确保重启失败时隐藏准备提示
@@ -608,10 +608,10 @@ function init_app() {
                     if (typeof fn === 'function') {
                         fn();
                     } else {
-                        console.warn('未知表情指令或表情系统未初始化:', response.message);
+                        console.warn(window.t('console.unknownExpressionCommand'), response.message);
                     }
                 } else if (response.type === 'system' && response.data === 'turn end') {
-                    console.log('收到turn end事件，开始情感分析和翻译');
+                    console.log(window.t('console.turnEndReceived'));
                     // 合并消息关闭（分句模式）时：兜底 flush 未以标点结尾的最后缓冲，避免最后一段永远不显示
                     try {
                         const rest = typeof window._realisticGeminiBuffer === 'string'
@@ -625,7 +625,7 @@ function init_app() {
                             processRealisticQueue();
                         }
                     } catch (e) {
-                        console.warn('turn end flush realistic buffer failed:', e);
+                        console.warn(window.t('console.turnEndFlushFailed'), e);
                     }
                     // 消息完成时进行情感分析和翻译
                     {
@@ -654,14 +654,14 @@ function init_app() {
                                 
                                 const emotionResult = await Promise.race([emotionPromise, timeoutPromise]);
                                 if (emotionResult && emotionResult.emotion) {
-                                    console.log('消息完成，情感分析结果:', emotionResult);
+                                    console.log(window.t('console.emotionAnalysisComplete'), emotionResult);
                                     applyEmotion(emotionResult.emotion);
                                 }
                             } catch (error) {
                                 if (error.message === '情感分析超时') {
-                                    console.warn('情感分析超时（5秒），已跳过');
+                                    console.warn(window.t('console.emotionAnalysisTimeout'));
                                 } else {
-                                    console.warn('情感分析失败:', error);
+                                    console.warn(window.t('console.emotionAnalysisFailed'), error);
                                 }
                             }
                         }, 100);
@@ -683,14 +683,14 @@ function init_app() {
                                     await translateAndShowSubtitle(fullText);
                                 }
                             } catch (error) {
-                                console.error('翻译处理失败:', {
+                                console.error(window.t('console.translationProcessFailed'), {
                                     error: error.message,
                                     stack: error.stack,
                                     fullText: fullText.substring(0, 50) + '...',
                                     userLanguage: userLanguage
                                 });
                                 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                                    console.warn('提示：翻译功能暂时不可用，但对话可以正常进行');
+                                    console.warn(window.t('console.translationUnavailable'));
                                 }
                             }
                         })();
@@ -701,14 +701,14 @@ function init_app() {
                         resetProactiveChatBackoff();
                     }
                 } else if (response.type === 'session_preparing') {
-                    console.log('收到session_preparing事件，模式:', response.input_mode);
+                    console.log(window.t('console.sessionPreparingReceived'), response.input_mode);
                     // 显示持续性的准备中提示
                     const preparingMessage = response.input_mode === 'text'
                         ? (window.t ? window.t('app.textSystemPreparing') : '文本系统准备中，请稍候...')
                         : (window.t ? window.t('app.voiceSystemPreparing') : '语音系统准备中，请稍候...');
                     showVoicePreparingToast(preparingMessage);
                 } else if (response.type === 'session_started') {
-                    console.log('收到session_started事件，模式:', response.input_mode);
+                    console.log(window.t('console.sessionStartedReceived'), response.input_mode);
                     // 延迟 500ms 以确保准备中提示不会消失得太快
                     setTimeout(() => {
                         // 隐藏准备中提示
@@ -727,7 +727,7 @@ function init_app() {
                     }, 500);
                 } else if (response.type === 'session_failed') {
                     // Session启动失败（由后端发送）
-                    console.log('收到session_failed事件，模式:', response.input_mode);
+                    console.log(window.t('console.sessionFailedReceived'), response.input_mode);
                     // 立即隐藏准备中提示
                     hideVoicePreparingToast();
                     // 清除超时定时器
@@ -742,13 +742,13 @@ function init_app() {
                     sessionStartedResolver = null;
                     sessionStartedRejecter = null;
                 } else if (response.type === 'reload_page') {
-                    console.log('收到reload_page事件：', response.message);
+                    console.log(window.t('console.reloadPageReceived'), response.message);
                     // 显示提示信息
                     showStatusToast(response.message || (window.t ? window.t('app.configUpdated') : '配置已更新，页面即将刷新'), 3000);
 
                     // 延迟2.5秒后刷新页面，让后端有足够时间完成session关闭和配置重新加载
                     setTimeout(() => {
-                        console.log('开始刷新页面...');
+                        console.log(window.t('console.reloadPageStarting'));
                         // 在刷新前关闭所有已打开的设置窗口，避免窗口引用丢失导致重复打开
                         if (window.closeAllSettingsWindows) {
                             window.closeAllSettingsWindows();
@@ -756,7 +756,7 @@ function init_app() {
                         window.location.reload();
                     }, 2500);
                 } else if (response.type === 'auto_close_mic') {
-                    console.log('收到auto_close_mic事件，自动关闭麦克风');
+                    console.log(window.t('console.autoCloseMicReceived'));
                     // 长时间无语音输入，模拟用户手动关闭语音会话
                     if (isRecording) {
                         // 直接触发闭麦按钮点击，走完整的关闭流程（包括通知后端）
@@ -767,31 +767,31 @@ function init_app() {
                     }
                 } else if (response.type === 'repetition_warning') {
                     // 处理高重复度对话警告
-                    console.log('[WebSocket] 收到repetition_warning事件，角色:', response.name);
+                    console.log(window.t('console.repetitionWarningReceived'), response.name);
                     const warningMessage = window.t
                         ? window.t('app.repetitionDetected', { name: response.name })
                         : `检测到高重复度对话。建议您终止对话，让${response.name}休息片刻。`;
                     showStatusToast(warningMessage, 8000);
                 }
             } catch (error) {
-                console.error('处理消息失败:', error);
+                console.error(window.t('console.messageProcessingFailed'), error);
             }
         };
 
         socket.onclose = () => {
-            console.log('WebSocket连接已关闭');
+            console.log(window.t('console.websocketClosed'));
 
             // 清理心跳定时器
             if (heartbeatInterval) {
                 clearInterval(heartbeatInterval);
                 heartbeatInterval = null;
-                console.log('心跳保活机制已停止');
+                console.log(window.t('console.heartbeatStopped'));
             }
 
             // 重置文本session状态，因为后端会清理session
             if (isTextSessionActive) {
                 isTextSessionActive = false;
-                console.log('WebSocket断开，已重置文本session状态');
+                console.log(window.t('console.websocketDisconnectedResetText'));
             }
 
             // 如果不是正在切换猫娘，才自动重连（避免与手动重连冲突）
@@ -802,7 +802,7 @@ function init_app() {
         };
 
         socket.onerror = (error) => {
-            console.error('WebSocket错误:', error);
+            console.error(window.t('console.websocketError'), error);
         };
     }
 
@@ -812,7 +812,7 @@ function init_app() {
     // 监听记忆编辑通知（从 memory_browser iframe 发送）
     window.addEventListener('message', function (event) {
         if (event.data && event.data.type === 'memory_edited') {
-            console.log('记忆已编辑，刷新上下文:', event.data.catgirl_name);
+            console.log(window.t('console.memoryEditedRefreshContext'), event.data.catgirl_name);
             // 停止当前语音捕获，用户再次开麦时会自动刷新上下文
             if (isRecording) {
                 stopMicCapture();
@@ -844,7 +844,7 @@ function init_app() {
         // 如果是AI第一次回复，更新状态并检查成就
         if (isFirstAIResponse) {
             isFirstAIResponse = false;
-            console.log('检测到AI第一次回复');
+            console.log(window.t('console.aiFirstReplyDetected'));
             checkAndUnlockFirstDialogueAchievement();
         }
     }
@@ -963,7 +963,7 @@ function init_app() {
 
             if (isFirstAIResponse) {
                 isFirstAIResponse = false;
-                console.log('检测到AI第一次回复');
+                console.log(window.t('console.aiFirstReplyDetected'));
                 checkAndUnlockFirstDialogueAchievement();
             }
         } else if (sender === 'gemini' && isMergeMessagesEnabled() && !isNewMessage && window.currentGeminiMessage &&
@@ -998,7 +998,7 @@ function init_app() {
                                 }
                             }
                         }).catch(err => {
-                            console.warn('获取用户语言失败（流式检测）:', err);
+                            console.warn(window.t('console.getUserLanguageFailedStream'), err);
                         });
                     } else {
                         const detectedLang = detectLanguage(fullText);
@@ -1054,7 +1054,7 @@ function init_app() {
         // 当用户和AI都完成首次交互后调用API
         if (!isFirstUserInput && !isFirstAIResponse) {
             try {
-                console.log('首次对话完成，尝试解锁成就');
+                console.log(window.t('console.firstConversationUnlockAchievement'));
                 const response = await fetch('/api/steam/set-achievement-status/ACH_FIRST_DIALOGUE', {
                     method: 'POST',
                     headers: {
@@ -1063,12 +1063,12 @@ function init_app() {
                 });
 
                 if (response.ok) {
-                    console.log('成就解锁API调用成功');
+                    console.log(window.t('console.achievementUnlockSuccess'));
                 } else {
-                    console.error('成就解锁API调用失败');
+                    console.error(window.t('console.achievementUnlockFailed'));
                 }
             } catch (error) {
-                console.error('成就解锁过程中发生错误:', error);
+                console.error(window.t('console.achievementUnlockError'), error);
             }
         }
     }
@@ -1090,7 +1090,7 @@ function init_app() {
                     deviceName = selectedDevice.label || `麦克风 ${audioInputs.indexOf(selectedDevice) + 1}`;
                 }
             } catch (error) {
-                console.error('获取设备名称失败:', error);
+                console.error(window.t('console.getDeviceNameFailed'), error);
             }
         }
 
@@ -1121,7 +1121,7 @@ function init_app() {
 
             // 防止并发切换导致状态混乱
             if (window._isSwitchingMicDevice) {
-                console.warn('设备切换中,请稍后再试');
+                console.warn(window.t('console.deviceSwitchingWait'));
                 showStatusToast(window.t ? window.t('app.deviceSwitching') : '设备切换中...', 2000);
                 return;
             }
@@ -1144,7 +1144,7 @@ function init_app() {
                 // 清理 AudioContext 本地资源
                 if (audioContext) {
                     if (audioContext.state !== 'closed') {
-                        await audioContext.close().catch((e) => console.warn('AudioContext close 失败:', e));
+                        await audioContext.close().catch((e) => console.warn(window.t('console.audioContextCloseFailed'), e));
                     }
                     audioContext = null;
                 }
@@ -1162,7 +1162,7 @@ function init_app() {
                             try {
                                 await startScreenSharing();
                             } catch (e) {
-                                console.warn('重启屏幕共享失败:', e);
+                                console.warn(window.t('console.restartScreenShareFailed'), e);
                             }
                         }
                     }
@@ -1172,7 +1172,7 @@ function init_app() {
                     }
                 }
             } catch (e) {
-                console.error('切换麦克风设备失败:', e);
+                console.error(window.t('console.switchMicrophoneFailed'), e);
                 showStatusToast(window.t ? window.t('app.deviceSwitchFailed') : '设备切换失败', 3000);
 
                 // 完整清理：重置状态
@@ -1255,10 +1255,10 @@ function init_app() {
             });
 
             if (!response.ok) {
-                console.error('保存麦克风选择失败');
+                console.error(window.t('console.saveMicrophoneSelectionFailed'));
             }
         } catch (err) {
-            console.error('保存麦克风选择时发生错误:', err);
+            console.error(window.t('console.saveMicrophoneSelectionError'), err);
         }
     }
 
@@ -1271,7 +1271,7 @@ function init_app() {
                 selectedMicrophoneId = data.microphone_id || null;
             }
         } catch (err) {
-            console.error('加载麦克风选择失败:', err);
+            console.error(window.t('console.loadMicrophoneSelectionFailed'), err);
             selectedMicrophoneId = null;
         }
     }
@@ -1318,8 +1318,8 @@ function init_app() {
 
             // 检查音频轨道状态
             const audioTracks = stream.getAudioTracks();
-            console.log("音频轨道数量:", audioTracks.length);
-            console.log("音频轨道状态:", audioTracks.map(track => ({
+            console.log(window.t('console.audioTrackCount'), audioTracks.length);
+            console.log(window.t('console.audioTrackStatus'), audioTracks.map(track => ({
                 label: track.label,
                 enabled: track.enabled,
                 muted: track.muted,
@@ -1327,7 +1327,7 @@ function init_app() {
             })));
 
             if (audioTracks.length === 0) {
-                console.error("没有可用的音频轨道");
+                console.error(window.t('console.noAudioTrackAvailable'));
                 showStatusToast(window.t ? window.t('app.micAccessDenied') : '无法访问麦克风', 4000);
                 // 移除已添加的类
                 micButton.classList.remove('recording');
@@ -1354,7 +1354,7 @@ function init_app() {
             // 开始录音时，停止主动搭话定时器
             stopProactiveChatSchedule();
         } catch (err) {
-            console.error('获取麦克风权限失败:', err);
+            console.error(window.t('console.getMicrophonePermissionFailed'), err);
             showStatusToast(window.t ? window.t('app.micAccessDenied') : '无法访问麦克风', 4000);
             
             // 失败时恢复文本输入区
@@ -1431,10 +1431,10 @@ function init_app() {
 
         for (const attempt of attempts) {
             try {
-                console.log(`Trying ${attempt.label} camera @ ${1}fps…`);
+                console.log(`${window.t('console.tryingCamera')} ${attempt.label} ${window.t('console.cameraLabel')} ${1}${window.t('console.cameraFps')}`);
                 return await navigator.mediaDevices.getUserMedia(attempt.constraints);
             } catch (err) {
-                console.warn(`${attempt.label} failed →`, err);
+                console.warn(`${attempt.label} ${window.t('console.cameraFailed')}`, err);
                 lastError = err;
             }
         }
@@ -1494,7 +1494,7 @@ function init_app() {
                                 }
                             }
                         });
-                        console.log('[屏幕分享] 使用选中的屏幕源:', selectedSourceId);
+                        console.log(window.t('console.screenShareUsingSource'), selectedSourceId);
                     } else {
                         // 使用标准的getDisplayMedia（显示系统选择器）
                         screenCaptureStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1520,7 +1520,7 @@ function init_app() {
                 if (screenCaptureStream && screenCaptureStreamLastUsed) {
                     const idleTime = Date.now() - screenCaptureStreamLastUsed;
                     if (idleTime >= 5 * 60 * 1000) { // 5分钟
-                        console.log('[屏幕分享] 检测到闲置超过5分钟，自动释放屏幕流');
+                        console.log(window.t('console.screenShareIdleDetected'));
                         try {
                             if (screenCaptureStream instanceof MediaStream) {
                                 const vt = screenCaptureStream.getVideoTracks?.()?.[0];
@@ -1530,7 +1530,7 @@ function init_app() {
                                 });
                             }
                         } catch (e) {
-                            console.warn('[屏幕分享] 自动释放时出错:', e);
+                            console.warn(window.t('console.screenShareAutoReleaseFailed'), e);
                         } finally {
                             screenCaptureStream = null;
                             screenCaptureStreamLastUsed = null;
@@ -1556,7 +1556,7 @@ function init_app() {
             try {
                 stopProactiveVisionDuringSpeech();
             } catch (e) {
-                console.warn('停止语音期间主动视觉失败:', e);
+                console.warn(window.t('console.stopVoiceActiveVisionFailed'), e);
             }
 
             // 当用户停止共享屏幕时
@@ -1569,8 +1569,8 @@ function init_app() {
             // 获取麦克风流
             if (!isRecording) showStatusToast(window.t ? window.t('app.micNotOpen') : '没开麦啊喂！', 3000);
         } catch (err) {
-            console.error(isMobile() ? '摄像头访问失败:' : '屏幕共享失败:', err);
-            console.error('启动失败 →', err);
+            console.error(isMobile() ? window.t('console.cameraAccessFailed') : window.t('console.screenShareFailed'), err);
+            console.error(window.t('console.startupFailed'), err);
             let hint = '';
             switch (err.name) {
                 case 'NotAllowedError':
@@ -1609,7 +1609,7 @@ function init_app() {
                 });
             }
         } catch (e) {
-            console.warn('[屏幕分享] 停止 tracks 时出错:', e);
+            console.warn(window.t('console.screenShareStopTracksFailed'), e);
         } finally {
             // 确保引用被清空，即使出错也能释放
             screenCaptureStream = null;
@@ -1638,7 +1638,7 @@ function init_app() {
                 startProactiveVisionDuringSpeech();
             }
         } catch (e) {
-            console.warn('恢复语音期间主动视觉失败:', e);
+            console.warn(window.t('console.resumeVoiceActiveVisionFailed'), e);
         }
     }
 
@@ -1939,7 +1939,7 @@ function init_app() {
                             socket.send(JSON.stringify({
                                 action: 'end_session'
                             }));
-                            console.log('[Session Timeout] 已向后端发送 end_session 消息');
+                            console.log(window.t('console.sessionTimeoutEndSession'));
                         }
                         
                         // 更新提示信息，显示超时
@@ -2006,7 +2006,7 @@ function init_app() {
                     startProactiveVisionDuringSpeech();
                 }
             } catch (e) {
-                console.warn('启动语音期间主动视觉失败:', e);
+                console.warn(window.t('console.startVoiceActiveVisionFailed'), e);
             }
 
             // 录音启动成功后，隐藏准备提示，显示"可以说话了"提示
@@ -2025,7 +2025,7 @@ function init_app() {
             window.isMicStarting = false;
             isSwitchingMode = false; // 模式切换完成
         } catch (error) {
-            console.error('启动语音会话失败:', error);
+            console.error(window.t('console.startVoiceSessionFailed'), error);
 
             // 清除所有超时定时器和状态
             if (window.sessionTimeoutId) {
@@ -2044,7 +2044,7 @@ function init_app() {
                 socket.send(JSON.stringify({
                     action: 'end_session'
                 }));
-                console.log('[Session Start Failed] 已向后端发送 end_session 消息');
+                console.log(window.t('console.sessionStartFailedEndSession'));
             }
 
             // 隐藏准备提示
@@ -2083,16 +2083,16 @@ function init_app() {
     muteButton.addEventListener('click', stopMicCapture);
 
     resetSessionButton.addEventListener('click', () => {
-        console.log('[App] resetSessionButton 被点击！当前 isGoodbyeMode 检查');
+        console.log(window.t('console.resetButtonClicked'));
         isSwitchingMode = true; // 开始重置会话（也是一种模式切换）
 
         // 检查是否是"请她离开"触发的
         const isGoodbyeMode = window.live2dManager && window.live2dManager._goodbyeClicked;
-        console.log('[App] 检测 isGoodbyeMode =', isGoodbyeMode, 'goodbyeClicked =', window.live2dManager ? window.live2dManager._goodbyeClicked : 'undefined');
+        console.log(window.t('console.checkingGoodbyeMode'), isGoodbyeMode, window.t('console.goodbyeClicked'), window.live2dManager ? window.live2dManager._goodbyeClicked : 'undefined');
 
         // 检查 hideLive2d 前的容器状态
         const live2dContainer = document.getElementById('live2d-container');
-        console.log('[App] hideLive2d 前容器状态:', {
+        console.log(window.t('console.hideLive2dBeforeStatus'), {
             存在: !!live2dContainer,
             当前类: live2dContainer ? live2dContainer.className : 'undefined',
             classList: live2dContainer ? live2dContainer.classList.toString() : 'undefined',
@@ -2102,7 +2102,7 @@ function init_app() {
         hideLive2d()
 
         // 检查 hideLive2d 后的容器状态
-        console.log('[App] hideLive2d 后容器状态:', {
+        console.log(window.t('console.hideLive2dAfterStatus'), {
             存在: !!live2dContainer,
             当前类: live2dContainer ? live2dContainer.className : 'undefined',
             classList: live2dContainer ? live2dContainer.classList.toString() : 'undefined',
@@ -2133,10 +2133,10 @@ function init_app() {
         screenshotCounter = 0;
 
         // 根据模式执行不同逻辑
-        console.log('[App] 执行分支判断，isGoodbyeMode =', isGoodbyeMode);
+        console.log(window.t('console.executingBranchJudgment'), isGoodbyeMode);
         if (!isGoodbyeMode) {
             // 非"请她离开"模式：显示文本输入区并启用按钮
-            console.log('[App] 执行普通结束会话逻辑');
+            console.log(window.t('console.executingNormalEndSession'));
 
             // 结束会话后，重置主动搭话计时器（如果已开启）
             if (proactiveChatEnabled || proactiveVisionEnabled) {
@@ -2162,7 +2162,7 @@ function init_app() {
             showStatusToast(window.t ? window.t('app.sessionEnded') : '会话已结束', 3000);
         } else {
             // "请她离开"模式：隐藏所有内容
-            console.log('[App] 执行"请她离开"模式逻辑');
+            console.log(window.t('console.executingGoodbyeMode'));
 
             // "请她离开"模式：隐藏所有内容
             const textInputArea = document.getElementById('text-input-area');
@@ -2247,7 +2247,7 @@ function init_app() {
                             socket.send(JSON.stringify({
                                 action: 'end_session'
                             }));
-                            console.log('[Return Session Timeout] 已向后端发送 end_session 消息');
+                            console.log(window.t('console.returnSessionTimeoutEndSession'));
                         }
                         
                         rejecter(new Error(window.t ? window.t('app.sessionTimeout') : 'Session启动超时'));
@@ -2296,7 +2296,7 @@ function init_app() {
             // 恢复对话区
             const chatContainerEl = document.getElementById('chat-container');
             if (chatContainerEl && (chatContainerEl.classList.contains('minimized') || chatContainerEl.classList.contains('mobile-collapsed'))) {
-                console.log('[App] 自动恢复对话区');
+                console.log(window.t('console.autoRestoreDialogArea'));
                 chatContainerEl.classList.remove('minimized');
                 chatContainerEl.classList.remove('mobile-collapsed');
 
@@ -2348,7 +2348,7 @@ function init_app() {
             showStatusToast(window.t ? window.t('app.returning', { name: lanlan_config.lanlan_name }) : `🫴 ${lanlan_config.lanlan_name}回来了！`, 3000);
 
         } catch (error) {
-            console.error('[请他回来] 失败:', error);
+            console.error(window.t('console.askHerBackFailed'), error);
             hideVoicePreparingToast(); // 确保失败时隐藏准备提示
             showStatusToast(window.t ? window.t('app.startFailed', { error: error.message }) : `回来失败: ${error.message}`, 5000);
             
@@ -2439,7 +2439,7 @@ function init_app() {
 
                 showStatusToast(window.t ? window.t('app.textChattingShort') : '正在文本聊天中', 2000);
             } catch (error) {
-                console.error('启动文本session失败:', error);
+                console.error(window.t('console.startTextSessionFailed'), error);
                 hideVoicePreparingToast(); // 确保失败时隐藏准备提示
                 showStatusToast(window.t ? window.t('app.startFailed', { error: error.message }) : `启动失败: ${error.message}`, 5000);
 
@@ -2495,7 +2495,7 @@ function init_app() {
                 // 如果是用户第一次输入，更新状态并检查成就
                 if (isFirstUserInput) {
                     isFirstUserInput = false;
-                    console.log('检测到用户第一次输入');
+                    console.log(window.t('console.userFirstInputDetected'));
                     checkAndUnlockFirstDialogueAchievement();
                 }
             }
@@ -2562,7 +2562,7 @@ function init_app() {
             video.srcObject = null;
             video.remove();
 
-            console.log(`截图成功，尺寸: ${width}x${height}`);
+            console.log(window.t('console.screenshotSuccess'), `${width}x${height}`);
 
             // 添加截图到待发送列表（不立即发送）
             addScreenshotToList(dataUrl);
@@ -2570,7 +2570,7 @@ function init_app() {
             showStatusToast(window.t ? window.t('app.screenshotAdded') : '截图已添加，点击发送一起发送', 3000);
 
         } catch (err) {
-            console.error('截图失败:', err);
+            console.error(window.t('console.screenshotFailed'), err);
 
             // 根据错误类型显示不同提示
             let errorMsg = window.t ? window.t('app.screenshotFailed') : '截图失败';
@@ -2688,7 +2688,7 @@ function init_app() {
 
     // 情感分析功能
     async function analyzeEmotion(text) {
-        console.log('analyzeEmotion被调用，文本:', text);
+        console.log(window.t('console.analyzeEmotionCalled'), text);
         try {
             const response = await fetch('/api/emotion/analysis', {
                 method: 'POST',
@@ -2702,21 +2702,21 @@ function init_app() {
             });
 
             if (!response.ok) {
-                console.warn('情感分析请求失败:', response.status);
+                console.warn(window.t('console.emotionAnalysisRequestFailed'), response.status);
                 return null;
             }
 
             const result = await response.json();
-            console.log('情感分析API返回结果:', result);
+            console.log(window.t('console.emotionAnalysisApiResult'), result);
 
             if (result.error) {
-                console.warn('情感分析错误:', result.error);
+                console.warn(window.t('console.emotionAnalysisError'), result.error);
                 return null;
             }
 
             return result;
         } catch (error) {
-            console.error('情感分析请求异常:', error);
+            console.error(window.t('console.emotionAnalysisException'), error);
             return null;
         }
     }
@@ -3182,7 +3182,7 @@ function init_app() {
                 if (screenCaptureStream && screenCaptureStreamLastUsed) {
                     const idleTime = Date.now() - screenCaptureStreamLastUsed;
                     if (idleTime >= 5 * 60 * 1000) { // 5分钟
-                        console.log('[屏幕分享] 检测到闲置超过5分钟，自动释放屏幕流');
+                        console.log(window.t('console.screenShareIdleDetected'));
                         try {
                             if (screenCaptureStream instanceof MediaStream) {
                                 const vt = screenCaptureStream.getVideoTracks?.()?.[0];
@@ -3192,7 +3192,7 @@ function init_app() {
                                 });
                             }
                         } catch (e) {
-                            console.warn('[屏幕分享] 自动释放时出错:', e);
+                            console.warn(window.t('console.screenShareAutoReleaseFailed'), e);
                         } finally {
                             screenCaptureStream = null;
                             screenCaptureStreamLastUsed = null;
