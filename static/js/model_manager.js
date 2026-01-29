@@ -1,6 +1,6 @@
 (async function initVRMModules() {
             const loadModules = async () => {
-                console.log('[VRM] 开始加载依赖模块');
+                console.log(window.t ? window.t('modelManager.vrmLoadingDependencies') : '[VRM] 开始加载依赖模块');
                 const vrmModules = [
                     '/static/vrm-orientation.js',
                     '/static/vrm-core.js',
@@ -265,10 +265,10 @@ let modelManagerBroadcastChannel = null;
 try {
     if (typeof BroadcastChannel !== 'undefined') {
         modelManagerBroadcastChannel = new BroadcastChannel(CHANNEL_NAME);
-        console.log('[CrossPageComm] model_manager BroadcastChannel 已初始化');
+        console.log(window.t ? window.t('modelManager.broadcastChannelInitialized') : '[CrossPageComm] model_manager BroadcastChannel 已初始化');
     }
 } catch (e) {
-    console.log('[CrossPageComm] BroadcastChannel 不可用，将使用 localStorage 后备方案');
+    console.log(window.t ? window.t('modelManager.broadcastChannelUnavailable') : '[CrossPageComm] BroadcastChannel 不可用，将使用 localStorage 后备方案');
 }
 
 // 用于页面间通信的事件处理

@@ -26,7 +26,7 @@
     window.i18nInitialized = true;
 
     // 支持的语言列表
-    const SUPPORTED_LANGUAGES = ['zh-CN', 'en'];
+    const SUPPORTED_LANGUAGES = ['zh-CN', 'zh-TW', 'en', 'ja'];
 
     // 获取浏览器语言（同步，作为 fallback）
     function getBrowserLanguage() {
