@@ -38,16 +38,32 @@ import ctypes
 import atexit
 import signal
 import json
+import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Dict
 from multiprocessing import Process, freeze_support, Event
 from config import APP_NAME, MAIN_SERVER_PORT, MEMORY_SERVER_PORT, TOOL_SERVER_PORT, FRP_BIND_PORT, FRP_PROXY_PORT, FRP_TOKEN
 from frp_manager import FRPManager
+from utils.port_utils import (
+    probe_neko_health,
+    acquire_startup_lock,
+    release_startup_lock,
+    get_hyperv_excluded_ranges,
+    is_port_in_excluded_range,
+)
+
+# 本次 launcher 启动的唯一标识
+LAUNCH_ID = uuid.uuid4().hex
+# 实例 ID：若父进程已设置则复用，否则生成新值，确保所有子进程共享同一实例标识
+INSTANCE_ID = os.environ.get("NEKO_INSTANCE_ID") or uuid.uuid4().hex
+os.environ.setdefault("NEKO_INSTANCE_ID", INSTANCE_ID)
 
 JOB_HANDLE = None
 _frp_manager: FRPManager | None = None
 _cleanup_lock = threading.Lock()
 _cleanup_done = False
+_existing_neko_services: set[str] = set()  # 已有 N.E.K.O 实例占用的端口键
 DEFAULT_PORTS = {
     "MAIN_SERVER_PORT": MAIN_SERVER_PORT,
     "MEMORY_SERVER_PORT": MEMORY_SERVER_PORT,
@@ -57,9 +73,15 @@ INTERNAL_DEFAULT_PORTS = {
     "AGENT_MQ_PORT": 48917,
     "MAIN_AGENT_EVENT_PORT": 48918,
 }
-# Keep this range reserved for known N.E.K.O defaults so fallback
-# does not collide with other companion services.
+# 该区间保留给 N.E.K.O 已知默认端口，避免 fallback 与伴生服务冲突。
 AVOID_FALLBACK_PORTS = set(range(48911, 48919))
+
+# 模块名到端口键的映射（用于判断已有 N.E.K.O 实例是否占用对应端口）
+MODULE_TO_PORT_KEY: dict[str, str] = {
+    "memory_server": "MEMORY_SERVER_PORT",
+    "agent_server": "TOOL_SERVER_PORT",
+    "main_server": "MAIN_SERVER_PORT",
+}
 
 
 def _show_error_dialog(message: str):
@@ -73,11 +95,15 @@ def _show_error_dialog(message: str):
 
 
 def emit_frontend_event(event_type: str, payload: dict | None = None):
-    """Emit machine-readable event line for Electron stdout parser."""
+    """向 Electron stdout 发送机器可读事件。
+
+    每个事件都带有 *launch_id*，前端可据此忽略历史（僵尸）进程事件。
+    """
     envelope = {
         "source": "neko_launcher",
         "event": event_type,
         "ts": datetime.now(timezone.utc).isoformat(),
+        "launch_id": LAUNCH_ID,
         "payload": payload or {},
     }
     print(f"NEKO_EVENT {json.dumps(envelope, ensure_ascii=True, separators=(',', ':'))}", flush=True)
@@ -462,14 +488,55 @@ def _pick_fallback_port(preferred_port: int, reserved: set[int]) -> int | None:
     return None
 
 
-def apply_port_strategy() -> bool:
-    """Keep default ports when possible; auto-avoid conflicts when needed."""
+def _classify_port_conflict(
+    port: int,
+    excluded_ranges: list[tuple[int, int]] | None = None,
+) -> tuple[str, list]:
+    """对端口不可用原因进行分类。
+
+    返回 ``(reason, owners)``，其中 reason 为以下之一：
+    - ``"neko"``            已有 N.E.K.O 服务占用
+    - ``"hyperv_excluded"`` 位于 Hyper-V / WSL 保留端口范围
+    - ``"other_process"``   被非 N.E.K.O 进程监听
+    - ``"unknown"``         无法绑定但原因不明确
+    owners 为监听该端口的进程 ID 列表。
+    """
+    health = probe_neko_health(port)
+    if health is not None:
+        return "neko", get_port_owners(port)
+    # 将 excluded_ranges 解析一次，避免重复 netsh 子进程调用
+    ranges = excluded_ranges if excluded_ranges is not None else get_hyperv_excluded_ranges()
+    if is_port_in_excluded_range(port, ranges):
+        return "hyperv_excluded", []
+    owners = get_port_owners(port)
+    if owners:
+        return "other_process", owners
+    return "unknown", []
+
+
+def apply_port_strategy() -> bool | str:
+    """优先使用默认端口，必要时自动规避冲突。
+
+    返回值：
+        ``True``      端口规划完成，可继续启动服务。
+        ``False``     发生致命错误，需中止启动。
+        ``"attach"`` 默认端口已由现有 N.E.K.O 后端完整占用。
+
+    策略：
+    1. 默认端口若已是 N.E.K.O 服务，则视为可复用。
+    2. 若被 Hyper-V/WSL 保留或其他进程占用，则选择 fallback 端口。
+    """
     global MAIN_SERVER_PORT, MEMORY_SERVER_PORT, TOOL_SERVER_PORT, FRP_BIND_PORT, FRP_PROXY_PORT
     chosen: dict[str, int] = {}
     chosen_internal: dict[str, int] = {}
     fallback_details: list[dict] = []
     internal_fallback_details: list[dict] = []
     reserved: set[int] = set()
+
+    # 预先查询 Hyper-V 保留端口范围，避免重复子进程调用
+    excluded_ranges = get_hyperv_excluded_ranges()
+    if excluded_ranges:
+        print(f"[Launcher] Detected {len(excluded_ranges)} Hyper-V/WSL excluded port range(s)", flush=True)
 
     for key in ("MEMORY_SERVER_PORT", "TOOL_SERVER_PORT", "MAIN_SERVER_PORT"):
         preferred = int(DEFAULT_PORTS[key])
@@ -478,11 +545,31 @@ def apply_port_strategy() -> bool:
             reserved.add(preferred)
             continue
 
-        owners = get_port_owners(preferred)
+        # 端口不可绑定，识别具体原因（同时获取 owners 避免重复查询）
+        reason, owners = _classify_port_conflict(preferred, excluded_ranges)
+
+        if reason == "neko":
+            # 已有 N.E.K.O 实例占用该端口。
+            # 仍记录为 chosen，并打标记供前端决定“附加复用”而非“重复拉起”。
+            chosen[key] = preferred
+            reserved.add(preferred)
+            fallback_details.append(
+                {
+                    "port_key": key,
+                    "preferred": preferred,
+                    "selected": preferred,
+                    "reason": "existing_neko",
+                    "owners": owners,
+                }
+            )
+            continue
+
+        # 需要选择回退端口
         fallback = _pick_fallback_port(preferred, reserved)
         if fallback is None:
             report_startup_failure(
-                f"Startup failed: no fallback port available for {key} (preferred={preferred}, owners={owners})"
+                f"Startup failed: no fallback port available for {key} "
+                f"(preferred={preferred}, reason={reason}, owners={owners})"
             )
             return False
 
@@ -493,6 +580,7 @@ def apply_port_strategy() -> bool:
                 "port_key": key,
                 "preferred": preferred,
                 "selected": fallback,
+                "reason": reason,
                 "owners": owners,
             }
         )
@@ -568,6 +656,7 @@ def apply_port_strategy() -> bool:
     emit_frontend_event(
         "port_plan",
         {
+            "instance_id": INSTANCE_ID,
             "defaults": DEFAULT_PORTS,
             "selected": chosen,
             "internal_defaults": INTERNAL_DEFAULT_PORTS,
@@ -577,9 +666,41 @@ def apply_port_strategy() -> bool:
             "fallback_applied": bool(fallback_details or internal_fallback_details),
         },
     )
-    if fallback_details or internal_fallback_details:
+
+    # 检查默认端口是否全部由既有 N.E.K.O 占用（existing_neko）。
+    # 若是，则 launcher 不应继续拉起新服务。
+    existing_neko_keys = {
+        d["port_key"]
+        for d in fallback_details
+        if d.get("reason") == "existing_neko"
+    }
+
+    # 记录已存在实例的服务端口键，供 start_server() 跳过重复启动。
+    global _existing_neko_services
+    _existing_neko_services = existing_neko_keys
+
+    if existing_neko_keys == set(DEFAULT_PORTS.keys()):
+        # 默认端口上的完整 N.E.K.O 后端已在运行。
+        emit_frontend_event(
+            "attach_existing",
+            {
+                "selected": chosen,
+                "message": "All default ports occupied by an existing N.E.K.O backend",
+            },
+        )
+        print("[Launcher] Existing N.E.K.O backend detected on all default ports; attaching.", flush=True)
+        return "attach"
+
+    # 区分“复用已有实例”与“真正端口回退”的日志
+    real_fallbacks = [d for d in fallback_details if d.get("reason") != "existing_neko"]
+    if real_fallbacks or internal_fallback_details:
         print(
-            f"[Launcher] Port fallback applied: public={fallback_details}, internal={internal_fallback_details}",
+            f"[Launcher] Port fallback applied: public={real_fallbacks}, internal={internal_fallback_details}",
+            flush=True,
+        )
+    elif existing_neko_keys:
+        print(
+            f"[Launcher] Ports reused from existing N.E.K.O instance: {sorted(existing_neko_keys)}",
             flush=True,
         )
     else:
@@ -601,6 +722,17 @@ def start_server(server: Dict) -> bool:
     """启动单个服务器"""
     try:
         port = server.get('port')
+
+        port_key = MODULE_TO_PORT_KEY.get(server['module'])
+
+        # If this service's port already has a running N.E.K.O instance,
+        # skip launching (the existing process will serve requests).
+        if port_key and port_key in _existing_neko_services:
+            print(f"✓ {server['name']} already running on port {port} (existing N.E.K.O instance)", flush=True)
+            server['ready_event'] = Event()
+            server['ready_event'].set()  # Mark as ready immediately
+            return True
+
         if isinstance(port, int) and check_port(port):
             owner_pids = get_port_owners(port)
             owner_suffix = f", owner_pids={owner_pids}" if owner_pids else ""
@@ -765,22 +897,102 @@ def register_shutdown_hooks():
         except Exception:
             pass
 
+def _ensure_playwright_browsers():
+    """Auto-install Playwright Chromium if missing (needed by browser-use).
+
+    Uses playwright's bundled driver binary directly, so it works inside
+    a Nuitka standalone build where ``python -m playwright`` is unavailable.
+    The ``install chromium`` command is idempotent – if the browser already
+    exists it returns almost instantly.
+
+    When running frozen (Nuitka/PyInstaller), PLAYWRIGHT_BROWSERS_PATH is set
+    to the bundled ``playwright_browsers`` dir so that build-time cached
+    Chromium is used and no on-site download is needed.
+    """
+    try:
+        from playwright._impl._driver import compute_driver_executable, get_driver_env
+    except ImportError:
+        return
+
+    try:
+        if getattr(sys, "frozen", False):
+            if hasattr(sys, "_MEIPASS"):
+                _bundle = sys._MEIPASS
+            else:
+                _bundle = os.path.dirname(os.path.abspath(__file__))
+            _bundled_browsers = os.path.join(_bundle, "playwright_browsers")
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = _bundled_browsers
+
+            if os.path.isdir(_bundled_browsers) and os.listdir(_bundled_browsers):
+                print("[Launcher] ✓ Playwright Chromium ready (bundled)", flush=True)
+                emit_frontend_event("playwright_check", {"status": "ready"})
+                return
+
+        driver = str(compute_driver_executable())
+        env = get_driver_env()
+        print("[Launcher] Checking Playwright Chromium browser...", flush=True)
+        emit_frontend_event("playwright_check", {"status": "checking"})
+
+        result = subprocess.run(
+            [driver, "install", "chromium"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        if result.returncode == 0:
+            print("[Launcher] ✓ Playwright Chromium ready", flush=True)
+            emit_frontend_event("playwright_check", {"status": "ready"})
+        else:
+            msg = (result.stderr or "").strip()[:300]
+            logging.getLogger(__name__).info("[Launcher] Playwright install warning: %s", msg)
+            emit_frontend_event("playwright_check", {"status": "warning", "message": msg})
+    except subprocess.TimeoutExpired:
+        logging.getLogger(__name__).info("[Launcher] Playwright browser install timed out (300s)")
+        emit_frontend_event("playwright_check", {"status": "timeout"})
+    except Exception as e:
+        logging.getLogger(__name__).info("[Launcher] Playwright browser check skipped: %s", e)
+        emit_frontend_event("playwright_check", {"status": "skipped", "message": str(e)})
+
+
 def main():
     """主函数"""
     # 支持 multiprocessing 在 Windows 上的打包
     freeze_support()
-    if not apply_port_strategy():
-        return 1
-    register_shutdown_hooks()
-    
-    # 创建 Job Object，确保主进程被 kill 时子进程也会被终止
-    setup_job_object()
-    
-    print("=" * 60, flush=True)
-    print("N.E.K.O. 服务器启动器", flush=True)
-    print("=" * 60, flush=True)
-    
+
+    # ── 发送 startup_begin，便于前端绑定本次启动会话 ──
+    emit_frontend_event("startup_begin", {"instance_id": INSTANCE_ID})
+
+    # ── 单实例启动锁 ──────────────────────────────────
+    if not acquire_startup_lock():
+        msg = "Another N.E.K.O launcher is already starting up"
+        print(f"[Launcher] {msg}", flush=True)
+        emit_frontend_event("startup_in_progress", {
+            "message": msg,
+        })
+        return 0  # 非错误场景：前端应附加到已有进程
+
     try:
+        port_result = apply_port_strategy()
+        if port_result == "attach":
+            # 已有 N.E.K.O 后端在运行，无需再次拉起。
+            return 0
+        if not port_result:
+            return 1
+
+        register_shutdown_hooks()
+
+        # 创建 Job Object，确保主进程被 kill 时子进程也会被终止
+        setup_job_object()
+
+        # 自动安装 Playwright Chromium（browser-use 依赖）
+        _ensure_playwright_browsers()
+
+        print("=" * 60, flush=True)
+        print("N.E.K.O. 服务器启动器", flush=True)
+        print("=" * 60, flush=True)
+
         # 1. 启动所有服务器
         print("\n正在启动服务器...\n", flush=True)
         all_started = True
@@ -788,20 +1000,19 @@ def main():
             if not start_server(server):
                 all_started = False
                 break
-        
+
         if not all_started:
             print("\n启动失败，正在清理...", flush=True)
             report_startup_failure("Startup aborted: at least one service failed to start", show_dialog=False)
             cleanup_servers()
             return 1
-        
+
         # 2. 等待服务器准备就绪
         if not wait_for_servers():
             print("\n启动失败，正在清理...", flush=True)
             report_startup_failure("Startup aborted: services did not become ready before timeout", show_dialog=False)
             cleanup_servers()
             return 1
-        
         # 3. 启动 FRP 反向代理
         global _frp_manager
         _frp_manager = FRPManager(
@@ -814,7 +1025,16 @@ def main():
         if not frp_ok:
             print("[Launcher] FRP 启动失败，局域网设备将无法连接。后端仍可通过 localhost 访问。", flush=True)
 
-        # 4. 服务器已启动，等待用户操作
+        # 4. 服务器已启动，通知前端
+        emit_frontend_event("startup_ready", {
+            "instance_id": INSTANCE_ID,
+            "selected": {
+                "MAIN_SERVER_PORT": MAIN_SERVER_PORT,
+                "MEMORY_SERVER_PORT": MEMORY_SERVER_PORT,
+                "TOOL_SERVER_PORT": TOOL_SERVER_PORT,
+            },
+        })
+
         print("", flush=True)
         print("=" * 60, flush=True)
         print("  🎉 所有服务器已启动完成！", flush=True)
@@ -826,23 +1046,29 @@ def main():
         print("\n  按 Ctrl+C 关闭所有服务器", flush=True)
         print("=" * 60, flush=True)
         print("", flush=True)
-        
+
         # 持续运行，监控服务器状态
         while True:
-            time.sleep(1)
-            # 检查服务器是否还活着
-            all_alive = all(
-                server['process'] and server['process'].is_alive()
-                for server in SERVERS
-            )
-            if not all_alive:
-                print("\n检测到服务器异常退出！", flush=True)
-                break
+            time.sleep(5)
             # 检查 FRP 是否还活着
             if _frp_manager and frp_ok and not _frp_manager.is_alive():
                 print("\n[FRP] 检测到 FRP 进程异常退出，局域网连接可能中断", flush=True)
                 frp_ok = False
-        
+            # 检查已实际启动的进程
+            started = [s for s in SERVERS if s.get('process') is not None]
+            if started and not all(s['process'].is_alive() for s in started):
+                print("\n检测到服务器异常退出！", flush=True)
+                break
+            # 对复用已有实例的服务进行健康探测
+            reused = [s for s in SERVERS if s.get('process') is None and s.get('port')]
+            for s in reused:
+                if probe_neko_health(s['port']) is None:
+                    print(f"\n复用的 {s['name']}(port {s['port']}) 已不可达！", flush=True)
+                    break
+            else:
+                continue
+            break  # 内层 for 触发 break 时跳出外层 while
+
     except KeyboardInterrupt:
         print("\n\n收到中断信号，正在关闭...", flush=True)
     except Exception as e:
@@ -850,9 +1076,10 @@ def main():
         report_startup_failure(f"Launcher unhandled exception: {e}")
     finally:
         cleanup_servers()
+        release_startup_lock()
         print("\n所有服务器已关闭", flush=True)
         print("再见！\n", flush=True)
-    
+
     return 0
 
 if __name__ == "__main__":
