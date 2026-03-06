@@ -63,6 +63,8 @@ JOB_HANDLE = None
 _cleanup_lock = threading.Lock()
 _cleanup_done = False
 _existing_neko_services: set[str] = set()  # 已有 N.E.K.O 实例占用的端口键
+_last_status_file_warn_by_signature: dict[str, float] = {}  # get_lan_ip 状态文件告警限流（按异常类型）
+_STATUS_FILE_WARN_INTERVAL = 30.0   # 同一异常类型最多每 30 秒告警一次
 DEFAULT_PORTS = {
     "MAIN_SERVER_PORT": MAIN_SERVER_PORT,
     "MEMORY_SERVER_PORT": MEMORY_SERVER_PORT,
@@ -469,20 +471,69 @@ def check_port(port: int, timeout: float = 0.5, host: str = '127.0.0.1') -> bool
         return False
 
 
+def _is_local_interface_ip(ip: str) -> bool:
+    """通过 socket.bind 验证 IP 是否绑定在本机网卡上，防止 .lan_proxy_status.json 过期时返回非本机地址。"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.bind((ip, 0))
+        return True
+    except OSError:
+        return False
+
+
 def get_lan_ip() -> str:
     """获取局域网IP（用于LAN Proxy检查）"""
+    _log = logging.getLogger(__name__)
+    # 优先从 LAN Proxy 状态文件读取（最准确，与实际绑定地址一致）
+    try:
+        status_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".lan_proxy_status.json")
+        if os.path.exists(status_file):
+            with open(status_file, 'r') as f:
+                info = json.load(f)
+                ip = info.get('lan_ip')
+                if isinstance(ip, str):
+                    try:
+                        socket.inet_aton(ip)  # IPv4 형식 검증
+                        parts = ip.split('.')
+                        first, second = int(parts[0]), int(parts[1])
+                        if ((first == 10 or
+                                (first == 172 and 16 <= second <= 31) or
+                                (first == 192 and second == 168)) and
+                                _is_local_interface_ip(ip)):
+                            return ip
+                    except (OSError, ValueError, IndexError) as e:
+                        _log.debug("[get_lan_ip] status file IP validation failed for %r: %s", ip, e)
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        global _last_status_file_warn_by_signature
+        sig = type(e).__name__
+        now = time.monotonic()
+        if now - _last_status_file_warn_by_signature.get(sig, 0.0) > _STATUS_FILE_WARN_INTERVAL:
+            _log.warning("[get_lan_ip] failed to read/parse status file: %s", e)
+            _last_status_file_warn_by_signature[sig] = now
+        else:
+            _log.debug("[get_lan_ip] failed to read/parse status file (suppressed): %s", e)
+    # 备选：UDP socket
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.settimeout(2)
             try:
                 s.connect(("8.8.8.8", 80))
                 ip = s.getsockname()[0]
-                if ip.startswith(('10.', '172.', '192.168.')):
+                parts = ip.split('.', 2)
+                try:
+                    is_private = (
+                        ip.startswith('10.') or
+                        (ip.startswith('172.') and len(parts) >= 2 and 16 <= int(parts[1]) <= 31) or
+                        ip.startswith('192.168.')
+                    )
+                except (ValueError, IndexError):
+                    is_private = False
+                if is_private:
                     return ip
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except OSError as e:
+                _log.debug("[get_lan_ip] UDP probe failed: %s", e)
+    except OSError as e:
+        _log.warning("[get_lan_ip] failed to create UDP socket: %s", e)
     return "127.0.0.1"
 
 
@@ -832,17 +883,15 @@ def wait_for_servers(timeout: int = 60) -> bool:
 
     start_time = time.time()
     all_ready = False
-    lan_ip = None
 
     # 第一步：等待所有端口就绪
     while time.time() - start_time < timeout:
+        lan_ip = get_lan_ip()
         # 若某个子进程提前退出，立即报错而不是等到超时
         for server in SERVERS:
             proc = server.get('process')
-            # LAN Proxy 特殊处理：检查 LAN IP 上的端口
+            # LAN Proxy 特殊处理：检查 LAN IP 上的端口（每次迭代重新获取，等待状态文件写入）
             if server['module'] == 'lan_proxy':
-                if lan_ip is None:
-                    lan_ip = get_lan_ip()
                 port_ready = check_port(server['port'], host=lan_ip)
             else:
                 port_ready = check_port(server['port'])
@@ -859,8 +908,6 @@ def wait_for_servers(timeout: int = 60) -> bool:
         for server in SERVERS:
             # LAN Proxy 特殊处理：检查 LAN IP 上的端口
             if server['module'] == 'lan_proxy':
-                if lan_ip is None:
-                    lan_ip = get_lan_ip()
                 if check_port(server['port'], host=lan_ip):
                     ready_count += 1
             else:
@@ -911,10 +958,9 @@ def wait_for_servers(timeout: int = 60) -> bool:
             else:
                 # LAN Proxy 特殊处理
                 if server['module'] == 'lan_proxy':
-                    if lan_ip is None:
-                        lan_ip = get_lan_ip()
-                    if not check_port(server['port'], host=lan_ip):
-                        print(f"  - {server['name']} 端口 {lan_ip}:{server['port']} 未就绪", flush=True)
+                    current_lan_ip = get_lan_ip()
+                    if not check_port(server['port'], host=current_lan_ip):
+                        print(f"  - {server['name']} 端口 {current_lan_ip}:{server['port']} 未就绪", flush=True)
                 elif not check_port(server['port']):
                     print(f"  - {server['name']} 端口 {server['port']} 未就绪", flush=True)
         return False

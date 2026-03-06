@@ -94,9 +94,8 @@ class LanProxy:
         except Exception:
             pass
 
-        # 方法2：遍历网卡获取私有IP（使用更兼容的方式）
+        # 方法2：通过 hostname 解析获取私有IP（macOS 上 getaddrinfo 可能失败）
         try:
-            # 2a: 使用 getaddrinfo 尝试获取
             hostname = socket.gethostname()
             addrs = socket.getaddrinfo(hostname, None, socket.AF_INET)
             for addr in addrs:
@@ -110,46 +109,47 @@ class LanProxy:
         try:
             import subprocess
             import platform
+            import re
 
             system = platform.system()
-            if system == "Darwin":  # macOS
-                # 获取默认路由对应的接口 IP
-                cmd = ["route", "-n", "get", "default"]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if system == "Darwin":
+                result = subprocess.run(
+                    ["route", "-n", "get", "default"],
+                    capture_output=True, text=True, timeout=5
+                )
                 if result.returncode == 0:
-                    # 解析 route 输出找到 interface
                     interface = None
                     for line in result.stdout.splitlines():
                         if "interface:" in line:
                             interface = line.split(":")[1].strip()
                             break
                     if interface:
-                        # 使用 ifconfig 获取该接口 IP
-                        cmd = ["ifconfig", interface]
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                        result = subprocess.run(
+                            ["ifconfig", interface],
+                            capture_output=True, text=True, timeout=5
+                        )
                         if result.returncode == 0:
-                            import re
-                            # 匹配 inet xxx.xxx.xxx.xxx
                             match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", result.stdout)
                             if match:
                                 ip = match.group(1)
                                 if self._is_private_ip(ip) and ip != "127.0.0.1":
                                     return ip
             elif system == "Linux":
-                cmd = ["hostname", "-I"]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                result = subprocess.run(
+                    ["hostname", "-I"],
+                    capture_output=True, text=True, timeout=5
+                )
                 if result.returncode == 0:
                     for ip in result.stdout.strip().split():
                         if self._is_private_ip(ip) and ip != "127.0.0.1":
                             return ip
             elif system == "Windows":
-                cmd = ["ipconfig"]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                result = subprocess.run(
+                    ["ipconfig"],
+                    capture_output=True, text=True, timeout=5
+                )
                 if result.returncode == 0:
-                    import re
-                    # 匹配 IPv4 地址
-                    matches = re.findall(r"IPv4.*?:\s*(\d+\.\d+\.\d+\.\d+)", result.stdout)
-                    for ip in matches:
+                    for ip in re.findall(r"IPv4.*?:\s*(\d+\.\d+\.\d+\.\d+)", result.stdout):
                         if self._is_private_ip(ip) and ip != "127.0.0.1":
                             return ip
         except Exception:
@@ -159,11 +159,11 @@ class LanProxy:
         try:
             import netifaces
             for interface in netifaces.interfaces():
-                if interface.startswith(('lo', 'docker', 'br-', 'veth')):
+                if interface.startswith(("lo", "docker", "br-", "veth")):
                     continue
                 addrs = netifaces.ifaddresses(interface).get(netifaces.AF_INET, [])
                 for addr in addrs:
-                    ip = addr.get('addr')
+                    ip = addr.get("addr")
                     if ip and self._is_private_ip(ip) and ip != "127.0.0.1":
                         return ip
         except Exception:
