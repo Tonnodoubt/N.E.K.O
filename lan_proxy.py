@@ -33,6 +33,27 @@ try:
 except ImportError:
     QR_AVAILABLE = False
 
+# 尝试导入 UPnP 管理器
+try:
+    from upnp_manager import UPnPManager
+    UPNP_AVAILABLE = True
+except ImportError:
+    UPNP_AVAILABLE = False
+
+# 尝试导入云端注册客户端
+try:
+    from cloud_registry_client import CloudRegistryClient
+    CLOUD_REGISTRY_AVAILABLE = True
+except ImportError:
+    CLOUD_REGISTRY_AVAILABLE = False
+
+# 尝试加载环境变量
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # 配置
 PROXY_PORT = LAN_PROXY_PORT
 TARGET_BASE = f"http://127.0.0.1:{MAIN_SERVER_PORT}"
@@ -72,14 +93,39 @@ def get_proxy_info_from_file() -> Optional[dict]:
 
 
 class LanProxy:
-    """LAN 代理服务器 - v2 HTTP/WebSocket 反向代理"""
+    """LAN 代理服务器 - v2 HTTP/WebSocket 反向代理 + UPnP + 云端注册"""
 
-    def __init__(self, bind_host: Optional[str] = None):
+    def __init__(
+        self,
+        bind_host: Optional[str] = None,
+        enable_upnp: bool = True,
+        enable_cloud: bool = True,
+        character: str = "test"
+    ):
+        """
+        初始化 LAN 代理
+
+        Args:
+            bind_host: 绑定地址（默认自动检测）
+            enable_upnp: 是否启用 UPnP 端口映射
+            enable_cloud: 是否启用云端注册
+            character: 角色名称
+        """
         self.token: str = secrets.token_urlsafe(32)
         self.lan_ip: str = bind_host or self._get_lan_ip()
-        self.character: str = "test"
+        self.character: str = character
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
+
+        # UPnP 相关
+        self.enable_upnp = enable_upnp and UPNP_AVAILABLE
+        self.upnp_manager: Optional[UPnPManager] = None
+        self.upnp_info: Optional[Dict[str, Any]] = None
+
+        # 云端注册相关
+        self.enable_cloud = enable_cloud and CLOUD_REGISTRY_AVAILABLE
+        self.cloud_client: Optional[CloudRegistryClient] = None
+        self._cloud_refresh_task: Optional[asyncio.Task] = None
 
     def _get_lan_ip(self) -> str:
         """获取当前WiFi网卡的局域网IP"""
@@ -410,12 +456,79 @@ class LanProxy:
         print(f"[LAN Proxy] Character: {self.character}")
         print(f"[LAN Proxy] Target: {TARGET_BASE}")
 
+        # ── UPnP 端口映射 ──
+        if self.enable_upnp:
+            print("[LAN Proxy] 正在配置 UPnP 端口映射...")
+            try:
+                self.upnp_manager = UPnPManager(
+                    local_port=PROXY_PORT,
+                    external_port=PROXY_PORT
+                )
+                success = await self.upnp_manager.setup()
+                if success:
+                    self.upnp_info = self.upnp_manager.get_connection_info()
+                    print(f"[LAN Proxy] ✅ UPnP 映射成功: {self.upnp_info}")
+                else:
+                    print("[LAN Proxy] ⚠️ UPnP 映射失败，将仅使用 LAN 连接")
+            except Exception as e:
+                print(f"[LAN Proxy] ⚠️ UPnP 配置失败: {e}")
+
+        # ── 云端注册 ──
+        if self.enable_cloud:
+            print("[LAN Proxy] 正在注册到云端...")
+            try:
+                self.cloud_client = CloudRegistryClient()
+                device_id = self._get_device_id()  # 同步调用
+
+                success = await self.cloud_client.register(
+                    device_id=device_id,
+                    lan_ip=self.lan_ip,
+                    token=self.token,
+                    upnp_ip=self.upnp_info.get("upnp_ip") if self.upnp_info else None,
+                    upnp_port=self.upnp_info.get("upnp_port") if self.upnp_info else None,
+                    character=self.character
+                )
+
+                if success:
+                    print(f"[LAN Proxy] ✅ 云端注册成功")
+                    print(f"[LAN Proxy] Device ID: {device_id}")
+                    # 启动定期刷新
+                    self._start_cloud_refresh()
+                else:
+                    print("[LAN Proxy] ⚠️ 云端注册失败")
+            except Exception as e:
+                print(f"[LAN Proxy] ⚠️ 云端注册失败: {e}")
+
         # 保存状态
         _save_status(self.get_connection_info())
 
     async def stop(self):
         """停止代理服务器"""
         print("[LAN Proxy] Stopping...")
+
+        # 停止云端刷新任务
+        if self._cloud_refresh_task:
+            self._cloud_refresh_task.cancel()
+            try:
+                await self._cloud_refresh_task
+            except asyncio.CancelledError:
+                pass
+
+        # 清理 UPnP
+        if self.upnp_manager:
+            try:
+                await self.upnp_manager.cleanup()
+                print("[LAN Proxy] UPnP 资源已清理")
+            except Exception as e:
+                print(f"[LAN Proxy] UPnP 清理失败: {e}")
+
+        # 关闭云端客户端
+        if self.cloud_client:
+            try:
+                await self.cloud_client.close()
+                print("[LAN Proxy] 云端客户端已关闭")
+            except Exception as e:
+                print(f"[LAN Proxy] 云端客户端关闭失败: {e}")
 
         if self.site:
             await self.site.stop()
@@ -425,14 +538,82 @@ class LanProxy:
         _clear_status()
         print("[LAN Proxy] Stopped")
 
+    def _get_device_id(self) -> str:
+        """
+        获取设备 ID（持久化）
+
+        Returns:
+            设备 ID
+        """
+        from pathlib import Path
+
+        device_file = Path.home() / ".neko" / "device_id"
+
+        # 尝试读取已存在的 ID
+        if device_file.exists():
+            device_id = device_file.read_text().strip()
+            print(f"[LAN Proxy] 使用已存在的 Device ID: {device_id}")
+            return device_id
+
+        # 生成新的 ID
+        import uuid
+        device_id = f"neko-{uuid.uuid4().hex[:16]}"
+
+        # 保存
+        device_file.parent.mkdir(parents=True, exist_ok=True)
+        device_file.write_text(device_id)
+        print(f"[LAN Proxy] 生成新的 Device ID: {device_id}")
+
+        return device_id
+
+    def _start_cloud_refresh(self):
+        """启动云端注册刷新后台任务"""
+        async def refresh_loop():
+            while True:
+                try:
+                    await asyncio.sleep(60)  # 每60秒刷新一次
+
+                    device_id = self._get_device_id()  # 同步调用
+                    await self.cloud_client.register(
+                        device_id=device_id,
+                        lan_ip=self.lan_ip,
+                        token=self.token,
+                        upnp_ip=self.upnp_info.get("upnp_ip") if self.upnp_info else None,
+                        upnp_port=self.upnp_info.get("upnp_port") if self.upnp_info else None,
+                        character=self.character
+                    )
+                    print("[LAN Proxy] 云端注册已刷新")
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    print(f"[LAN Proxy] 云端刷新失败: {e}")
+
+        self._cloud_refresh_task = asyncio.create_task(refresh_loop())
+
     def get_connection_info(self) -> dict:
         """获取连接信息（用于生成二维码）"""
-        return {
+        info = {
             "lan_ip": self.lan_ip,
             "port": PROXY_PORT,
             "token": self.token,
             "character": self.character,
         }
+
+        # 读取设备 ID（同步版本）
+        try:
+            from pathlib import Path
+            device_file = Path.home() / ".neko" / "device_id"
+            if device_file.exists():
+                info["device_id"] = device_file.read_text().strip()
+        except Exception:
+            pass
+
+        # 添加 UPnP 信息
+        if self.upnp_info:
+            info["upnp_ip"] = self.upnp_info.get("upnp_ip")
+            info["upnp_port"] = self.upnp_info.get("upnp_port")
+
+        return info
 
     def get_qr_data(self) -> str:
         """生成二维码数据"""
@@ -463,13 +644,22 @@ def get_proxy_qr_data() -> Optional[str]:
     return None
 
 
-async def run_lan_proxy(stop_event=None, start_event=None):
+async def run_lan_proxy(
+    stop_event=None,
+    start_event=None,
+    enable_upnp: bool = True,
+    enable_cloud: bool = True,
+    character: str = "test"
+):
     """
     运行 LAN 代理（供 launcher 调用）
 
     Args:
         stop_event: 停止事件，当设置时代理会优雅退出 (multiprocessing.Event)
         start_event: 启动完成事件，用于通知父进程已启动 (multiprocessing.Event)
+        enable_upnp: 是否启用 UPnP 端口映射（默认 True）
+        enable_cloud: 是否启用云端注册（默认 True）
+        character: 角色名称（默认 "test"）
     """
     global _proxy_instance
 
@@ -477,7 +667,11 @@ async def run_lan_proxy(stop_event=None, start_event=None):
         print("[LAN Proxy] Error: aiohttp not installed. Please install it first.")
         return
 
-    _proxy_instance = LanProxy()
+    _proxy_instance = LanProxy(
+        enable_upnp=enable_upnp,
+        enable_cloud=enable_cloud,
+        character=character
+    )
 
     try:
         await _proxy_instance.start()

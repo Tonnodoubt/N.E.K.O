@@ -4,9 +4,11 @@
 from copy import deepcopy
 import os
 import logging
-import os
 import uuid
 from types import MappingProxyType
+
+# 初始化 logger
+logger = logging.getLogger(__name__)
 
 from config.prompts_chara import lanlan_prompt, get_lanlan_prompt, is_default_prompt
 

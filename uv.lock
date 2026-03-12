@@ -148,6 +148,21 @@ wheels = [
 ]
 
 [[package]]
+name = "async-upnp-client"
+version = "0.46.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "defusedxml" },
+    { name = "python-didl-lite" },
+    { name = "voluptuous" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/eb/71/1ae4bd9d5b3d755a6f0d1c1a4ef2bedda3f6b3abd518062a2cc1cfbed720/async_upnp_client-0.46.2.tar.gz", hash = "sha256:c19bdf81627fbed809763c40e60d1d28bbf22663e439f5aa0185c688ea3df3b6", size = 98076, upload-time = "2026-01-03T10:41:19.456Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/7d/8a53647d0fc1e3b9395dabe5ea8816f07f6f043e45f61eb41e2a6be571bd/async_upnp_client-0.46.2-py3-none-any.whl", hash = "sha256:3754717e73003d2680afed1c46a21692e1c22dfab3158be93fa2a9d06ef4d176", size = 90021, upload-time = "2026-01-03T10:41:18.163Z" },
+]
+
+[[package]]
 name = "attrs"
 version = "25.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -634,6 +649,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/64/a4/f71d9cf3a5ac257c993b5ca3f93df5f7fb395c725e7f1e6479d2514173c3/dataclasses_json-0.6.7.tar.gz", hash = "sha256:b6b3e528266ea45b9535223bc53ca645f5208833c29229e847b3f26a1cc55fc0", size = 32227, upload-time = "2024-06-09T16:20:19.103Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c3/be/d0d44e092656fe7a06b55e6103cbce807cdbdee17884a5367c68c9860853/dataclasses_json-0.6.7-py3-none-any.whl", hash = "sha256:0dbf33f26c8d5305befd61b39d2b3414e8a407bedc2834dea9b8d642666fb40a", size = 28686, upload-time = "2024-06-09T16:20:16.715Z" },
+]
+
+[[package]]
+name = "defusedxml"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520, upload-time = "2021-03-08T10:59:26.269Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604, upload-time = "2021-03-08T10:59:24.45Z" },
 ]
 
 [[package]]
@@ -1650,6 +1674,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
+    { name = "async-upnp-client" },
     { name = "backoff" },
     { name = "beautifulsoup4" },
     { name = "bilibili-api-python" },
@@ -1704,6 +1729,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "anthropic" },
+    { name = "async-upnp-client", specifier = ">=0.46.2" },
     { name = "backoff" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "bilibili-api-python", specifier = ">=17.4.0" },
@@ -4796,6 +4822,18 @@ wheels = [
 ]
 
 [[package]]
+name = "python-didl-lite"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "defusedxml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/be/95/34675b3a6be5de413921f288b823e64ca9528ac702c0c37ae5ed7e269343/python_didl_lite-1.5.0.tar.gz", hash = "sha256:6ed1c8db01426a4c282b1b810bb7d9ebb3abec7ea832e48e89972544568caec1", size = 17503, upload-time = "2026-01-03T10:32:40.656Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/24/a5f4a5e69cac8eb3be721a2b3271042fc8b785eb696f1c58ef79c5b003f9/python_didl_lite-1.5.0-py3-none-any.whl", hash = "sha256:88023b04458019e88cc3c64445a1da4d11bae0fbe1cd96f49888e53862610a97", size = 13686, upload-time = "2026-01-03T10:32:39.4Z" },
+]
+
+[[package]]
 name = "python-docx"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5537,6 +5575,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cb/ce/f06b84e2697fef4688ca63bdb2fdf113ca0a3be33f94488f2cadb690b0cf/uvicorn-0.38.0.tar.gz", hash = "sha256:fd97093bdd120a2609fc0d3afe931d4d4ad688b6e75f0f929fde1bc36fe0e91d", size = 80605, upload-time = "2025-10-18T13:46:44.63Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/d9/d88e73ca598f4f6ff671fb5fde8a32925c2e08a637303a1d12883c7305fa/uvicorn-0.38.0-py3-none-any.whl", hash = "sha256:48c0afd214ceb59340075b4a052ea1ee91c16fbc2a9b1469cca0e54566977b02", size = 68109, upload-time = "2025-10-18T13:46:42.958Z" },
+]
+
+[[package]]
+name = "voluptuous"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/f4/0738e6849858deae22218be3bbb8207ba83a96e9d0ec7e8e8cd67b30e5ca/voluptuous-0.16.0.tar.gz", hash = "sha256:006535e22fed944aec17bef6e8725472476194743c87bd233e912eb463f8ff05", size = 54238, upload-time = "2025-12-18T23:18:46.08Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/00/0e0da784245c93cf346150ab67634177bf277f93b7a162bb56c928c39c04/voluptuous-0.16.0-py3-none-any.whl", hash = "sha256:ee342095263e1b5afbd4d418cb5adc92810eebfd07696bb033a261210df33db4", size = 31931, upload-time = "2025-12-18T23:18:44.694Z" },
 ]
 
 [[package]]
