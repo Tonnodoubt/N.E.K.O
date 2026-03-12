@@ -6,7 +6,7 @@ UPnP 端口映射管理器
 import asyncio
 import logging
 from typing import Optional, Tuple
-from async_upnp_client import UpnpFactory
+from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.aiohttp import AiohttpRequester
 from async_upnp_client.search import async_search
 from async_upnp_client.client import UpnpDevice
