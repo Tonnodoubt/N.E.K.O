@@ -43,11 +43,16 @@ class UPnPManager:
 
             # 搜索 UPnP 设备
             discoveries = []
-            async for discovery in async_search(
+
+            async def on_discovery(discovery):
+                """UPnP 设备发现回调"""
+                discoveries.append(discovery)
+
+            await async_search(
+                async_callback=on_discovery,
                 search_target="urn:schemas-upnp-org:device:InternetGatewayDevice:1",
                 timeout=5
-            ):
-                discoveries.append(discovery)
+            )
 
             if not discoveries:
                 logger.warning("[UPnP] 未发现 UPnP 设备")
