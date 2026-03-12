@@ -1,6 +1,6 @@
 #!/bin/bash
 # N.E.K.O 云端注册服务快速部署脚本
-# 适用于 Ubuntu 20.04+
+# 适用于 CentOS 7+ / Rocky Linux / AlmaLinux
 
 set -e
 
@@ -26,16 +26,16 @@ echo "当前用户: $USERNAME"
 
 # 1. 更新系统
 echo -e "${GREEN}[1/7] 更新系统...${NC}"
-sudo apt update && sudo apt upgrade -y
+sudo dnf update -y
 
 # 2. 安装依赖
 echo -e "${GREEN}[2/7] 安装依赖...${NC}"
-sudo apt install -y python3 python3-pip python3-venv redis-server
+sudo dnf install -y python3 python3-pip redis
 
 # 3. 启动 Redis
 echo -e "${GREEN}[3/7] 启动 Redis...${NC}"
-sudo systemctl start redis-server
-sudo systemctl enable redis-server
+sudo systemctl start redis
+sudo systemctl enable redis
 
 # 验证 Redis
 if redis-cli ping | grep -q "PONG"; then
@@ -53,16 +53,26 @@ cd $PROJECT_DIR
 
 # 5. 创建虚拟环境并安装依赖
 echo -e "${GREEN}[5/7] 安装 Python 依赖...${NC}"
-python3 -m venv venv
+python3 -m venv venv || {
+    echo -e "${RED}虚拟环境创建失败，尝试安装 python3-venv${NC}"
+    sudo dnf install -y python3-venv
+    python3 -m venv venv
+}
 source venv/bin/activate
 pip install --upgrade pip
 pip install fastapi uvicorn redis python-dotenv
 
-# 6. 创建 main.py（如果不存在）
+# 6. 下载 main.py（如果不存在）
 if [ ! -f "main.py" ]; then
-    echo -e "${GREEN}[6/7] 创建 main.py...${NC}"
-    echo "请将 main.py 文件复制到此目录: $PROJECT_DIR"
-    echo "或者手动创建 main.py 文件"
+    echo -e "${GREEN}[6/7] 下载 main.py...${NC}"
+    wget https://raw.githubusercontent.com/Tonnodoubt/N.E.K.O/feature/react_native/cloud-registry/aliyun-api/main.py -O main.py
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}main.py 下载成功${NC}"
+    else
+        echo -e "${RED}main.py 下载失败，请手动上传${NC}"
+        echo "从本地电脑执行:"
+        echo "scp cloud-registry/aliyun-api/main.py $USERNAME@服务器IP:$PROJECT_DIR/"
+    fi
 else
     echo -e "${GREEN}[6/7] main.py 已存在${NC}"
 fi
