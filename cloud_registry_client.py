@@ -168,6 +168,10 @@ class CloudRegistryClient:
 # 测试代码
 async def test_client():
     """测试云端注册客户端"""
+    # 加载 .env 文件
+    from dotenv import load_dotenv
+    load_dotenv()
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
