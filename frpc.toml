@@ -1,0 +1,22 @@
+# FRP 客户端配置（桌面端）
+
+# 服务器地址
+serverAddr = "47.117.174.64"
+serverPort = 7000
+
+# 认证
+auth.method = "token"
+auth.token = "neko_udp_relay_2024"
+
+# 日志
+log.to = "/tmp/frpc.log"
+log.level = "info"
+log.maxDays = 3
+
+# UDP P2P 代理
+[[proxies]]
+name = "udp-p2p"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 48920
+remotePort = 48920
