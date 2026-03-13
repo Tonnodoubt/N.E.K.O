@@ -33,8 +33,10 @@ class CloudRegistryClient:
         device_id: str,
         lan_ip: str,
         token: str,
-        upnp_ip: Optional[str] = None,
-        upnp_port: Optional[int] = None,
+        stun_ip: Optional[str] = None,
+        stun_port: Optional[int] = None,
+        frp_ip: Optional[str] = None,
+        frp_port: Optional[int] = None,
         character: Optional[str] = None
     ) -> bool:
         """
@@ -44,8 +46,10 @@ class CloudRegistryClient:
             device_id: 设备唯一 ID
             lan_ip: LAN IP 地址
             token: 连接 token
-            upnp_ip: UPnP 外网 IP（可选）
-            upnp_port: UPnP 外网端口（可选）
+            stun_ip: STUN 获取的公网 IP（可选）
+            stun_port: STUN 获取的公网端口（可选）
+            frp_ip: FRP 中转服务器 IP（可选）
+            frp_port: FRP 中转端口（可选）
             character: 角色名（可选）
 
         Returns:
@@ -62,10 +66,14 @@ class CloudRegistryClient:
             }
 
             # 添加可选字段
-            if upnp_ip:
-                payload["upnp_ip"] = upnp_ip
-            if upnp_port:
-                payload["upnp_port"] = upnp_port
+            if stun_ip:
+                payload["stun_ip"] = stun_ip
+            if stun_port:
+                payload["stun_port"] = stun_port
+            if frp_ip:
+                payload["frp_ip"] = frp_ip
+            if frp_port:
+                payload["frp_port"] = frp_port
             if character:
                 payload["character"] = character
 
@@ -192,8 +200,8 @@ async def test_client():
             device_id="test_device_001",
             lan_ip="192.168.1.100",
             token="test_token_123",
-            upnp_ip="1.2.3.4",
-            upnp_port=48920
+            stun_ip="1.2.3.4",
+            stun_port=48920
         )
         print(f"{'✅' if success else '❌'} 注册{'成功' if success else '失败'}\n")
 

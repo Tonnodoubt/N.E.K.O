@@ -25,6 +25,11 @@ try:
 except ImportError:
     AIOHTTP_AVAILABLE = False
     print("[LAN Proxy] Error: aiohttp not installed. Run `uv add aiohttp` or `pip install aiohttp`")
+    # 创建一个虚拟的 web 模块，避免 NameError
+    class DummyWeb:
+        def middleware(self, func):
+            return func
+    web = DummyWeb()
 
 # 尝试导入二维码库
 try:
@@ -33,19 +38,26 @@ try:
 except ImportError:
     QR_AVAILABLE = False
 
-# 尝试导入 UPnP 管理器
-try:
-    from upnp_manager import UPnPManager
-    UPNP_AVAILABLE = True
-except ImportError:
-    UPNP_AVAILABLE = False
-
 # 尝试导入云端注册客户端
 try:
     from cloud_registry_client import CloudRegistryClient
     CLOUD_REGISTRY_AVAILABLE = True
 except ImportError:
     CLOUD_REGISTRY_AVAILABLE = False
+
+# 尝试导入 STUN 客户端
+try:
+    from stun_client import STUNClient
+    STUN_AVAILABLE = True
+except ImportError:
+    STUN_AVAILABLE = False
+
+# 尝试导入 UDP P2P 服务器
+try:
+    from udp_server import UDPP2PServer
+    UDP_SERVER_AVAILABLE = True
+except ImportError:
+    UDP_SERVER_AVAILABLE = False
 
 # 尝试加载环境变量
 try:
@@ -93,12 +105,11 @@ def get_proxy_info_from_file() -> Optional[dict]:
 
 
 class LanProxy:
-    """LAN 代理服务器 - v2 HTTP/WebSocket 反向代理 + UPnP + 云端注册"""
+    """LAN 代理服务器 - HTTP/WebSocket 反向代理 + STUN + FRP + 云端注册"""
 
     def __init__(
         self,
         bind_host: Optional[str] = None,
-        enable_upnp: bool = True,
         enable_cloud: bool = True,
         character: str = "test"
     ):
@@ -107,7 +118,6 @@ class LanProxy:
 
         Args:
             bind_host: 绑定地址（默认自动检测）
-            enable_upnp: 是否启用 UPnP 端口映射
             enable_cloud: 是否启用云端注册
             character: 角色名称
         """
@@ -117,15 +127,24 @@ class LanProxy:
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
 
-        # UPnP 相关
-        self.enable_upnp = enable_upnp and UPNP_AVAILABLE
-        self.upnp_manager: Optional[UPnPManager] = None
-        self.upnp_info: Optional[Dict[str, Any]] = None
-
         # 云端注册相关
         self.enable_cloud = enable_cloud and CLOUD_REGISTRY_AVAILABLE
         self.cloud_client: Optional[CloudRegistryClient] = None
         self._cloud_refresh_task: Optional[asyncio.Task] = None
+
+        # STUN 相关
+        self.enable_stun = STUN_AVAILABLE
+        self.stun_client: Optional[STUNClient] = None
+        self.stun_ip: Optional[str] = None
+        self.stun_port: Optional[int] = None
+
+        # UDP P2P 服务器相关
+        self.udp_server: Optional[UDPP2PServer] = None
+
+        # FRP 中转相关
+        self.frp_enabled = False
+        self.frp_ip: Optional[str] = "47.117.174.64"
+        self.frp_port: Optional[int] = 48920
 
     def _get_lan_ip(self) -> str:
         """获取当前WiFi网卡的局域网IP"""
@@ -456,22 +475,34 @@ class LanProxy:
         print(f"[LAN Proxy] Character: {self.character}")
         print(f"[LAN Proxy] Target: {TARGET_BASE}")
 
-        # ── UPnP 端口映射 ──
-        if self.enable_upnp:
-            print("[LAN Proxy] 正在配置 UPnP 端口映射...")
+        # ── STUN 公网 endpoint 发现 ──
+        if self.enable_stun:
+            print("[LAN Proxy] 正在通过 STUN 获取公网 endpoint...")
             try:
-                self.upnp_manager = UPnPManager(
-                    local_port=PROXY_PORT,
-                    external_port=PROXY_PORT
-                )
-                success = await self.upnp_manager.setup()
-                if success:
-                    self.upnp_info = self.upnp_manager.get_connection_info()
-                    print(f"[LAN Proxy] ✅ UPnP 映射成功: {self.upnp_info}")
+                self.stun_client = STUNClient("47.117.174.64", 3478)
+                endpoint = await self.stun_client.get_public_endpoint()
+                if endpoint:
+                    self.stun_ip, self.stun_port = endpoint
+                    print(f"[LAN Proxy] ✅ STUN endpoint: {self.stun_ip}:{self.stun_port}")
                 else:
-                    print("[LAN Proxy] ⚠️ UPnP 映射失败，将仅使用 LAN 连接")
+                    print("[LAN Proxy] ⚠️ STUN 获取失败")
             except Exception as e:
-                print(f"[LAN Proxy] ⚠️ UPnP 配置失败: {e}")
+                print(f"[LAN Proxy] ⚠️ STUN 配置失败: {e}")
+
+        # ── UDP P2P 服务器 ──
+        if UDP_SERVER_AVAILABLE:
+            print("[LAN Proxy] 正在启动 UDP P2P 服务器...")
+            try:
+                # 使用 STUN 获取的端口（或默认 48920）
+                udp_port = self.stun_port if self.stun_port else PROXY_PORT
+                self.udp_server = UDPP2PServer(port=udp_port, token=self.token)
+                await self.udp_server.start()
+                print(f"[LAN Proxy] ✅ UDP P2P 服务器已启动，端口: {udp_port}")
+            except Exception as e:
+                print(f"[LAN Proxy] ⚠️ UDP 服务器启动失败: {e}")
+
+        # ── FRP 中转回退 ──
+        await self._setup_frp_fallback()
 
         # ── 云端注册 ──
         if self.enable_cloud:
@@ -484,8 +515,10 @@ class LanProxy:
                     device_id=device_id,
                     lan_ip=self.lan_ip,
                     token=self.token,
-                    upnp_ip=self.upnp_info.get("upnp_ip") if self.upnp_info else None,
-                    upnp_port=self.upnp_info.get("upnp_port") if self.upnp_info else None,
+                    stun_ip=self.stun_ip,
+                    stun_port=self.stun_port,
+                    frp_ip=self.frp_ip if self.frp_enabled else None,
+                    frp_port=self.frp_port if self.frp_enabled else None,
                     character=self.character
                 )
 
@@ -514,14 +547,6 @@ class LanProxy:
             except asyncio.CancelledError:
                 pass
 
-        # 清理 UPnP
-        if self.upnp_manager:
-            try:
-                await self.upnp_manager.cleanup()
-                print("[LAN Proxy] UPnP 资源已清理")
-            except Exception as e:
-                print(f"[LAN Proxy] UPnP 清理失败: {e}")
-
         # 关闭云端客户端
         if self.cloud_client:
             try:
@@ -529,6 +554,14 @@ class LanProxy:
                 print("[LAN Proxy] 云端客户端已关闭")
             except Exception as e:
                 print(f"[LAN Proxy] 云端客户端关闭失败: {e}")
+
+        # 停止 UDP P2P 服务器
+        if self.udp_server:
+            try:
+                await self.udp_server.stop()
+                print("[LAN Proxy] UDP P2P 服务器已停止")
+            except Exception as e:
+                print(f"[LAN Proxy] UDP 服务器停止失败: {e}")
 
         if self.site:
             await self.site.stop()
@@ -566,6 +599,50 @@ class LanProxy:
 
         return device_id
 
+    async def _setup_frp_fallback(self):
+        """设置 FRP 中转回退"""
+        print("[LAN Proxy] 正在设置 FRP 中转回退...")
+
+        try:
+            # 检查 FRP 客户端是否已在运行
+            import subprocess
+            result = subprocess.run(
+                ["pgrep", "-f", "frpc.*frpc.toml"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                # FRP 客户端已运行
+                self.frp_enabled = True
+                print(f"[LAN Proxy] ✅ FRP 客户端已运行")
+            else:
+                # 尝试启动 FRP 客户端
+                from pathlib import Path
+                frp_script = Path(__file__).parent / "start_frpc.sh"
+
+                if frp_script.exists():
+                    print("[LAN Proxy] 正在启动 FRP 客户端...")
+                    result = subprocess.run(
+                        ["bash", str(frp_script)],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+
+                    if result.returncode == 0:
+                        self.frp_enabled = True
+                        print(f"[LAN Proxy] ✅ FRP 客户端已启动")
+                    else:
+                        print(f"[LAN Proxy] ⚠️ FRP 客户端启动失败: {result.stderr}")
+                else:
+                    print("[LAN Proxy] ⚠️ 未找到 FRP 启动脚本")
+
+            if self.frp_enabled:
+                print(f"[LAN Proxy] FRP 中转地址: {self.frp_ip}:{self.frp_port}")
+        except Exception as e:
+            print(f"[LAN Proxy] ⚠️ FRP 设置失败: {e}")
+
     def _start_cloud_refresh(self):
         """启动云端注册刷新后台任务"""
         async def refresh_loop():
@@ -573,13 +650,24 @@ class LanProxy:
                 try:
                     await asyncio.sleep(60)  # 每60秒刷新一次
 
+                    # 刷新 STUN endpoint
+                    if self.enable_stun and self.stun_client:
+                        try:
+                            endpoint = await self.stun_client.get_public_endpoint()
+                            if endpoint:
+                                self.stun_ip, self.stun_port = endpoint
+                        except Exception as e:
+                            print(f"[LAN Proxy] STUN 刷新失败: {e}")
+
                     device_id = self._get_device_id()  # 同步调用
                     await self.cloud_client.register(
                         device_id=device_id,
                         lan_ip=self.lan_ip,
                         token=self.token,
-                        upnp_ip=self.upnp_info.get("upnp_ip") if self.upnp_info else None,
-                        upnp_port=self.upnp_info.get("upnp_port") if self.upnp_info else None,
+                        stun_ip=self.stun_ip,
+                        stun_port=self.stun_port,
+                        frp_ip=self.frp_ip if self.frp_enabled else None,
+                        frp_port=self.frp_port if self.frp_enabled else None,
                         character=self.character
                     )
                     print("[LAN Proxy] 云端注册已刷新")
@@ -608,10 +696,15 @@ class LanProxy:
         except Exception:
             pass
 
-        # 添加 UPnP 信息
-        if self.upnp_info:
-            info["upnp_ip"] = self.upnp_info.get("upnp_ip")
-            info["upnp_port"] = self.upnp_info.get("upnp_port")
+        # 添加 STUN 信息
+        if self.stun_ip and self.stun_port:
+            info["stun_ip"] = self.stun_ip
+            info["stun_port"] = self.stun_port
+
+        # 添加 FRP 中转信息
+        if self.frp_enabled and self.frp_ip and self.frp_port:
+            info["frp_ip"] = self.frp_ip
+            info["frp_port"] = self.frp_port
 
         return info
 
@@ -647,7 +740,6 @@ def get_proxy_qr_data() -> Optional[str]:
 async def run_lan_proxy(
     stop_event=None,
     start_event=None,
-    enable_upnp: bool = True,
     enable_cloud: bool = True,
     character: str = "test"
 ):
@@ -657,7 +749,6 @@ async def run_lan_proxy(
     Args:
         stop_event: 停止事件，当设置时代理会优雅退出 (multiprocessing.Event)
         start_event: 启动完成事件，用于通知父进程已启动 (multiprocessing.Event)
-        enable_upnp: 是否启用 UPnP 端口映射（默认 True）
         enable_cloud: 是否启用云端注册（默认 True）
         character: 角色名称（默认 "test"）
     """
@@ -668,7 +759,6 @@ async def run_lan_proxy(
         return
 
     _proxy_instance = LanProxy(
-        enable_upnp=enable_upnp,
         enable_cloud=enable_cloud,
         character=character
     )
