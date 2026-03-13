@@ -42,16 +42,18 @@ class DeviceRegister(BaseModel):
     device_id: str
     lan_ip: str
     token: str
-    upnp_ip: Optional[str] = None
-    upnp_port: Optional[int] = None
+    stun_ip: Optional[str] = None  # STUN 获取的公网 IP
+    stun_port: Optional[int] = None  # STUN 获取的公网端口
+    frp_ip: Optional[str] = None  # FRP 中转服务器 IP
+    frp_port: Optional[int] = None  # FRP 中转端口
     character: Optional[str] = "default"
 
 class DeviceInfo(BaseModel):
     device_id: str
     lan_ip: str
     token: str
-    upnp_ip: Optional[str] = None
-    upnp_port: Optional[int] = None
+    stun_ip: Optional[str] = None
+    stun_port: Optional[int] = None
     character: Optional[str] = None
     created_at: int
 
@@ -92,8 +94,10 @@ async def register(device: DeviceRegister):
             "device_id": device.device_id,
             "lan_ip": device.lan_ip,
             "token": device.token,
-            "upnp_ip": device.upnp_ip,
-            "upnp_port": device.upnp_port,
+            "stun_ip": device.stun_ip,
+            "stun_port": device.stun_port,
+            "frp_ip": device.frp_ip,
+            "frp_port": device.frp_port,
             "character": device.character,
             "created_at": int(datetime.now().timestamp())
         }
