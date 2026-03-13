@@ -16,22 +16,26 @@ logger = logging.getLogger(__name__)
 class UDPP2PServer:
     """UDP P2P 服务器"""
 
-    def __init__(self, port: int, token: str):
+    def __init__(self, port: int, token: str, tcp_port: Optional[int] = None, tcp_ip: Optional[str] = None):
         """
         初始化 UDP 服务器
 
         Args:
             port: 监听端口（应该与 STUN 获取的端口一致）
             token: 连接 token（用于验证）
+            tcp_port: TCP 服务端口（HTTP 代理端口，用于返回给客户端）
+            tcp_ip: TCP 服务 IP（可选，默认自动检测）
         """
         self.port = port
         self.token = token
+        self.tcp_port = tcp_port or port  # 默认使用 UDP 端口
+        self.tcp_ip = tcp_ip  # 如果为 None，会在握手时使用客户端连接的本地地址
         self.socket: Optional[socket.socket] = None
         self.running = False
         self.clients = {}  # 存储已连接的客户端 {addr: last_heartbeat}
         self._receive_task: Optional[asyncio.Task] = None
 
-        logger.info(f"[UDP P2P] 初始化服务器，端口: {port}")
+        logger.info(f"[UDP P2P] 初始化服务器，端口: {port}, TCP 端口: {self.tcp_port}")
 
     async def start(self):
         """启动 UDP 服务器"""
@@ -154,14 +158,24 @@ class UDPP2PServer:
         # 记录客户端
         self.clients[addr] = datetime.now()
 
-        # 发送 ACK
+        # 确定 TCP endpoint（供客户端后续连接）
+        # 如果有指定的 TCP IP，使用它；否则使用客户端看到的服务器地址
+        tcp_ip = self.tcp_ip or addr[0]  # 使用客户端连接的本地地址
+        tcp_port = self.tcp_port
+
+        # 发送 ACK（包含 TCP endpoint 信息）
         response = {
             'type': 'ACK',
             'token': self.token,
             'message': 'Connection established',
+            'tcp_endpoint': {
+                'ip': tcp_ip,
+                'port': tcp_port
+            },
             'timestamp': int(datetime.now().timestamp())
         }
         await self._send_message(addr, response)
+        logger.info(f"[UDP P2P] 已返回 TCP endpoint: {tcp_ip}:{tcp_port}")
 
     async def _handle_heartbeat(self, addr: Tuple[str, int], message: dict):
         """

@@ -495,9 +495,16 @@ class LanProxy:
             try:
                 # 使用 STUN 获取的端口（或默认 48920）
                 udp_port = self.stun_port if self.stun_port else PROXY_PORT
-                self.udp_server = UDPP2PServer(port=udp_port, token=self.token)
+                # 传递 TCP 端口（HTTP 代理端口），供客户端后续连接
+                self.udp_server = UDPP2PServer(
+                    port=udp_port,
+                    token=self.token,
+                    tcp_port=PROXY_PORT,  # HTTP 代理端口
+                    tcp_ip=self.lan_ip    # 使用 LAN IP
+                )
                 await self.udp_server.start()
                 print(f"[LAN Proxy] ✅ UDP P2P 服务器已启动，端口: {udp_port}")
+                print(f"[LAN Proxy] UDP 客户端将连接到 TCP 端口: {PROXY_PORT}")
             except Exception as e:
                 print(f"[LAN Proxy] ⚠️ UDP 服务器启动失败: {e}")
 
