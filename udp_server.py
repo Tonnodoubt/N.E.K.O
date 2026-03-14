@@ -159,8 +159,17 @@ class UDPP2PServer:
         self.clients[addr] = datetime.now()
 
         # 确定 TCP endpoint（供客户端后续连接）
-        # 如果有指定的 TCP IP，使用它；否则使用客户端看到的服务器地址
-        tcp_ip = self.tcp_ip or addr[0]  # 使用客户端连接的本地地址
+        # 如果有指定的 TCP IP，使用它；否则获取本机对外 IP
+        if self.tcp_ip:
+            tcp_ip = self.tcp_ip
+        else:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(('8.8.8.8', 80))
+                tcp_ip = s.getsockname()[0]
+                s.close()
+            except Exception:
+                tcp_ip = '127.0.0.1'
         tcp_port = self.tcp_port
 
         # 发送 ACK（包含 TCP endpoint 信息）
