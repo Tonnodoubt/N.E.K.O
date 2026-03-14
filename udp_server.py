@@ -7,6 +7,7 @@ import asyncio
 import logging
 import socket
 import json
+import aiohttp
 from typing import Optional, Tuple, Callable
 from datetime import datetime
 
@@ -16,7 +17,8 @@ logger = logging.getLogger(__name__)
 class UDPP2PServer:
     """UDP P2P 服务器"""
 
-    def __init__(self, port: int, token: str, tcp_port: Optional[int] = None, tcp_ip: Optional[str] = None):
+    def __init__(self, port: int, token: str, tcp_port: Optional[int] = None, tcp_ip: Optional[str] = None,
+                 device_id: Optional[str] = None, cloud_registry_url: Optional[str] = None):
         """
         初始化 UDP 服务器
 
@@ -25,15 +27,20 @@ class UDPP2PServer:
             token: 连接 token（用于验证）
             tcp_port: TCP 服务端口（HTTP 代理端口，用于返回给客户端）
             tcp_ip: TCP 服务 IP（可选，默认自动检测）
+            device_id: 设备 ID（用于云端打洞协调）
+            cloud_registry_url: 云注册中心地址（用于轮询手机公网地址）
         """
         self.port = port
         self.token = token
-        self.tcp_port = tcp_port or port  # 默认使用 UDP 端口
-        self.tcp_ip = tcp_ip  # 如果为 None，会在握手时使用客户端连接的本地地址
+        self.tcp_port = tcp_port or port
+        self.tcp_ip = tcp_ip
+        self.device_id = device_id
+        self.cloud_registry_url = cloud_registry_url
         self.socket: Optional[socket.socket] = None
         self.running = False
-        self.clients = {}  # 存储已连接的客户端 {addr: last_heartbeat}
+        self.clients = {}
         self._receive_task: Optional[asyncio.Task] = None
+        self._punch_task: Optional[asyncio.Task] = None
 
         logger.info(f"[UDP P2P] 初始化服务器，端口: {port}, TCP 端口: {self.tcp_port}")
 
@@ -57,6 +64,10 @@ class UDPP2PServer:
             # 启动心跳检查任务
             asyncio.create_task(self._heartbeat_check_loop())
 
+            # 如果配置了云端，启动打洞轮询任务
+            if self.device_id and self.cloud_registry_url:
+                self._punch_task = asyncio.create_task(self._punch_poll_loop())
+
         except Exception as e:
             logger.error(f"[UDP P2P] 启动失败: {e}")
             raise
@@ -70,6 +81,13 @@ class UDPP2PServer:
             self._receive_task.cancel()
             try:
                 await self._receive_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._punch_task:
+            self._punch_task.cancel()
+            try:
+                await self._punch_task
             except asyncio.CancelledError:
                 pass
 
@@ -290,6 +308,54 @@ class UDPP2PServer:
     def get_connected_clients(self) -> list:
         """获取已连接的客户端列表"""
         return list(self.clients.keys())
+
+    async def _punch_poll_loop(self):
+        """
+        轮询云端，等待手机上报公网地址，然后主动发 PUNCH 包打洞
+        每2秒轮询一次，最多等待 30 秒
+        """
+        logger.info("[UDP P2P] 开始轮询云端等待手机公网地址...")
+        url = f"{self.cloud_registry_url}/api/punch"
+        deadline = asyncio.get_event_loop().time() + 30
+
+        async with aiohttp.ClientSession() as session:
+            while self.running and asyncio.get_event_loop().time() < deadline:
+                try:
+                    async with session.get(
+                        url,
+                        params={"device_id": self.device_id, "token": self.token},
+                        timeout=aiohttp.ClientTimeout(total=3)
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            client_ip = data.get("client_ip")
+                            client_port = data.get("client_port")
+                            if client_ip and client_port:
+                                logger.info(f"[UDP P2P] 拿到手机公网地址: {client_ip}:{client_port}，发送 PUNCH 包")
+                                await self._send_punch(client_ip, client_port)
+                                return  # 打洞包已发，退出轮询
+                except asyncio.CancelledError:
+                    return
+                except Exception:
+                    pass  # 404 或网络错误，继续等待
+
+                await asyncio.sleep(2)
+
+        logger.info("[UDP P2P] 打洞轮询超时，等待手机直接发 HELLO")
+
+    async def _send_punch(self, ip: str, port: int):
+        """向手机公网地址发送 PUNCH 包，打开本端 NAT 洞"""
+        punch_msg = json.dumps({
+            "type": "PUNCH",
+            "token": self.token,
+            "timestamp": int(datetime.now().timestamp())
+        }).encode("utf-8")
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, self.socket.sendto, punch_msg, (ip, port))
+            logger.info(f"[UDP P2P] PUNCH 包已发送到 {ip}:{port}")
+        except Exception as e:
+            logger.error(f"[UDP P2P] 发送 PUNCH 包失败: {e}")
 
 
 # 测试代码

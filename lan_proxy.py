@@ -292,6 +292,11 @@ class LanProxy:
         if request.method == "OPTIONS":
             return await handler(request)
 
+        # 跳过公开路径（健康检查和P2P信息）
+        public_paths = ['/health', '/p2p-info', '/lanproxyqrcode']
+        if request.path in public_paths:
+            return await handler(request)
+
         # 获取 token（优先 query，其次 header）
         token = request.query.get('token')
         if not token:
@@ -440,6 +445,62 @@ class LanProxy:
             "port": PROXY_PORT,
         })
 
+    # ── P2P 连接信息 ──
+    async def handle_p2p_info(self, request: web.Request) -> web.Response:
+        """返回 P2P 连接信息（用于生成二维码）"""
+        info = self.get_connection_info()
+        return web.json_response(info)
+
+    # ── P2P 二维码图片 ──
+    async def handle_lanproxy_qrcode(self, request: web.Request) -> web.Response:
+        """生成并返回 P2P 连接二维码图片"""
+        if not QR_AVAILABLE:
+            return web.json_response(
+                {"error": "QR code library not available"},
+                status=503
+            )
+
+        try:
+            # 获取连接信息
+            info = self.get_connection_info()
+
+            # 生成二维码
+            import io
+            qr_data = json.dumps(info)
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=2,
+            )
+            qr.add_data(qr_data)
+            qr.make(fit=True)
+
+            # 创建图片
+            img = qr.make_image(fill_color="black", back_color="white")
+
+            # 转换为字节流
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='PNG')
+            img_byte_arr.seek(0)
+
+            # 返回图片响应
+            return web.Response(
+                body=img_byte_arr.getvalue(),
+                content_type='image/png',
+                headers={
+                    'X-Lan-Ip': info.get('lan_ip', ''),
+                    'X-Port': str(info.get('port', '')),
+                    'X-Token': info.get('token', ''),
+                }
+            )
+        except Exception as e:
+            print(f"[LAN Proxy] Error generating QR code: {e}")
+            return web.json_response(
+                {"error": f"Failed to generate QR code: {str(e)}"},
+                status=500
+            )
+
     # ── 启动 / 停止 ──
     async def start(self):
         """启动代理服务器"""
@@ -460,6 +521,12 @@ class LanProxy:
 
         # 路由：健康检查（不需要 token）
         app.router.add_route('GET', '/health', self.handle_health)
+
+        # 路由：P2P 连接信息（不需要 token）
+        app.router.add_route('GET', '/p2p-info', self.handle_p2p_info)
+
+        # 路由：P2P 连接二维码图片（不需要 token）
+        app.router.add_route('GET', '/lanproxyqrcode', self.handle_lanproxy_qrcode)
 
         # 路由：所有其他 HTTP 请求
         app.router.add_route('*', '/{path:.*}', self.handle_http)
@@ -493,23 +560,61 @@ class LanProxy:
         if UDP_SERVER_AVAILABLE:
             print("[LAN Proxy] 正在启动 UDP P2P 服务器...")
             try:
-                # 使用 STUN 获取的端口（或默认 48920）
-                udp_port = self.stun_port if self.stun_port else PROXY_PORT
+                # UDP 使用独立的端口（与 TCP HTTP proxy 分开）
+                # 如果 STUN 成功，使用 STUN 端口；否则使用 PROXY_PORT + 1
+                udp_port = self.stun_port if self.stun_port else (PROXY_PORT + 1)
+
+                # 确定 TCP IP：
+                # 1. 如果有 STUN IP，使用 STUN IP（因为 UDP 客户端会从外网连接）
+                # 2. 否则使用 LAN IP
+                tcp_ip = self.stun_ip if self.stun_ip else self.lan_ip
+
                 # 传递 TCP 端口（HTTP 代理端口），供客户端后续连接
+                # 传入 device_id 和云端 URL，启用双向打洞
+                cloud_url = os.getenv("NEKO_CLOUD_REGISTRY_URL") if self.enable_cloud else None
+                device_id = self._get_device_id() if self.enable_cloud else None
                 self.udp_server = UDPP2PServer(
                     port=udp_port,
                     token=self.token,
-                    tcp_port=PROXY_PORT,  # HTTP 代理端口
-                    tcp_ip=self.lan_ip    # 使用 LAN IP
+                    tcp_port=PROXY_PORT,
+                    tcp_ip=tcp_ip,
+                    device_id=device_id,
+                    cloud_registry_url=cloud_url,
                 )
                 await self.udp_server.start()
                 print(f"[LAN Proxy] ✅ UDP P2P 服务器已启动，端口: {udp_port}")
                 print(f"[LAN Proxy] UDP 客户端将连接到 TCP 端口: {PROXY_PORT}")
             except Exception as e:
                 print(f"[LAN Proxy] ⚠️ UDP 服务器启动失败: {e}")
+        else:
+            print("[LAN Proxy] ⚠️ UDP 服务器不可用，跳过启动")
 
         # ── FRP 中转回退 ──
         await self._setup_frp_fallback()
+
+        # ── FRP UDP 回退服务器 ──
+        # 如果启用了 FRP，需要在本地 48920 端口也启动一个 UDP 服务器
+        # 因为 FRP 会将远程 48920 端口转发到本地 48920 端口
+        if UDP_SERVER_AVAILABLE and self.frp_enabled and self.frp_port:
+            print("[LAN Proxy] 正在启动 FRP UDP 回退服务器...")
+            try:
+                # FRP 回退使用固定的 frp_port（通常是 48920）
+                # TCP IP 使用 FRP 服务器 IP（因为客户端会通过 FRP 连接）
+                frp_tcp_ip = self.frp_ip if self.frp_ip else tcp_ip
+
+                self.udp_server_frp = UDPP2PServer(
+                    port=self.frp_port,
+                    token=self.token,
+                    tcp_port=PROXY_PORT,  # HTTP 代理端口
+                    tcp_ip=frp_tcp_ip      # FRP IP（外网可访问）
+                )
+                await self.udp_server_frp.start()
+                print(f"[LAN Proxy] ✅ FRP UDP 回退服务器已启动，端口: {self.frp_port}")
+                print(f"[LAN Proxy] FRP 客户端将连接到 TCP 端点: {frp_tcp_ip}:{PROXY_PORT}")
+            except Exception as e:
+                print(f"[LAN Proxy] ⚠️ FRP UDP 服务器启动失败: {e}")
+        else:
+            self.udp_server_frp = None
 
         # ── 云端注册 ──
         if self.enable_cloud:
@@ -569,6 +674,14 @@ class LanProxy:
                 print("[LAN Proxy] UDP P2P 服务器已停止")
             except Exception as e:
                 print(f"[LAN Proxy] UDP 服务器停止失败: {e}")
+
+        # 停止 FRP UDP 回退服务器
+        if hasattr(self, 'udp_server_frp') and self.udp_server_frp:
+            try:
+                await self.udp_server_frp.stop()
+                print("[LAN Proxy] FRP UDP 回退服务器已停止")
+            except Exception as e:
+                print(f"[LAN Proxy] FRP UDP 服务器停止失败: {e}")
 
         if self.site:
             await self.site.stop()
@@ -687,9 +800,13 @@ class LanProxy:
 
     def get_connection_info(self) -> dict:
         """获取连接信息（用于生成二维码）"""
+        # 计算 UDP 端口（与启动时使用的相同逻辑）
+        udp_port = self.stun_port if self.stun_port else (PROXY_PORT + 1)
+
         info = {
             "lan_ip": self.lan_ip,
-            "port": PROXY_PORT,
+            "port": PROXY_PORT,  # TCP HTTP 端口（供 WebSocket/HTTP 连接）
+            "udp_port": udp_port,  # UDP P2P 端口（用于 UDP 打洞）
             "token": self.token,
             "character": self.character,
         }

@@ -57,6 +57,12 @@ class DeviceInfo(BaseModel):
     character: Optional[str] = None
     created_at: int
 
+class PunchRegister(BaseModel):
+    device_id: str
+    token: str
+    client_ip: str
+    client_port: int
+
 # 健康检查
 @app.get("/")
 async def root():
@@ -164,6 +170,75 @@ async def lookup_post(request: dict):
         raise HTTPException(status_code=400, detail="Missing device_id")
 
     return await lookup(device_id)
+
+# 手机上报公网地址（打洞用）
+@app.post("/api/punch")
+async def punch_register(req: PunchRegister):
+    """
+    手机上报自己的公网地址，供后端读取后主动打洞
+    TTL: 30 秒
+    """
+    try:
+        # 验证 token
+        device_key = f"device:{req.device_id}"
+        data = redis_client.get(device_key)
+        if not data:
+            raise HTTPException(status_code=404, detail="Device not found")
+        device_info = json.loads(data)
+        if device_info.get("token") != req.token:
+            raise HTTPException(status_code=403, detail="Invalid token")
+
+        punch_info = {
+            "client_ip": req.client_ip,
+            "client_port": req.client_port,
+            "expires_at": int(datetime.now().timestamp()) + 30
+        }
+        punch_key = f"punch:{req.device_id}"
+        redis_client.setex(punch_key, 30, json.dumps(punch_info))
+
+        print(f"[punch] Device {req.device_id} registered punch addr {req.client_ip}:{req.client_port}")
+        return {"ok": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[punch] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 后端轮询手机公网地址
+@app.get("/api/punch")
+async def punch_lookup(device_id: str, token: str):
+    """
+    后端查询手机上报的公网地址
+    查询成功后删除记录（阅后即焚）
+    """
+    try:
+        # 验证 token
+        device_key = f"device:{device_id}"
+        data = redis_client.get(device_key)
+        if not data:
+            raise HTTPException(status_code=404, detail="Device not found")
+        device_info = json.loads(data)
+        if device_info.get("token") != token:
+            raise HTTPException(status_code=403, detail="Invalid token")
+
+        punch_key = f"punch:{device_id}"
+        punch_data = redis_client.get(punch_key)
+        if not punch_data:
+            raise HTTPException(status_code=404, detail="Punch address not ready")
+
+        redis_client.delete(punch_key)
+        result = json.loads(punch_data)
+        print(f"[punch] Device {device_id} punch addr retrieved and deleted")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[punch] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
