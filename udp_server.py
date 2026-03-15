@@ -120,6 +120,39 @@ class UDPP2PServer:
                     logger.error(f"[UDP P2P] 接收消息错误: {e}")
                 await asyncio.sleep(0.1)
 
+    def _is_stun_binding_request(self, data: bytes) -> bool:
+        """检查是否是 STUN Binding Request（RFC 5389）"""
+        return (len(data) >= 20
+                and data[0] == 0x00 and data[1] == 0x01
+                and data[4] == 0x21 and data[5] == 0x12
+                and data[6] == 0xA4 and data[7] == 0x42)
+
+    def _build_stun_response(self, request: bytes, addr: Tuple[str, int]) -> bytes:
+        """构建 STUN Binding Response，包含 XOR-MAPPED-ADDRESS"""
+        ip_parts = [int(x) for x in addr[0].split('.')]
+        port = addr[1]
+        xor_port = port ^ 0x2112
+        xor_ip = [ip_parts[0] ^ 0x21, ip_parts[1] ^ 0x12,
+                  ip_parts[2] ^ 0xA4, ip_parts[3] ^ 0x42]
+
+        # XOR-MAPPED-ADDRESS 属性（12字节）
+        attr = bytearray(12)
+        attr[0] = 0x00; attr[1] = 0x20   # type: XOR-MAPPED-ADDRESS
+        attr[2] = 0x00; attr[3] = 0x08   # length: 8
+        attr[4] = 0x00; attr[5] = 0x01   # reserved + IPv4 family
+        attr[6] = (xor_port >> 8) & 0xFF; attr[7] = xor_port & 0xFF
+        attr[8:12] = bytes(xor_ip)
+
+        # Response 头（20字节） + 属性
+        resp = bytearray(32)
+        resp[0] = 0x01; resp[1] = 0x01   # Binding Response
+        resp[2] = 0x00; resp[3] = 0x0C   # length: 12
+        resp[4] = 0x21; resp[5] = 0x12   # magic cookie
+        resp[6] = 0xA4; resp[7] = 0x42
+        resp[8:20] = request[8:20]        # 复制 Transaction ID
+        resp[20:32] = attr
+        return bytes(resp)
+
     async def _handle_message(self, data: bytes, addr: Tuple[str, int]):
         """
         处理接收到的消息
@@ -128,6 +161,14 @@ class UDPP2PServer:
             data: 消息数据
             addr: 客户端地址 (ip, port)
         """
+        # 优先处理标准 STUN Binding Request（二进制协议）
+        if self._is_stun_binding_request(data):
+            logger.info(f"[UDP P2P] 收到 STUN 请求，来自 {addr}，返回公网地址")
+            resp = self._build_stun_response(data, addr)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.socket.sendto, resp, addr)
+            return
+
         try:
             # 解析 JSON 消息
             message = json.loads(data.decode('utf-8'))
