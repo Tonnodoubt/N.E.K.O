@@ -534,10 +534,14 @@ class LanProxy:
         # 启动服务器
         self.runner = web.AppRunner(app)
         await self.runner.setup()
+        # LAN 设备直连用（随网络环境变化）
         self.site = web.TCPSite(self.runner, self.lan_ip, PROXY_PORT)
         await self.site.start()
+        # frpc TCP 隧道用（固定 loopback，不受网络环境影响）
+        self.site_loopback = web.TCPSite(self.runner, '127.0.0.1', PROXY_PORT)
+        await self.site_loopback.start()
 
-        print(f"[LAN Proxy] v2 started on {self.lan_ip}:{PROXY_PORT}")
+        print(f"[LAN Proxy] v2 started on {self.lan_ip}:{PROXY_PORT} (also 127.0.0.1:{PROXY_PORT})")
         print(f"[LAN Proxy] Token: {self.token}")
         print(f"[LAN Proxy] Character: {self.character}")
         print(f"[LAN Proxy] Target: {TARGET_BASE}")
@@ -605,12 +609,12 @@ class LanProxy:
                 self.udp_server_frp = UDPP2PServer(
                     port=self.frp_port,
                     token=self.token,
-                    tcp_port=PROXY_PORT,  # HTTP 代理端口
+                    tcp_port=PROXY_PORT + 1,  # FRP TCP 隧道独立端口（48921），避免与 UDP:48920 冲突
                     tcp_ip=frp_tcp_ip      # FRP IP（外网可访问）
                 )
                 await self.udp_server_frp.start()
                 print(f"[LAN Proxy] ✅ FRP UDP 回退服务器已启动，端口: {self.frp_port}")
-                print(f"[LAN Proxy] FRP 客户端将连接到 TCP 端点: {frp_tcp_ip}:{PROXY_PORT}")
+                print(f"[LAN Proxy] FRP 客户端将连接到 TCP 端点: {frp_tcp_ip}:{PROXY_PORT + 1}")
             except Exception as e:
                 print(f"[LAN Proxy] ⚠️ FRP UDP 服务器启动失败: {e}")
         else:
@@ -685,6 +689,8 @@ class LanProxy:
 
         if self.site:
             await self.site.stop()
+        if hasattr(self, 'site_loopback') and self.site_loopback:
+            await self.site_loopback.stop()
         if self.runner:
             await self.runner.cleanup()
 
