@@ -810,7 +810,19 @@
         },
         "loadConfigFailed": "加载配置失败，请刷新页面后重试",
         "errorGettingCurrentApiKey": "获取当前API Key失败",
-        "getCurrentApiKeyFailed": "获取当前API Key失败"
+        "getCurrentApiKeyFailed": "获取当前API Key失败",
+        "p2pConnectionTitle": "手机扫码连接",
+        "p2pConnectionDesc": "用手机 App 扫码，同一 WiFi 下直接连接桌面端",
+        "p2pStep1": "手机与电脑连接<strong>同一 WiFi</strong>",
+        "p2pStep2": "打开 N.E.K.O. App，点击首页<strong>「扫码配置」</strong>",
+        "p2pStep3": "对准下方二维码扫描，<strong>连接自动完成</strong>",
+        "p2pQrError": "二维码加载失败<br>请确保服务已启动",
+        "p2pRefreshQr": "刷新二维码",
+        "p2pLanIp": "局域网 IP",
+        "p2pPort": "端口",
+        "p2pToken": "连接 Token",
+        "p2pCopyInfo": "复制连接信息",
+        "p2pManualHint": "如果扫码失败，请在手机端手动输入以上信息"
     },
     "live2d": {
         "manager": "Live2D 模型管理",

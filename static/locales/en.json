@@ -810,7 +810,19 @@
         },
         "loadConfigFailed": "Failed to load configuration, please refresh the page and try again",
         "errorGettingCurrentApiKey": "Error getting current API Key",
-        "getCurrentApiKeyFailed": "Failed to get current API Key"
+        "getCurrentApiKeyFailed": "Failed to get current API Key",
+        "p2pConnectionTitle": "Scan to Connect on Mobile",
+        "p2pConnectionDesc": "Scan with the mobile App to connect directly on the same WiFi",
+        "p2pStep1": "Connect phone and PC to <strong>the same WiFi</strong>",
+        "p2pStep2": "Open N.E.K.O. App, tap <strong>\"Scan to Connect\"</strong> on the home screen",
+        "p2pStep3": "Scan the QR code below — <strong>connection completes automatically</strong>",
+        "p2pQrError": "QR code failed to load<br>Please make sure the service is running",
+        "p2pRefreshQr": "Refresh QR Code",
+        "p2pLanIp": "LAN IP",
+        "p2pPort": "Port",
+        "p2pToken": "Connection Token",
+        "p2pCopyInfo": "Copy Connection Info",
+        "p2pManualHint": "If scanning fails, enter the above info manually on your phone"
     },
     "live2d": {
         "manager": "Live2D Model Manager",

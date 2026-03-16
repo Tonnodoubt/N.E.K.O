@@ -810,7 +810,19 @@
         },
         "loadConfigFailed": "設定の読み込みに失敗しました。ページを更新して再試行してください",
         "errorGettingCurrentApiKey": "現在のAPIキーの取得中にエラーが発生しました",
-        "getCurrentApiKeyFailed": "現在のAPIキーの取得に失敗しました"
+        "getCurrentApiKeyFailed": "現在のAPIキーの取得に失敗しました",
+        "p2pConnectionTitle": "スマホでスキャン接続",
+        "p2pConnectionDesc": "スマホアプリでQRコードをスキャンし、同じWiFiで直接接続",
+        "p2pStep1": "スマホとPCを<strong>同じWiFi</strong>に接続",
+        "p2pStep2": "N.E.K.O. アプリを開き、ホーム画面の<strong>「スキャン設定」</strong>をタップ",
+        "p2pStep3": "下のQRコードをスキャン — <strong>接続が自動完了</strong>",
+        "p2pQrError": "QRコードの読み込みに失敗しました<br>サービスが起動していることを確認してください",
+        "p2pRefreshQr": "QRコードを更新",
+        "p2pLanIp": "ローカルIP",
+        "p2pPort": "ポート",
+        "p2pToken": "接続トークン",
+        "p2pCopyInfo": "接続情報をコピー",
+        "p2pManualHint": "スキャンに失敗した場合は、上記の情報をスマホで手動入力してください"
     },
     "live2d": {
         "manager": "Live2Dモデル管理",

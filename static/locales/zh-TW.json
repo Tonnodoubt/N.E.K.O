@@ -810,7 +810,19 @@
         },
         "loadConfigFailed": "載入配置失敗，請重新整理頁面重試",
         "errorGettingCurrentApiKey": "獲取目前 API Key 時出錯",
-        "getCurrentApiKeyFailed": "獲取目前 API Key 失敗"
+        "getCurrentApiKeyFailed": "獲取目前 API Key 失敗",
+        "p2pConnectionTitle": "手機掃碼連線",
+        "p2pConnectionDesc": "用手機 App 掃碼，同一 WiFi 下直接連線桌面端",
+        "p2pStep1": "手機與電腦連線<strong>同一 WiFi</strong>",
+        "p2pStep2": "開啟 N.E.K.O. App，點選首頁<strong>「掃碼設定」</strong>",
+        "p2pStep3": "對準下方二維碼掃描，<strong>連線自動完成</strong>",
+        "p2pQrError": "二維碼載入失敗<br>請確保服務已啟動",
+        "p2pRefreshQr": "重新整理二維碼",
+        "p2pLanIp": "區域網路 IP",
+        "p2pPort": "連接埠",
+        "p2pToken": "連線 Token",
+        "p2pCopyInfo": "複製連線資訊",
+        "p2pManualHint": "如果掃碼失敗，請在手機端手動輸入以上資訊"
     },
     "live2d": {
         "manager": "Live2D 模型管理",
