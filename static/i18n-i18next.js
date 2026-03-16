@@ -705,8 +705,8 @@
                 element.setAttribute('data-text', text);
             }
 
-            // 如果翻译文本包含 HTML 标签（如 <br>、<img> 等），使用 innerHTML，否则使用 textContent
-            if (text.includes('<br>') || text.includes('<BR>') || text.includes('<br/>') || text.includes('<img>') || text.includes('<IMG>') || text.includes('<img ')) {
+            // 如果翻译文本包含 HTML 标签（如 <br>、<strong>、<img> 等），使用 innerHTML，否则使用 textContent
+            if (/<br\s*\/?>|<img[\s>]|<strong>|<b>|<em>|<span/i.test(text)) {
                 // 安全过滤：仅允许 <br> 和 <img> 标签，且 <img> 仅允许安全属性
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = text;
@@ -717,7 +717,8 @@
                     children.forEach(child => {
                         if (child.nodeType === 1) { // Element node
                             const tagName = child.tagName.toUpperCase();
-                            if (tagName !== 'BR' && tagName !== 'IMG') {
+                            const ALLOWED_INLINE = new Set(['BR', 'IMG', 'STRONG', 'B', 'EM', 'I', 'SPAN', 'U']);
+                            if (!ALLOWED_INLINE.has(tagName)) {
                                 // 不允许的标签，替换为其文本内容
                                 const textNode = document.createTextNode(child.textContent);
                                 node.replaceChild(textNode, child);
