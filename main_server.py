@@ -580,6 +580,87 @@ async def health():
     return build_health_response("main", instance_id=INSTANCE_ID)
 
 
+@app.get("/p2p-info")
+async def p2p_info():
+    """代理 P2P 连接信息请求到 lan_proxy"""
+    from fastapi.responses import JSONResponse
+    from config import LAN_PROXY_PORT
+    import httpx
+    import socket
+
+    try:
+        # 获取本机局域网 IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            lan_ip = s.getsockname()[0]
+            s.close()
+        except:
+            lan_ip = "127.0.0.1"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://{lan_ip}:{LAN_PROXY_PORT}/p2p-info", timeout=2.0)
+            if response.status_code == 200:
+                return JSONResponse(content=response.json())
+            else:
+                return JSONResponse(
+                    content={"error": "P2P info not available"},
+                    status_code=503
+                )
+    except Exception as e:
+        logger.error(f"Failed to get P2P info: {e}")
+        return JSONResponse(
+            content={"error": "P2P service unavailable"},
+            status_code=503
+        )
+
+
+@app.get("/lanproxyqrcode")
+async def lanproxy_qrcode():
+    """代理 P2P 连接二维码图片请求到 lan_proxy"""
+    from fastapi.responses import Response, JSONResponse
+    from config import LAN_PROXY_PORT
+    import httpx
+    import socket
+
+    try:
+        # 获取本机局域网 IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            lan_ip = s.getsockname()[0]
+            s.close()
+        except:
+            lan_ip = "127.0.0.1"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"http://{lan_ip}:{LAN_PROXY_PORT}/lanproxyqrcode",
+                timeout=5.0
+            )
+            if response.status_code == 200:
+                return Response(
+                    content=response.content,
+                    media_type="image/png",
+                    headers={
+                        "X-Lan-Ip": response.headers.get("X-Lan-Ip", ""),
+                        "X-Port": response.headers.get("X-Port", ""),
+                        "X-Token": response.headers.get("X-Token", ""),
+                    }
+                )
+            else:
+                return JSONResponse(
+                    content={"error": "QR code not available"},
+                    status_code=503
+                )
+    except Exception as e:
+        logger.error(f"Failed to get QR code: {e}")
+        return JSONResponse(
+            content={"error": "QR code service unavailable"},
+            status_code=503
+        )
+
+
 @app.post('/api/beacon/shutdown')
 async def beacon_shutdown():
     """Beacon 接口：用于优雅关闭服务器"""
