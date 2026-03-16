@@ -492,7 +492,7 @@ def run_main_server(ready_event: Event, import_event: Event | None = None):
         import traceback
         traceback.print_exc()
 
-def run_lan_proxy(ready_event: Event):
+def run_lan_proxy(ready_event: Event, import_event: Event | None = None):
     """运行 LAN Proxy"""
     try:
         # 确保工作目录正确
