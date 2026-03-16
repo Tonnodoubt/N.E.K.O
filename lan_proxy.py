@@ -546,11 +546,11 @@ class LanProxy:
                 endpoint = await self.stun_client.get_public_endpoint()
                 if endpoint:
                     self.stun_ip, self.stun_port = endpoint
-                    print(f"[LAN Proxy] ✅ STUN endpoint: {self.stun_ip}:{self.stun_port}")
+                    print(f"[LAN Proxy] [OK] STUN endpoint: {self.stun_ip}:{self.stun_port}")
                 else:
-                    print("[LAN Proxy] ⚠️ STUN 获取失败")
+                    print("[LAN Proxy] [WARN] STUN 获取失败")
             except Exception as e:
-                print(f"[LAN Proxy] ⚠️ STUN 配置失败: {e}")
+                print(f"[LAN Proxy] [WARN] STUN 配置失败: {e}")
 
         # ── UDP P2P 服务器 ──
         if UDP_SERVER_AVAILABLE:
@@ -578,12 +578,12 @@ class LanProxy:
                     cloud_registry_url=cloud_url,
                 )
                 await self.udp_server.start()
-                print(f"[LAN Proxy] ✅ UDP P2P 服务器已启动，端口: {udp_port}")
+                print(f"[LAN Proxy] [OK] UDP P2P 服务器已启动，端口: {udp_port}")
                 print(f"[LAN Proxy] UDP 客户端将连接到 TCP 端口: {PROXY_PORT}")
             except Exception as e:
-                print(f"[LAN Proxy] ⚠️ UDP 服务器启动失败: {e}")
+                print(f"[LAN Proxy] [WARN] UDP 服务器启动失败: {e}")
         else:
-            print("[LAN Proxy] ⚠️ UDP 服务器不可用，跳过启动")
+            print("[LAN Proxy] [WARN] UDP 服务器不可用，跳过启动")
 
         # ── 云端注册 ──
         if self.enable_cloud:
@@ -602,14 +602,14 @@ class LanProxy:
                 )
 
                 if success:
-                    print(f"[LAN Proxy] ✅ 云端注册成功")
+                    print(f"[LAN Proxy] [OK] 云端注册成功")
                     print(f"[LAN Proxy] Device ID: {device_id}")
                     # 启动定期刷新
                     self._start_cloud_refresh()
                 else:
-                    print("[LAN Proxy] ⚠️ 云端注册失败")
+                    print("[LAN Proxy] [WARN] 云端注册失败")
             except Exception as e:
-                print(f"[LAN Proxy] ⚠️ 云端注册失败: {e}")
+                print(f"[LAN Proxy] [WARN] 云端注册失败: {e}")
 
         # 保存状态
         _save_status(self.get_connection_info())

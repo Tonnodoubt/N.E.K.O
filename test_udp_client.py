@@ -48,17 +48,17 @@ class UDPP2PClient:
 
         # 第1层：LAN 直连
         if await self._try_lan_connect(timeout):
-            logger.info("[UDP Client] ✅ 第1层成功：LAN 直连")
+            logger.info("[UDP Client] [OK] 第1层成功：LAN 直连")
             return True
 
         logger.info("[UDP Client] 第1层失败，尝试第2层...")
 
         # 第2层：STUN 打洞
         if await self._try_stun_hole_punching(timeout):
-            logger.info("[UDP Client] ✅ 第2层成功：STUN 打洞")
+            logger.info("[UDP Client] [OK] 第2层成功：STUN 打洞")
             return True
 
-        logger.error("[UDP Client] ❌ 所有连接方式失败")
+        logger.error("[UDP Client] [FAIL] 所有连接方式失败")
         return False
 
     async def _try_lan_connect(self, timeout: int) -> bool:
@@ -300,7 +300,7 @@ async def test_udp_client():
         # 连接
         print(f"\n正在连接设备: {device_id}")
         if await client.connect():
-            print("✅ 连接成功！\n")
+            print("[OK] 连接成功！\n")
 
             # 发送测试数据
             print("发送测试数据...")
@@ -319,7 +319,7 @@ async def test_udp_client():
 
             print("\n测试完成！")
         else:
-            print("❌ 连接失败")
+            print("[FAIL] 连接失败")
 
     except KeyboardInterrupt:
         print("\n\n用户中断")
