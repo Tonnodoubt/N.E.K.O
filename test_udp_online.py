@@ -34,16 +34,16 @@ async def test_udp_client():
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 if resp.status != 200:
-                    print(f"❌ 查询失败: {resp.status}")
+                    print(f"[FAIL] 查询失败: {resp.status}")
                     return
 
                 device_info = await resp.json()
-                print(f"✅ 查询成功")
+                print(f"[OK] 查询成功")
                 print(f"   LAN IP: {device_info.get('lan_ip')}")
                 print(f"   STUN IP: {device_info.get('stun_ip')}")
                 print(f"   STUN Port: {device_info.get('stun_port')}")
     except Exception as e:
-        print(f"❌ 查询失败: {e}")
+        print(f"[FAIL] 查询失败: {e}")
         return
 
     # 测试第1层（LAN）
@@ -70,12 +70,12 @@ async def test_udp_client():
         response = json.loads(data.decode())
 
         if response.get('type') == 'ACK':
-            print("\n✅ 第1层成功：LAN 直连")
+            print("\n[OK] 第1层成功：LAN 直连")
             return
     except socket.timeout:
-        print("   ⏱️  第1层超时")
+        print("   [TIMEOUT] 第1层超时")
     except Exception as e:
-        print(f"   ❌ 第1层失败: {e}")
+        print(f"   [FAIL] 第1层失败: {e}")
     finally:
         sock.close()
 
@@ -85,7 +85,7 @@ async def test_udp_client():
     stun_port = device_info.get('stun_port')
 
     if not stun_ip or not stun_port:
-        print("❌ STUN 信息缺失")
+        print("[FAIL] STUN 信息缺失")
         return
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -106,17 +106,17 @@ async def test_udp_client():
         response = json.loads(data.decode())
 
         if response.get('type') == 'ACK':
-            print("\n✅ 第2层成功：STUN 打洞")
+            print("\n[OK] 第2层成功：STUN 打洞")
             return
     except socket.timeout:
-        print("   ⏱️  第2层超时")
+        print("   [TIMEOUT] 第2层超时")
         print("   可能原因：NAT 不支持打洞，或防火墙阻止")
     except Exception as e:
-        print(f"   ❌ 第2层失败: {e}")
+        print(f"   [FAIL] 第2层失败: {e}")
     finally:
         sock.close()
 
-    print("\n❌ 所有连接方式失败")
+    print("\n[FAIL] 所有连接方式失败")
     print("\n" + "="*70 + "\n")
 
 # 在线运行入口

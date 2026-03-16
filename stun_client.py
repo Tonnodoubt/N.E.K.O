@@ -223,6 +223,66 @@ class STUNClient:
         else:
             raise ValueError(f"不支持的地址族: {family}")
 
+    async def detect_nat_type(self, second_stun_server: str = "stun.l.google.com", second_stun_port: int = 19302, timeout: int = 5) -> str:
+        """
+        检测 NAT 类型（Cone vs Symmetric）
+
+        从同一个本地端口向两个不同的 STUN 服务器发送请求，
+        比较返回的外部端口。相同 → Cone NAT，不同 → Symmetric NAT。
+
+        Returns:
+            'cone' / 'symmetric' / 'unknown'
+        """
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(timeout)
+            sock.bind(('0.0.0.0', 0))
+            local_port = sock.getsockname()[1]
+            logger.info(f"[STUN] NAT 检测本地端口: {local_port}")
+
+            loop = asyncio.get_event_loop()
+            request = self._build_binding_request()
+
+            # 第一次：发送到自建 STUN 服务器
+            server1 = (self.stun_server, self.stun_port)
+            sock.sendto(request, server1)
+            data1, _ = await loop.run_in_executor(None, sock.recvfrom, 1024)
+            _, port1 = self._parse_binding_response(data1)
+            logger.info(f"[STUN] 服务器1 ({self.stun_server}) 返回端口: {port1}")
+
+            # 第二次：发送到第二个 STUN 服务器（新的 Transaction ID）
+            request2 = self._build_binding_request()
+            try:
+                server2_ip = socket.gethostbyname(second_stun_server)
+            except socket.gaierror:
+                logger.warning(f"[STUN] 无法解析 {second_stun_server}，跳过 NAT 检测")
+                return 'unknown'
+
+            server2 = (server2_ip, second_stun_port)
+            sock.sendto(request2, server2)
+            data2, _ = await loop.run_in_executor(None, sock.recvfrom, 1024)
+            _, port2 = self._parse_binding_response(data2)
+            logger.info(f"[STUN] 服务器2 ({second_stun_server}) 返回端口: {port2}")
+
+            # 比较端口
+            if port1 == port2:
+                logger.info(f"[STUN] NAT 类型: Cone (端口一致: {port1})")
+                return 'cone'
+            else:
+                logger.info(f"[STUN] NAT 类型: Symmetric (端口不一致: {port1} vs {port2})")
+                return 'symmetric'
+
+        except socket.timeout:
+            logger.warning("[STUN] NAT 检测超时")
+            return 'unknown'
+        except Exception as e:
+            logger.warning(f"[STUN] NAT 检测失败: {e}")
+            return 'unknown'
+        finally:
+            if sock:
+                sock.close()
+
     async def close(self):
         """关闭客户端"""
         if self.socket:
@@ -243,9 +303,9 @@ async def test_stun():
     client = STUNClient("stun.l.google.com", 19302)
     endpoint = await client.get_public_endpoint()
     if endpoint:
-        print(f"✅ 公网 endpoint: {endpoint[0]}:{endpoint[1]}")
+        print(f"[OK] 公网 endpoint: {endpoint[0]}:{endpoint[1]}")
     else:
-        print("❌ 获取失败")
+        print("[FAIL] 获取失败")
 
     await client.close()
 
@@ -254,9 +314,9 @@ async def test_stun():
     client = STUNClient("47.117.174.64", 3478)
     endpoint = await client.get_public_endpoint()
     if endpoint:
-        print(f"✅ 公网 endpoint: {endpoint[0]}:{endpoint[1]}")
+        print(f"[OK] 公网 endpoint: {endpoint[0]}:{endpoint[1]}")
     else:
-        print("❌ 获取失败（服务器可能未部署）")
+        print("[FAIL] 获取失败（服务器可能未部署）")
 
     await client.close()
 

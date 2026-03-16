@@ -184,7 +184,7 @@ async def test_client():
         # 1. 健康检查
         print("1. 健康检查...")
         if await client.health_check():
-            print("✅ 服务正常\n")
+            print("[OK] 服务正常\n")
 
         # 2. 注册设备
         print("2. 注册设备...")
@@ -195,20 +195,20 @@ async def test_client():
             stun_ip="1.2.3.4",
             stun_port=48920
         )
-        print(f"{'✅' if success else '❌'} 注册{'成功' if success else '失败'}\n")
+        print(f"{'[OK]' if success else '[FAIL]'} 注册{'成功' if success else '失败'}\n")
 
         # 3. 查询设备
         print("3. 查询设备...")
         data = await client.lookup("test_device_001")
         if data:
-            print(f"✅ 查询成功: {data}\n")
+            print(f"[OK] 查询成功: {data}\n")
         else:
-            print("❌ 设备未找到\n")
+            print("[FAIL] 设备未找到\n")
 
         # 4. 再次查询（应该找不到，阅后即焚）
         print("4. 再次查询（阅后即焚）...")
         data = await client.lookup("test_device_001")
-        print(f"{'✅ 预期：未找到' if not data else '❌ 意外：找到数据'}\n")
+        print(f"{'[OK] 预期：未找到' if not data else '[FAIL] 意外：找到数据'}\n")
 
 
 if __name__ == "__main__":
