@@ -685,6 +685,139 @@
 
     </div> <!-- 关闭 main-content -->
 
+    <!-- P2P 连接二维码区块 -->
+    <div class="section" id="p2p-connection-section" style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e0e0e0;">
+        <h3 style="margin: 0 0 16px 0; color: #333; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #44b7fe;">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
+            <span data-i18n="api.p2pConnectionTitle">P2P 手机连接</span>
+        </h3>
+        <p style="margin: 0 0 16px 0; color: #666; font-size: 0.9rem;" data-i18n="api.p2pConnectionDesc">使用手机 App 扫码，同 WiFi 下直接连接桌面端</p>
+
+        <!-- 使用步骤 -->
+        <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 140px; background: white; border-radius: 8px; padding: 12px; border: 1px solid #e8e8e8; display: flex; align-items: flex-start; gap: 10px;">
+                <span style="background: #44b7fe; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; flex-shrink: 0;">1</span>
+                <span style="color: #555; font-size: 0.85rem; line-height: 1.4;" data-i18n="api.p2pStep1">手机与电脑连接<strong>同一 WiFi</strong></span>
+            </div>
+            <div style="flex: 1; min-width: 140px; background: white; border-radius: 8px; padding: 12px; border: 1px solid #e8e8e8; display: flex; align-items: flex-start; gap: 10px;">
+                <span style="background: #44b7fe; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; flex-shrink: 0;">2</span>
+                <span style="color: #555; font-size: 0.85rem; line-height: 1.4;" data-i18n="api.p2pStep2">打开 N.E.K.O. App，点击首页<strong>「扫码配置」</strong></span>
+            </div>
+            <div style="flex: 1; min-width: 140px; background: white; border-radius: 8px; padding: 12px; border: 1px solid #e8e8e8; display: flex; align-items: flex-start; gap: 10px;">
+                <span style="background: #44b7fe; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; flex-shrink: 0;">3</span>
+                <span style="color: #555; font-size: 0.85rem; line-height: 1.4;" data-i18n="api.p2pStep3">对准下方二维码扫描，<strong>连接自动完成</strong></span>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;">
+            <!-- 二维码区域 -->
+            <div style="flex: 0 0 auto; text-align: center;">
+                <div id="p2p-qr-container" style="background: white; padding: 12px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: inline-block;">
+                    <img id="p2p-qr-image" src="/lanproxyqrcode" alt="P2P QR Code" style="width: 180px; height: 180px; display: block;" onerror="this.style.display='none'; document.getElementById('p2p-qr-error').style.display='block';">
+                    <div id="p2p-qr-error" style="display: none; width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 14px; text-align: center; padding: 20px; box-sizing: border-box;">
+                        <span data-i18n="api.p2pQrError">二维码加载失败<br>请确保服务已启动</span>
+                    </div>
+                </div>
+                <button type="button" onclick="refreshP2pQrCode()" style="margin-top: 12px; padding: 8px 16px; background: #44b7fe; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; margin-left: auto; margin-right: auto;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                    <span data-i18n="api.p2pRefreshQr">刷新二维码</span>
+                </button>
+            </div>
+
+            <!-- 连接信息区域 -->
+            <div style="flex: 1; min-width: 200px;">
+                <div style="background: white; border-radius: 8px; padding: 16px; border: 1px solid #e8e8e8;">
+                    <div style="margin-bottom: 12px;">
+                        <span style="color: #888; font-size: 0.85rem; display: block; margin-bottom: 4px;" data-i18n="api.p2pLanIp">局域网 IP</span>
+                        <code id="p2p-lan-ip" style="background: #f4f4f4; padding: 6px 10px; border-radius: 4px; font-size: 0.9rem; display: block; word-break: break-all;">--</code>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <span style="color: #888; font-size: 0.85rem; display: block; margin-bottom: 4px;" data-i18n="api.p2pPort">端口</span>
+                        <code id="p2p-port" style="background: #f4f4f4; padding: 6px 10px; border-radius: 4px; font-size: 0.9rem;">--</code>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <span style="color: #888; font-size: 0.85rem; display: block; margin-bottom: 4px;" data-i18n="api.p2pToken">连接 Token</span>
+                        <code id="p2p-token" style="background: #f4f4f4; padding: 6px 10px; border-radius: 4px; font-size: 0.8rem; display: block; word-break: break-all;">--</code>
+                    </div>
+                    <button type="button" onclick="copyP2pConnectionInfo()" style="width: 100%; padding: 10px; background: #f0f0f0; color: #333; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        <span data-i18n="api.p2pCopyInfo">复制连接信息</span>
+                    </button>
+                </div>
+                <p style="margin: 12px 0 0 0; color: #999; font-size: 0.8rem; line-height: 1.4;" data-i18n="api.p2pManualHint">
+                    如果扫码失败，请在手机端手动输入以上信息
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function loadP2pConnectionInfo() {
+            fetch('/api/lan-proxy/info')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.enabled) {
+                        document.getElementById('p2p-lan-ip').textContent = data.lan_ip || '--';
+                        document.getElementById('p2p-port').textContent = data.port || '--';
+                        document.getElementById('p2p-token').textContent = data.token ? (data.token.slice(0, 8) + '...' + data.token.slice(-8)) : '--';
+                        document.getElementById('p2p-token').dataset.fullToken = data.token || '';
+                    } else {
+                        document.getElementById('p2p-lan-ip').textContent = '未启动';
+                        document.getElementById('p2p-port').textContent = '--';
+                        document.getElementById('p2p-token').textContent = data.message || 'LAN proxy not running';
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load P2P info:', err);
+                    document.getElementById('p2p-lan-ip').textContent = '加载失败';
+                    document.getElementById('p2p-port').textContent = '--';
+                    document.getElementById('p2p-token').textContent = '请刷新重试';
+                });
+        }
+
+        function refreshP2pQrCode() {
+            const img = document.getElementById('p2p-qr-image');
+            const errorDiv = document.getElementById('p2p-qr-error');
+            img.style.display = 'block';
+            errorDiv.style.display = 'none';
+            img.src = '/lanproxyqrcode?t=' + Date.now();
+            loadP2pConnectionInfo();
+        }
+
+        function copyP2pConnectionInfo() {
+            const token = document.getElementById('p2p-token').dataset.fullToken;
+            const ip = document.getElementById('p2p-lan-ip').textContent;
+            const port = document.getElementById('p2p-port').textContent;
+
+            if (!token || token === '--') {
+                alert('连接信息不可用');
+                return;
+            }
+
+            const info = JSON.stringify({ lan_ip: ip, port: parseInt(port) || 48920, token: token });
+            navigator.clipboard.writeText(info).then(() => {
+                const btn = document.querySelector('#p2p-connection-section button[onclick="copyP2pConnectionInfo()"]');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> <span>已复制</span>';
+                setTimeout(() => btn.innerHTML = originalText, 2000);
+            }).catch(() => {
+                alert('复制失败，请手动复制');
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', loadP2pConnectionInfo);
+    </script>
 
     <div class="save-button-box" >
         <div id="status" class="status"></div>
