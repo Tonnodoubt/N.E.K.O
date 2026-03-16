@@ -132,10 +132,6 @@ data/browser_use_prompts/*.md
 data/browser_use_extensions/
 .coverage
 
-# FRP 客户端二进制文件
-bin/frpc
-bin/frps
-
 # 设备 ID 文件（包含设备唯一标识）
 .lan_proxy_device_id
 
