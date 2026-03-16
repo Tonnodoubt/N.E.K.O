@@ -1,0 +1,22 @@
+[Unit]
+Description=N.E.K.O Cloud Registry API
+After=network.target redis.service
+
+[Service]
+Type=simple
+# 替换为你的实际用户名
+User=your_username
+# 替换为你的实际项目路径
+WorkingDirectory=/home/your_username/neko-cloud-registry
+# 替换为你的虚拟环境路径
+Environment="PATH=/home/your_username/neko-cloud-registry/venv/bin"
+ExecStart=/home/your_username/neko-cloud-registry/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

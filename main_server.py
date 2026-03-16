@@ -72,6 +72,7 @@ if _IS_MAIN_PROCESS:
 try:
     from fastapi import FastAPI # noqa
     from fastapi.staticfiles import StaticFiles # noqa
+    from starlette.middleware.cors import CORSMiddleware # noqa
     from main_logic import core as core, cross_server as cross_server # noqa
     from main_logic.agent_event_bus import MainServerAgentBridge, notify_analyze_ack, set_main_bridge # noqa
     from fastapi.templating import Jinja2Templates # noqa
@@ -522,6 +523,17 @@ lock = asyncio.Lock()
 # --- FastAPI App Setup ---
 app = FastAPI()
 
+# --- CORS (dev-friendly) ---
+# Allow local dev origins (Vite/React dev servers).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Neko-Access-Url"],
+)
+
 
 
 class CustomStaticFiles(StaticFiles):
@@ -627,6 +639,87 @@ async def health():
     from utils.port_utils import build_health_response
     from config import INSTANCE_ID
     return build_health_response("main", instance_id=INSTANCE_ID)
+
+
+@app.get("/p2p-info")
+async def p2p_info():
+    """代理 P2P 连接信息请求到 lan_proxy"""
+    from fastapi.responses import JSONResponse
+    from config import LAN_PROXY_PORT
+    import httpx
+    import socket
+
+    try:
+        # 获取本机局域网 IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            lan_ip = s.getsockname()[0]
+            s.close()
+        except:
+            lan_ip = "127.0.0.1"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://{lan_ip}:{LAN_PROXY_PORT}/p2p-info", timeout=2.0)
+            if response.status_code == 200:
+                return JSONResponse(content=response.json())
+            else:
+                return JSONResponse(
+                    content={"error": "P2P info not available"},
+                    status_code=503
+                )
+    except Exception as e:
+        logger.error(f"Failed to get P2P info: {e}")
+        return JSONResponse(
+            content={"error": "P2P service unavailable"},
+            status_code=503
+        )
+
+
+@app.get("/lanproxyqrcode")
+async def lanproxy_qrcode():
+    """代理 P2P 连接二维码图片请求到 lan_proxy"""
+    from fastapi.responses import Response, JSONResponse
+    from config import LAN_PROXY_PORT
+    import httpx
+    import socket
+
+    try:
+        # 获取本机局域网 IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            lan_ip = s.getsockname()[0]
+            s.close()
+        except:
+            lan_ip = "127.0.0.1"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"http://{lan_ip}:{LAN_PROXY_PORT}/lanproxyqrcode",
+                timeout=5.0
+            )
+            if response.status_code == 200:
+                return Response(
+                    content=response.content,
+                    media_type="image/png",
+                    headers={
+                        "X-Lan-Ip": response.headers.get("X-Lan-Ip", ""),
+                        "X-Port": response.headers.get("X-Port", ""),
+                        "X-Token": response.headers.get("X-Token", ""),
+                    }
+                )
+            else:
+                return JSONResponse(
+                    content={"error": "QR code not available"},
+                    status_code=503
+                )
+    except Exception as e:
+        logger.error(f"Failed to get QR code: {e}")
+        return JSONResponse(
+            content={"error": "QR code service unavailable"},
+            status_code=503
+        )
 
 
 @app.post('/api/beacon/shutdown')
@@ -1159,7 +1252,8 @@ if __name__ == "__main__":
     # 使用 os.path.abspath 输出更清晰的完整路径
     logger.info(f"Serving static files from: {os.path.abspath('static')}")
     logger.info(f"Serving index.html from: {os.path.abspath('templates/index.html')}")
-    logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT} (or your network IP:{MAIN_SERVER_PORT})")
+    logger.info(f"Access UI at: http://localhost:{MAIN_SERVER_PORT}")
+    logger.info(f"P2P LAN Proxy available for mobile/LAN access")
     logger.info("-----------------------------")
 
     # 使用统一的速率限制日志过滤器
@@ -1182,7 +1276,7 @@ if __name__ == "__main__":
     _behind_proxy = os.environ.get("NEKO_BEHIND_PROXY", "").strip().lower() in ("1", "true", "yes")
     config = uvicorn.Config(
         app=app,
-        host="127.0.0.1",
+        host="127.0.0.1",  # 仅本地访问，P2P 连接通过 lan_proxy 转发
         port=MAIN_SERVER_PORT,
         log_level="info",
         loop="asyncio",
@@ -1224,7 +1318,7 @@ if __name__ == "__main__":
 
     # 4) 启动服务器（阻塞，直到 server.should_exit=True）
     logger.info("--- Starting FastAPI Server ---")
-    logger.info(f"Access UI at: http://127.0.0.1:{MAIN_SERVER_PORT}/{args.page}")
+    logger.info(f"Access UI at: http://{display_host}:{MAIN_SERVER_PORT}/{args.page}")
     
     try:
         server.run()

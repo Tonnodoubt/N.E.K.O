@@ -9,7 +9,99 @@ import platform
 import uuid
 from types import MappingProxyType
 
+# 初始化 logger
+logger = logging.getLogger(__name__)
+
 from config.prompts_chara import lanlan_prompt, get_lanlan_prompt, is_default_prompt
+
+# --- Optional .env loader (no external deps) ---
+# NOTE:
+# - Python/FastAPI does NOT auto-load ".env" unless you use python-dotenv explicitly.
+# - We load it here so `os.environ` can be populated before reading config values.
+# - Existing environment variables always win (we won't override them).
+def _strip_quotes(s: str) -> str:
+    if len(s) >= 2 and ((s[0] == s[-1] == '"') or (s[0] == s[-1] == "'")):
+        return s[1:-1]
+    return s
+
+
+def _try_load_dotenv_file(dotenv_path: str) -> bool:
+    try:
+        if not dotenv_path or not os.path.exists(dotenv_path) or not os.path.isfile(dotenv_path):
+            return False
+        with open(dotenv_path, "r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # support: export KEY=VALUE
+                if line.startswith("export "):
+                    line = line[len("export ") :].strip()
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = _strip_quotes(value.strip())
+                if not key:
+                    continue
+                # don't override existing env
+                if key not in os.environ:
+                    os.environ[key] = value
+        logger.info("Loaded .env from %s", dotenv_path)
+        return True
+    except Exception as e:
+        logger.warning("Failed to load .env from %s: %s", dotenv_path, e)
+        return False
+
+
+def _load_dotenv() -> None:
+    # Highest priority: explicit path
+    explicit = os.environ.get("NEKO_DOTENV_PATH", "").strip()
+    if explicit and _try_load_dotenv_file(explicit):
+        return
+
+    # Try current working directory first (common when running `python main_server.py`)
+    cwd_path = os.path.join(os.getcwd(), ".env")
+    if _try_load_dotenv_file(cwd_path):
+        return
+
+    # Fallback: repo root (parent of config/ directory)
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root_path = os.path.join(repo_root, ".env")
+    _try_load_dotenv_file(root_path)
+
+
+_load_dotenv()
+
+# --- Environment helpers ---
+def _get_env_bool(name: str, default: bool = False) -> bool:
+    """Parse boolean-like env values.
+
+    Truthy: 1, true, yes, y, on (case-insensitive)
+    Falsy:  0, false, no, n, off, "" (case-insensitive)
+    """
+    raw = os.environ.get(name, None)
+    if raw is None:
+        return default
+    val = str(raw).strip().lower()
+    if val in ("1", "true", "yes", "y", "on"):
+        return True
+    if val in ("0", "false", "no", "n", "off", ""):
+        return False
+    logger.warning("Invalid boolean env var %s=%r, using default=%s", name, raw, default)
+    return default
+
+
+def _get_env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, None)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        logger.warning("Invalid int env var %s=%r, using default=%s", name, raw, default)
+        return default
+
 
 # 应用程序名称配置
 APP_NAME = "N.E.K.O"
@@ -161,12 +253,16 @@ TOOL_SERVER_PORT = _read_port_env("TOOL_SERVER_PORT", 48915)
 USER_PLUGIN_SERVER_PORT = _read_port_env("USER_PLUGIN_SERVER_PORT", 48916)
 AGENT_MQ_PORT = _read_port_env("AGENT_MQ_PORT", 48917)
 MAIN_AGENT_EVENT_PORT = _read_port_env("MAIN_AGENT_EVENT_PORT", 48918)
+LAN_PROXY_PORT = _read_port_env("LAN_PROXY_PORT", 48920)  # P2P LAN代理端口
 
 # 实例 ID：同一次启动的所有服务共享。
 # launcher 会在拉起子进程前写入 NEKO_INSTANCE_ID 环境变量。
 # 若源码直跑绕过 launcher，则每次导入使用随机回退值，确保 /health
 # 始终返回有效 id。
 INSTANCE_ID = os.getenv("NEKO_INSTANCE_ID") or uuid.uuid4().hex
+
+# MCP Router配置
+MCP_ROUTER_URL = 'http://localhost:3282'
 
 # tfLink 文件上传服务配置
 TFLINK_UPLOAD_URL = 'http://47.101.214.205:8000/api/upload'
@@ -656,7 +752,9 @@ __all__ = [
     'USER_PLUGIN_SERVER_PORT',
     'AGENT_MQ_PORT',
     'MAIN_AGENT_EVENT_PORT',
+    'LAN_PROXY_PORT',
     'INSTANCE_ID',
+    'MCP_ROUTER_URL',
     'TFLINK_UPLOAD_URL',
     'TFLINK_ALLOWED_HOSTS',
     'NATIVE_IMAGE_MIN_INTERVAL',
