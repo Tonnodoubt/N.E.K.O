@@ -999,9 +999,10 @@ class LLMSessionManager:
             return ""
         return text
 
-    async def start_session(self, websocket: WebSocket, new=False, input_mode='audio'):
+    async def start_session(self, websocket: WebSocket, new=False, input_mode='audio', audio_format=None):
         # 每次 start_session 都重新获取全局语言，确保 Steam/系统语言变更能即时生效
         self.user_language = normalize_language_code(get_global_language(), format='short')
+        self.audio_format = audio_format
         # 重置防刷屏标志
         self.session_closed_by_server = False
         self.last_audio_send_error_time = 0.0
@@ -1123,10 +1124,15 @@ class LLMSessionManager:
             # 等待一小段时间确保资源完全释放
             await asyncio.sleep(0.5)
             logger.info("旧session清理完成")
-        
+
         # 如果当前不需要TTS但TTS线程仍在运行，发送停止信号
-        if not self.use_tts and self.tts_thread and self.tts_thread.is_alive():
-            logger.info("当前模式不需要TTS，关闭TTS线程")
+        # 或者 audio_format 变化需要重建 TTS 线程
+        need_rebuild_tts = (
+            (not self.use_tts and self.tts_thread and self.tts_thread.is_alive()) or
+            (self.use_tts and self.tts_thread and self.tts_thread.is_alive() and hasattr(self, '_last_audio_format') and self._last_audio_format != self.audio_format)
+        )
+        if need_rebuild_tts:
+            logger.info(f"关闭TTS线程 (use_tts={self.use_tts}, audio_format changed: {getattr(self, '_last_audio_format', None)} → {self.audio_format})")
             try:
                 self.tts_request_queue.put((None, None))  # 通知线程退出
                 self.tts_thread.join(timeout=1.0)  # 等待线程结束
@@ -1154,7 +1160,8 @@ class LLMSessionManager:
                 # 使用工厂函数获取合适的 TTS worker
                 tts_worker = get_tts_worker(
                     core_api_type=self.core_api_type,
-                    has_custom_voice=has_custom_tts
+                    has_custom_voice=has_custom_tts,
+                    audio_format=self.audio_format
                 )
 
                 self.tts_request_queue = Queue()  # TTS request (线程队列)
@@ -1172,6 +1179,8 @@ class LLMSessionManager:
                 )
                 self.tts_thread.daemon = True
                 self.tts_thread.start()
+                self._last_audio_format = self.audio_format
+
 
                 # 等待TTS进程发送就绪信号（最多等待12秒）
                 tts_type = "free-preset-TTS" if self._is_free_preset_voice else ("custom-TTS" if has_custom_tts else f"{self.core_api_type}-default-TTS")

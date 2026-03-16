@@ -1,0 +1,38 @@
+# FRP 客户端配置（桌面端）
+
+# 服务器地址
+serverAddr = "47.117.174.64"
+serverPort = 7000
+
+# 认证
+auth.method = "token"
+auth.token = "neko_udp_relay_2024"
+
+# 日志
+log.to = "/tmp/frpc.log"
+log.level = "info"
+log.maxDays = 3
+
+# UDP P2P 代理 - STUN 端口
+[[proxies]]
+name = "udp-p2p-stun"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 47069  # 本地 UDP 服务器监听端口（STUN 端口）
+remotePort = 47069  # 远程端口保持一致
+
+# UDP P2P 代理 - FRP 回退端口（UDP 握手用）
+[[proxies]]
+name = "udp-p2p-frp"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 48920  # 本地 UDP 回退端口
+remotePort = 48920  # 远程端口
+
+# TCP HTTP/WebSocket 代理 - FRP 回退后的实际数据通道
+[[proxies]]
+name = "tcp-http-proxy"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 48920
+remotePort = 48921  # 独立端口，避免与 UDP:48920 冲突
