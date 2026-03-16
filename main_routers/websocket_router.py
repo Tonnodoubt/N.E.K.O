@@ -67,8 +67,13 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
     
     # 立即设置websocket到session manager，以支持主动搭话
     # 注意：这里设置后，即使cleanup()被调用，websocket也会在start_session时重新设置
-    session_manager[lanlan_name].websocket = websocket
+    mgr = session_manager[lanlan_name]
+    mgr.websocket = websocket
     logger.info(f"✅ 已设置 {lanlan_name} 的WebSocket连接")
+
+    if mgr.pending_agent_callbacks:
+        logger.info(f"[{lanlan_name}] websocket reconnect: {len(mgr.pending_agent_callbacks)} pending callbacks, scheduling delivery")
+        asyncio.create_task(mgr.trigger_agent_callbacks())
 
     try:
         while True:
@@ -79,7 +84,7 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
                 await websocket.close()
                 break
             if session_id[lanlan_name] != this_session_id:
-                await session_manager[lanlan_name].send_status(f"{lanlan_name}正在前往另一个终端...")
+                await session_manager[lanlan_name].send_status(json.dumps({"code": "CHARACTER_SWITCHING_TERMINAL", "details": {"name": lanlan_name}}))
                 await websocket.close()
                 break
             message = json.loads(data)
@@ -104,7 +109,7 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
                     audio_format = message.get("audio_format")
                     asyncio.create_task(session_manager[lanlan_name].start_session(websocket, message.get("new_session", False), mode, audio_format=audio_format))
                 else:
-                    await session_manager[lanlan_name].send_status(f"Invalid input type: {input_type}")
+                    await session_manager[lanlan_name].send_status(json.dumps({"code": "INVALID_INPUT_TYPE", "details": {"input_type": input_type}}))
 
             elif action == "stream_data":
                 asyncio.create_task(session_manager[lanlan_name].stream_data(message))
@@ -129,7 +134,7 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
 
             else:
                 logger.warning(f"Unknown action received: {action}")
-                await session_manager[lanlan_name].send_status(f"Unknown action: {action}")
+                await session_manager[lanlan_name].send_status(json.dumps({"code": "UNKNOWN_ACTION", "details": {"action": action}}))
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {websocket.client}")
@@ -138,7 +143,7 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
         logger.error(f"💥 {error_message}")
         try:
             if lanlan_name in session_manager:
-                await session_manager[lanlan_name].send_status(f"Server error: {e}")
+                await session_manager[lanlan_name].send_status(json.dumps({"code": "SERVER_ERROR"}))
         except: # noqa
             pass
     finally:

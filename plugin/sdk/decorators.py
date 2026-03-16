@@ -4,39 +4,16 @@
 提供插件开发所需的装饰器。
 """
 import inspect
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Type, Callable, Literal, Union, overload, Any, Coroutine, Dict, List, Optional, Protocol, TypeVar, cast, runtime_checkable, get_type_hints
-from .base import PluginMeta, NEKO_PLUGIN_TAG
+from typing import Callable, Literal, Union, overload, Any, Coroutine, Dict, List, Optional, TypeVar, cast, get_type_hints
+from .base import NEKO_PLUGIN_TAG
 from .events import EventMeta, EVENT_META_ATTR
-from .hooks import HookMeta, HookHandler, HookTiming, HOOK_META_ATTR
-
-# Worker 装饰器的属性名
-WORKER_MODE_ATTR = "_neko_worker_mode"
-
-
-@dataclass
-class WorkerConfig:
-    """Worker 配置"""
-    timeout: float = 30.0
-    priority: int = 0
-
+from .hooks import HookMeta, HookTiming, HOOK_META_ATTR
 
 # 状态持久化配置的属性名
 PERSIST_ATTR = "_neko_persist"
 
 # 向后兼容别名（已弃用，将在 v2.0 移除）
-def _get_checkpoint_attr():
-    import warnings
-    warnings.warn(
-        "CHECKPOINT_ATTR is deprecated, use PERSIST_ATTR instead. "
-        "Will be removed in v2.0.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return PERSIST_ATTR
-
-# 保持向后兼容，但访问时会触发警告
-CHECKPOINT_ATTR = PERSIST_ATTR  # 直接赋值，避免每次访问都警告
+CHECKPOINT_ATTR = PERSIST_ATTR
 
 
 def neko_plugin(cls):
@@ -189,41 +166,9 @@ def on_event(
     return decorator
 
 
-def worker(timeout: float = 30.0, priority: int = 0):
-    """
-    Worker 模式装饰器
-    
-    标记函数应该在 worker 线程池中执行，而不是在命令循环线程中执行。
-    可以叠加在 @plugin_entry、@lifecycle、@bus_subscribe 等装饰器上。
-    
-    Args:
-        timeout: 超时时间（秒），默认 30.0
-        priority: 优先级（数字越大优先级越高），默认 0
-    
-    Example:
-        @worker(timeout=30.0)
-        @plugin_entry(id="sync_task")
-        def sync_task(self, param: str):
-            # 同步代码，会在 worker 线程池中执行
-            return ok(data={"result": param})
-    """
-    def decorator(func: Callable) -> Callable:
-        # 附加 worker 配置到函数
-        config = WorkerConfig(timeout=timeout, priority=priority)
-        setattr(func, WORKER_MODE_ATTR, config)
-        # 返回原函数（不包装）
-        return func
-    return decorator
-
-
 class PluginDecorators:
-    """插件装饰器命名空间，支持 @plugin.worker 等语法"""
-    
-    @staticmethod
-    def worker(timeout: float = 30.0, priority: int = 0):
-        """Worker 模式装饰器"""
-        return worker(timeout=timeout, priority=priority)
-    
+    """插件装饰器命名空间"""
+
     @staticmethod
     def entry(**kwargs):
         """Plugin entry 装饰器（别名）"""
@@ -250,6 +195,7 @@ def plugin_entry(
     timeout: float | None = None,  # 自定义超时时间（秒），None 表示使用默认值
     metadata: dict | None = None,
     extra: dict | None = None,  # 向后兼容别名，已弃用
+    llm_result_fields: List[str] | None = None,  # 声明需要提供给对话模型的结果字段
 ) -> Callable:
     """
     语法糖：专门用来声明"对外可调用入口"的装饰器。
@@ -275,6 +221,9 @@ def plugin_entry(
             - 正数: 使用指定的超时时间
         metadata: 额外的元数据字典
         extra: metadata 的向后兼容别名（已弃用）
+        llm_result_fields: 声明该 entry 的 ok(data=...) 返回中，哪些字段需要
+            提供给对话模型作为结果摘要。未声明时结果不会以结构化形式注入 LLM 上下文。
+            示例: ["summary", "count"] — 只将 data["summary"] 和 data["count"] 注入。
     """
     # Pydantic model → extract JSON Schema
     effective_schema = input_schema
@@ -289,6 +238,8 @@ def plugin_entry(
     effective_metadata = dict(metadata) if metadata else (dict(extra) if extra else {})
     if timeout is not None:
         effective_metadata["timeout"] = timeout
+    if llm_result_fields is not None:
+        effective_metadata["llm_result_fields"] = list(llm_result_fields)
 
     _inner = on_event(
         event_type="plugin_entry",

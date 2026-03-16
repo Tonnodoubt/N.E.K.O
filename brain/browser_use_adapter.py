@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -135,11 +136,26 @@ def _patch_prompt_loader(fallback_dir: Path) -> None:
     )
 
 
-_ensure_browser_use_prompts()
 _configure_browser_logging()
 
 _DEFAULT_TIMEOUT_S = 300
 _DEFAULT_KEEP_ALIVE = True
+
+_browser_use_setup_done = False
+
+
+def _lazy_browser_use_setup() -> None:
+    """Run heavy browser_use one-time setup (deferred from module level).
+
+    This avoids importing the ``browser_use`` package at module import time,
+    letting agent_server become ready before the heavy dependency is loaded.
+    """
+    global _browser_use_setup_done
+    if _browser_use_setup_done:
+        return
+    _ensure_browser_use_prompts()
+    _seed_extension_cache()
+    _browser_use_setup_done = True
 
 
 def _seed_extension_cache() -> None:
@@ -191,9 +207,6 @@ def _seed_extension_cache() -> None:
             f"[BrowserUse] Seeded {copied} bundled extension(s) into cache",
             flush=True,
         )
-
-
-_seed_extension_cache()
 
 
 def _find_bundled_chromium() -> Optional[str]:
@@ -339,6 +352,7 @@ class BrowserUseAdapter:
     _ip_country_cache: Optional[str] = None
 
     def __init__(self, headless: bool = False) -> None:
+        _lazy_browser_use_setup()
         self._config_manager = get_config_manager()
         self.last_error: Optional[str] = None
         self._headless = headless
@@ -357,7 +371,7 @@ class BrowserUseAdapter:
             self.last_error = str(e)
 
     @staticmethod
-    def _get_ip_country() -> Optional[str]:
+    async def _get_ip_country() -> Optional[str]:
         """Return the user's IP country code (e.g. 'US', 'JP', 'CN').
 
         Priority: Steam GeoIP -> ipinfo.io fallback.
@@ -383,10 +397,10 @@ class BrowserUseAdapter:
 
         # Fallback: public GeoIP API
         try:
-            import urllib.request
-            import json as _json
-            with urllib.request.urlopen("https://ipinfo.io/json", timeout=3) as resp:
-                data = _json.loads(resp.read())
+            import httpx
+            async with httpx.AsyncClient(timeout=3) as client:
+                resp = await client.get("https://ipinfo.io/json")
+                data = resp.json()
             code = (data.get("country") or "").upper()
             if code:
                 BrowserUseAdapter._ip_country_cache = code
@@ -406,10 +420,10 @@ class BrowserUseAdapter:
         reasons = []
         ok, gate_reasons = self._config_manager.is_agent_api_ready()
         if not ok:
-            reasons.extend(gate_reasons)
+            reasons.append("AGENT_ENDPOINT_NOT_CONFIGURED")
             ready = False
         if not self._ready_import:
-            reasons.append(f"browser-use not installed: {self.last_error}")
+            reasons.append("AGENT_BROWSER_USE_NOT_INSTALLED")
         return {"enabled": True, "ready": ready, "reasons": reasons, "provider": "browser-use"}
 
     async def _get_browser_session(self) -> Any:
@@ -691,16 +705,13 @@ class BrowserUseAdapter:
         if not ok:
             return {
                 "success": False,
-                "error": (
-                    "免费 Agent 模型今日试用次数已达上限 "
-                    f"({info.get('used', 0)}/{info.get('limit', 300)})，请明日再试。"
-                ),
+                "error": json.dumps({"code": "AGENT_QUOTA_EXCEEDED", "details": {"used": info.get('used', 0), "limit": info.get('limit', 300)}}),
             }
 
         # 所有 pre-checks 通过后才启动 IP 国家查询任务
         if not BrowserUseAdapter._ip_country_cache:
             country_future = asyncio.create_task(
-                asyncio.to_thread(self._get_ip_country)
+                self._get_ip_country()
             )
 
         for launch_attempt in range(2):

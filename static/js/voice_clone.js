@@ -252,14 +252,18 @@ function registerVoice() {
             const data = await res.json();
             if (!res.ok) {
                 // 从响应体中提取详细错误信息
-                const errorMsg = data.error || data.detail || `API returned ${res.status}`;
+                const errorMsg = (data.code && window.t) ? window.t('errors.' + data.code, data.details || {}) : (data.error || data.detail || `API returned ${res.status}`);
                 throw new Error(errorMsg);
             }
             return data;
         })
         .then(data => {
             if (data.voice_id) {
-                resultDiv.textContent = window.t ? window.t('voice.registerSuccess', { voiceId: data.voice_id }) : '注册成功！voice_id: ' + data.voice_id;
+                if (data.reused) {
+                    resultDiv.textContent = window.t ? window.t('voice.reusedExisting', { voiceId: data.voice_id }) : '已复用现有音色，跳过上传。voice_id: ' + data.voice_id;
+                } else {
+                    resultDiv.textContent = window.t ? window.t('voice.registerSuccess', { voiceId: data.voice_id }) : '注册成功！voice_id: ' + data.voice_id;
+                }
                 // 刷新音色列表
                 setTimeout(() => {
                     if (typeof loadVoices === 'function') {
@@ -376,7 +380,8 @@ async function playPreview(voiceId, btn) {
                     // localStorage 可能满了，但我们仍然可以播放这一次生成的音频
                 }
             } else {
-                throw new Error(data.error || 'Failed to get preview');
+                const _errMsg = (data.code && window.t) ? window.t('errors.' + data.code, data.details || {}) : (data.error || 'Failed to get preview');
+                throw new Error(_errMsg);
             }
         }
 

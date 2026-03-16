@@ -467,6 +467,39 @@ Live2DManager.prototype._configureLoadedModel = async function(model, modelPath,
         this.setupDragAndDrop(model);
     }
 
+    // 修复 HitAreas 配置：如果 Name 为空，自动设置为 Id
+    if (model.internalModel && model.internalModel.settings && model.internalModel.settings.hitAreas) {
+        
+        const hitAreas_do = model.internalModel.hitAreas;
+        const hitAreas_disk = model.internalModel.settings.hitAreas;
+        let fixedCount = 0;
+        
+        hitAreas_disk.forEach(hitArea => {
+            if (!hitArea.Name || hitArea.Name === '') {
+                hitArea.Name = hitArea.Id;
+                fixedCount++;
+            }
+        });
+        
+        if (fixedCount > 0) {
+            delete hitAreas_do[''];
+            
+            hitAreas_disk.forEach(hitArea => {
+                const drawableIndex = model.internalModel.coreModel.getDrawableIndex(hitArea.Id);
+                hitAreas_do[hitArea.Id] = {
+                    id: hitArea.Id,
+                    name: hitArea.Id,
+                    index: drawableIndex
+                };
+            });
+            
+            console.log(`[HitArea] 已修复 ${fixedCount} 个 HitArea 的 Name 字段（原为空字符串）`);
+        }
+    }
+
+    // // 设置 HitArea 交互（点击 HitArea 播放对应动画）
+    // this.setupHitAreaInteraction(model);
+
     // 设置滚轮缩放
     if (options.wheelEnabled !== false) {
         this.setupWheelZoom(model);
@@ -1258,14 +1291,16 @@ Live2DManager.prototype.applyModelSettings = function(model, options) {
 
             // 验证缩放值是否有效
             if (Number.isFinite(scaleX) && Number.isFinite(scaleY) &&
-                scaleX > 0 && scaleY > 0 && scaleX < 10 && scaleY < 10) {
+                scaleX >= MODEL_PREFERENCES.SCALE_MIN && scaleY >= MODEL_PREFERENCES.SCALE_MIN && scaleX < 10 && scaleY < 10) {
                 // 仅在屏幕分辨率发生"跨代"级别变化时（如 1080p→4K）才归一化缩放
                 // 普通跨屏移动（如 1600x900→2560x1440）不调整，避免用户调好的大小被改
                 const scaleRatio = Math.min(wRatio, hRatio);
                 const isExtremeChange = hasViewport && (scaleRatio > 1.8 || scaleRatio < 0.56);
                 if (isExtremeChange) {
-                    model.scale.set(scaleX * scaleRatio, scaleY * scaleRatio);
-                    console.log('屏幕分辨率大幅变化，缩放已归一化:', { wRatio, hRatio, scaleRatio });
+                    const scaledX = Math.max(MODEL_PREFERENCES.SCALE_MIN, Math.min(scaleX * scaleRatio, MODEL_PREFERENCES.SCALE_MAX));
+                    const scaledY = Math.max(MODEL_PREFERENCES.SCALE_MIN, Math.min(scaleY * scaleRatio, MODEL_PREFERENCES.SCALE_MAX));
+                    model.scale.set(scaledX, scaledY);
+                    console.log('屏幕分辨率大幅变化，缩放已归一化:', { wRatio, hRatio, scaleRatio, scaledX, scaledY });
                 } else {
                     model.scale.set(scaleX, scaleY);
                 }

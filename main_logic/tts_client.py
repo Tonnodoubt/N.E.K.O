@@ -14,6 +14,7 @@ import aiohttp
 import asyncio
 from functools import partial
 from config import GSV_VOICE_PREFIX
+from utils.aiohttp_proxy_utils import aiohttp_session_kwargs_for_url
 from utils.config_manager import get_config_manager
 from utils.logger_config import get_module_logger
 
@@ -121,21 +122,11 @@ def _enqueue_error(response_queue, error_value):
 
 
 def _adjust_free_tts_url(url: str) -> str:
-    """Free TTS URL 的地区替换：非大陆用户将 lanlan.tech 替换为 lanlan.app。"""
-    if 'lanlan.tech' not in url:
-        return url
+    """Free TTS URL 的地区替换：委托给 ConfigManager._adjust_free_api_url。"""
     try:
-        from utils.config_manager import ConfigManager
-        if ConfigManager._region_cache is not None:
-            if ConfigManager._region_cache:
-                return url.replace('lanlan.tech', 'lanlan.app')
-            return url
-        cm = get_config_manager()
-        if cm._check_non_mainland():
-            return url.replace('lanlan.tech', 'lanlan.app')
+        return get_config_manager()._adjust_free_api_url(url, True)
     except Exception:
-        pass
-    return url
+        return url
 
 
 _TTS_LANGUAGE_CODE_MAP = {
@@ -193,6 +184,7 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
         session_id = None
         session_ready = asyncio.Event()
         response_done = asyncio.Event()  # 用于标记当前响应是否完成
+        text_done_sent = False  # 防止同一轮次重复发送 tts.text.done
         # 流式重采样器（24kHz→48kHz）- 维护 chunk 边界状态
         resampler = soxr.ResampleStream(24000, 48000, 1, dtype='float32')
         
@@ -338,19 +330,21 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                     session_id = None
                     session_ready.clear()
                     current_speech_id = None
+                    text_done_sent = False
                     continue
                 
                 if sid is None:
                     # 正常结束（非阻塞）：发送完成信号，但不等待服务器确认、不关闭连接
                     # 音频继续通过 receive_task 流入 response_queue，
                     # 连接由下次 speech_id 切换 / __interrupt__ 关闭
-                    if ws and session_id and current_speech_id is not None:
+                    if ws and session_id and current_speech_id is not None and not text_done_sent:
                         try:
                             done_event = {
                                 "type": "tts.text.done",
                                 "data": {"session_id": session_id}
                             }
                             await ws.send(json.dumps(done_event))
+                            text_done_sent = True
                         except Exception as e:
                             logger.warning(f"发送TTS完成信号失败: {e}")
                     continue
@@ -358,6 +352,7 @@ def step_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                 # 新的语音ID，重新建立连接
                 if current_speech_id != sid:
                     current_speech_id = sid
+                    text_done_sent = False
                     response_done.clear()
                     resampler.clear()  # 重置重采样器状态（新轮次音频不应与上轮次连续）
                     if ws:
@@ -529,6 +524,7 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
         receive_task = None
         session_ready = asyncio.Event()
         response_done = asyncio.Event()  # 用于标记当前响应是否完成
+        buffer_committed = False  # 防止同一轮次重复提交缓冲区
         # 流式重采样器（24kHz→48kHz）- 维护 chunk 边界状态
         resampler = soxr.ResampleStream(24000, 48000, 1, dtype='float32')
         
@@ -647,18 +643,20 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                         receive_task = None
                     session_ready.clear()
                     current_speech_id = None
+                    buffer_committed = False
                     continue
                 
                 if sid is None:
                     # 正常结束（非阻塞）：提交缓冲区，但不等待服务器确认、不关闭连接
                     # 音频继续通过 receive_task 流入 response_queue，
                     # 连接由下次 speech_id 切换 / __interrupt__ 关闭
-                    if ws and session_ready.is_set() and current_speech_id is not None:
+                    if ws and session_ready.is_set() and current_speech_id is not None and not buffer_committed:
                         try:
                             await ws.send(json.dumps({
                                 "type": "input_text_buffer.commit",
                                 "event_id": f"event_{int(time.time() * 1000)}_commit"
                             }))
+                            buffer_committed = True
                         except Exception as e:
                             logger.warning(f"提交缓冲区失败: {e}")
                     continue
@@ -667,6 +665,7 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
                 # 直接关闭旧连接，打断旧语音
                 if current_speech_id != sid:
                     current_speech_id = sid
+                    buffer_committed = False
                     response_done.clear()
                     resampler.clear()  # 重置重采样器状态（新轮次音频不应与上轮次连续）
                     if ws:
@@ -829,11 +828,18 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
             self._bootstrap_buffer = bytearray()
             self._bootstrap_sent = False
             self._bootstrap_min_bytes = 1024
+            # 后续小包聚合：OGG OPUS 页常只有几百字节，高频小包
+            # 会给前端主线程带来大量 WASM 解码调用，Live2D 渲染繁忙时
+            # 容易导致 audio buffer underrun。聚合到 ≥4KB 再下发，
+            # 减少前端处理次数、增大每段解码出的音频长度。
+            self._agg_buffer = bytearray()
+            self._agg_min_bytes = 4096
 
         def reset_bootstrap_state(self):
             self._active_sid = None
             self._bootstrap_buffer.clear()
             self._bootstrap_sent = False
+            self._agg_buffer.clear()
             
         def on_open(self): 
             self.connection_lost = False
@@ -843,9 +849,14 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
             
         def on_complete(self): 
             # 短句可能在首包聚合阈值前就结束，完成时强制冲刷缓冲，避免整句静音。
+            # 若已静音（打断/回合切换），跳过投递，避免旧流尾包进入新回合的 response_queue。
             try:
-                if self._bootstrap_buffer and self._active_sid:
-                    self.response_queue.put(("__audio__", self._active_sid, bytes(self._bootstrap_buffer)))
+                sid = self._active_sid
+                if sid and not self._muted:
+                    if self._bootstrap_buffer:
+                        self.response_queue.put(("__audio__", sid, bytes(self._bootstrap_buffer)))
+                    if self._agg_buffer:
+                        self.response_queue.put(("__audio__", sid, bytes(self._agg_buffer)))
             finally:
                 self.reset_bootstrap_state()
                 
@@ -868,11 +879,12 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
                 # 回合切换窗口或未就绪时直接丢弃，避免错序串包
                 return
 
-            # speech_id 切换时重置首包聚合状态
+            # speech_id 切换时重置首包聚合状态（含后续聚合缓冲，避免旧数据串入新回合）
             if sid != self._active_sid:
                 self._active_sid = sid
                 self._bootstrap_buffer.clear()
                 self._bootstrap_sent = False
+                self._agg_buffer.clear()
 
             if not self._bootstrap_sent:
                 self._bootstrap_buffer.extend(data)
@@ -883,7 +895,10 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
                 self._bootstrap_sent = True
                 return
 
-            self.response_queue.put(("__audio__", sid, data))
+            self._agg_buffer.extend(data)
+            if len(self._agg_buffer) >= self._agg_min_bytes:
+                self.response_queue.put(("__audio__", sid, bytes(self._agg_buffer)))
+                self._agg_buffer.clear()
             
     callback = Callback(response_queue)
     synthesizer = None
@@ -898,7 +913,7 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
         """
         nonlocal last_streaming_call_time
         kwargs = dict(
-            model="cosyvoice-v3-plus",
+            model="cosyvoice-v3.5-plus",
             voice=voice_id,
             speech_rate=1.05,
             format=tts_audio_format,
@@ -1019,6 +1034,10 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
             current_speech_id = sid
             char_buffer = ""
             detected_lang = None
+            # 显式清理聚合缓冲：close() 会触发 on_complete→reset_bootstrap_state，
+            # 但若 SDK 线程延迟触发 on_complete，新 synthesizer 的 on_open 可能先执行
+            # 导致 _agg_buffer 带着旧数据进入新回合。此处提前清理消除该竞态。
+            callback.reset_bootstrap_state()
             callback.accepted_speech_id = sid
             
         if tts_text is None or not tts_text.strip():
@@ -1148,8 +1167,10 @@ def cogtts_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
                                 }
                                 
                                 # 使用异步HTTP客户端流式接收SSE响应
-                                async with aiohttp.ClientSession() as session:
-                                    async with session.post(tts_url, headers=headers, json=payload) as resp:
+                                async with aiohttp.ClientSession(
+                                    **aiohttp_session_kwargs_for_url(tts_url)
+                                ) as session:
+                                    async with session.post(tts_url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                                         if resp.status == 200:
                                             # CogTTS返回SSE格式: data: {...JSON...}
                                             # 使用缓冲区逐块读取，避免 "Chunk too big" 错误

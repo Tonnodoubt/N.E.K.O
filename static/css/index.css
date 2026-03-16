@@ -224,11 +224,14 @@ button * {
     overflow: hidden;
     visibility: visible;
     transition: all 1s ease-in-out, height 0ms 1s, width 0ms 1s, visibility 0ms 1s;
+    /* GPU 合成层隔离：减少窗口级重绘对 canvas 的影响 */
+    will-change: transform;
+    transform: translateZ(0);
 }
 /* 看板娘判定框-最小化状态 */
 #live2d-container.minimized {
-    right: -800px;
-    /* 向右侧移出屏幕 */
+    transform: translateX(300px) translateZ(0);
+    /* 向右平滑滑出（配合 opacity 渐隐） */
     opacity: 0;
     visibility: hidden;
 }
@@ -248,6 +251,9 @@ button * {
     opacity: 1;
     visibility: visible;
     background: transparent;
+    /* GPU 合成层隔离 */
+    will-change: transform;
+    transform: translateZ(0);
 }
 /* 看板娘判定框-最小化状态时画布透明 */
 #live2d-canvas.minimized {
@@ -268,10 +274,13 @@ button * {
     overflow: hidden;
     visibility: visible;
     transition: all 1s ease-in-out;
+    /* GPU 合成层隔离：减少窗口级重绘对 canvas 的影响 */
+    will-change: transform;
+    transform: translateZ(0);
 }
 /* 看板娘VR模型判定框-最小化状态 */
 #vrm-container.minimized {
-    right: -800px;
+    transform: translateX(300px) translateZ(0);
     opacity: 0;
     visibility: hidden;
 }
@@ -286,6 +295,9 @@ button * {
     background: transparent;
     width: 100%;
     height: 100%;
+    /* GPU 合成层隔离 */
+    will-change: transform;
+    transform: translateZ(0);
 }
 /* 看板娘VR模型判定框-最小化状态时画布透明 */
 #vrm-canvas.minimized {
@@ -294,20 +306,16 @@ button * {
 }
 /* 看板娘聊天框-容器 */
 #chat-container {
-    margin-bottom: 50px;
     pointer-events: auto;
     /* 恢复鼠标交互 */
     position: fixed;
     left: 20px;
-    bottom: 20px;
+    bottom: 70px;
     width: 400px;
     max-height: 500px;
     height: 500px;
-    /* Fluent Design Acrylic 材质 */
-    background: rgba(255, 255, 255, 0.65);
-    backdrop-filter: saturate(180%) blur(20px);
-    /* Fluent Design 标准模糊值 */
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    /* 背景设为透明，backdrop-filter 移至 ::before 伪元素以避免合成器泄漏 */
+    background: transparent;
     border-radius: 8px;
     /* Fluent Design 标准圆角 */
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -335,12 +343,30 @@ button * {
     will-change: transform;
 }
 
+/* Fluent Design Acrylic 材质层：将 backdrop-filter 隔离到伪元素上，
+   避免它与滚动子元素同层合成导致 Chromium 透明区域泄漏 */
+#chat-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-radius: inherit;
+    z-index: -1;
+    pointer-events: none;
+}
+
 /* 内部内容包裹器，负责滚动 - Fluent Design */
 #chat-content-wrapper {
     pointer-events: auto;
     flex-grow: 1;
     padding: 16px;
     padding-top: 48px;
+    overflow-x: hidden;
     overflow-y: auto;
     scroll-behavior: smooth;
     transition: opacity 0.2s ease, visibility 0.2s ease;
@@ -348,6 +374,36 @@ button * {
     visibility: visible;
     background: rgba(249, 249, 249, 0.7);
     /* Fluent Design 背景层 */
+    /* Firefox 滚动条 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.15) rgba(249, 249, 249, 0.95);
+}
+
+#chat-content-wrapper:hover {
+    scrollbar-color: rgba(0, 0, 0, 0.25) rgba(249, 249, 249, 0.95);
+}
+
+/* 聊天内容滚动条 - 防止透明窗口中滚动条轨道穿透桌面 */
+#chat-content-wrapper::-webkit-scrollbar {
+    width: 6px;
+}
+
+#chat-content-wrapper::-webkit-scrollbar-track {
+    background: rgba(249, 249, 249, 0.95);
+}
+
+#chat-content-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+}
+
+#chat-content-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+}
+
+/* 滚动条角落 - 防止透明窗口中角落区域穿透桌面 */
+#chat-content-wrapper::-webkit-scrollbar-corner {
+    background: rgba(249, 249, 249, 0.95);
 }
 
 /* 切换按钮样式 - 更醒目的设计 */
@@ -404,8 +460,8 @@ button * {
     left: 0;
     right: 0;
     height: 48px;
-    background: rgba(255, 255, 255, 0.5);
-    /* 更透明的 Mica 效果 */
+    background: #f7f8fa;
+    /* 不透明的标题栏背景 */
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     /* Fluent Design 中性分隔线 */
     display: flex;
@@ -588,6 +644,8 @@ button * {
     margin-top: 8px;
     box-shadow: 0 2px 8px rgba(68, 183, 254, 0.1);
     box-sizing: border-box;
+    pointer-events: auto;
+    touch-action: manipulation;
 }
 
 .subtitle-prompt-content {
@@ -670,40 +728,99 @@ button * {
     left: 50%;
     transform: translateX(-50%);
     z-index: 99998;
-    max-width: 85%;
-    min-width: 320px;
-    padding: 20px 28px;
+    max-width: min(500px, 85%);
+    min-width: 200px;
+    padding: 10px 18px;
     background: linear-gradient(135deg, rgba(68, 183, 254, 0.95) 0%, rgba(68, 183, 254, 0.9) 50%, rgba(100, 200, 255, 0.95) 100%);
     color: #fff;
-    border-radius: 20px;
-    font-size: 19px;
+    border-radius: 12px;
+    font-size: 17px;
     font-weight: 500;
-    line-height: 1.7;
+    line-height: 1.5;
     text-align: center;
     overflow-wrap: break-word;
-    white-space: pre-wrap;
+    white-space: normal;
     opacity: 0;
     visibility: hidden;
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: none;
-    /* 简化为2层shadow以提升性能 */
-    box-shadow: 0 8px 32px rgba(68, 183, 254, 0.4),
+    box-shadow: 0 6px 24px rgba(68, 183, 254, 0.35),
         0 0 0 1px rgba(255, 255, 255, 0.3) inset;
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    /* 简化为单层text-shadow */
-    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    border: 1.5px solid rgba(255, 255, 255, 0.4);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+#subtitle-text {
+    display: block;
+    margin-right: 24px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
 }
 
 #subtitle-display.hidden {
     display: none;
 }
 
+/* 拖拽句柄（四散箭头） */
+#subtitle-drag-handle {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    pointer-events: auto;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(4px);
+}
+
+#subtitle-drag-handle:hover {
+    background: rgba(255, 255, 255, 0.32);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+#subtitle-drag-handle:active {
+    cursor: grabbing;
+    background: rgba(255, 255, 255, 0.42);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+/* SVG 四向箭头图标 */
+#subtitle-drag-arrows {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#subtitle-drag-arrows svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* 拖拽时的高亮效果 */
+#subtitle-display.dragging {
+    opacity: 0.85;
+    box-shadow: 0 12px 40px rgba(68, 183, 254, 0.6),
+        0 0 0 2px rgba(255, 255, 255, 0.5) inset;
+    transition: none !important;
+    user-select: none;
+}
+
 #subtitle-display.show {
     opacity: 1;
     visibility: visible;
-    transform: translateX(-50%) translateY(0);
     animation: subtitleFadeIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
+
+/* 确保拖拽句柄在任何情况下都显示（防御性规则） */
 
 @keyframes subtitleFadeIn {
     0% {
@@ -721,11 +838,10 @@ button * {
 @media only screen and (max-width: 768px) {
     #subtitle-display {
         bottom: 80px;
-        /* 避免与输入框重叠 */
-        min-width: 280px;
-        max-width: 90%;
-        font-size: 17px;
-        padding: 16px 20px;
+        min-width: 180px;
+        max-width: 92%;
+        font-size: 15px;
+        padding: 6px 14px;
     }
 }
 
@@ -1055,6 +1171,12 @@ button * {
 }
 
 /* --- 最小化状态 --- */
+#chat-container.minimized::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: transparent;
+}
+
 #chat-container.minimized {
     background: rgba(68, 183, 254, 0.15);
     opacity: 1;
@@ -1089,8 +1211,9 @@ button * {
     display: none;
 }
 
-#chat-container.minimized #chat-tooltip {
-    display: none;
+#chat-container.minimized #chat-tooltip,
+#chat-container.minimized .music-player-bar {
+    display: none !important;
 }
 
 #chat-container.minimized #toggle-chat-btn {
@@ -1186,11 +1309,10 @@ button * {
     #chat-container {
         width: 90vw;
         left: 5vw;
-        bottom: 5px;
+        bottom: 10px;
         max-height: 60vh;
         height: 60vh;
         padding: 0;
-        margin-bottom: 5px;
         /* 禁用容器尺寸过渡，避免影响输入区 */
         transition: none !important;
         background: transparent;
@@ -1288,13 +1410,32 @@ button * {
 
 @media only screen and (max-width: 768px) {
 
-    /* 移动端：折叠（mobile-collapsed）时，聊天框高度为12vh */
+    /* 移动端：折叠时容器完全透明且不拦截触摸事件 */
     #chat-container.mobile-collapsed {
-        height: 12vh;
+        width: 48px !important;
+        min-width: 48px !important;
+        max-width: 48px !important;
+        height: 48px;
+        min-height: 48px;
+        max-height: 48px;
+        overflow: hidden;
+        pointer-events: none !important;
+        background: transparent !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        box-shadow: none !important;
+        border: none !important;
     }
 
-    /* 移动端：折叠（mobile-collapsed）时，切换按钮固定到左上角 */
+    #chat-container.mobile-collapsed::before {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: transparent !important;
+    }
+
+    /* 移动端：折叠时仅切换按钮可交互 */
     #chat-container.mobile-collapsed #toggle-chat-btn {
+        pointer-events: auto !important;
         left: 8px;
         right: auto;
         top: 8px;
@@ -1302,9 +1443,10 @@ button * {
         position: relative;
     }
 
-    /* 避免按钮覆盖输入区顶边，给输入区微小顶距 */
-    #chat-container.mobile-collapsed #text-input-area {
-        margin-top: 6px;
+    /* 移动端：折叠时隐藏输入区和音乐调节条 */
+    #chat-container.mobile-collapsed #text-input-area,
+    #chat-container.mobile-collapsed .music-player-bar {
+        display: none !important;
     }
 }
 
@@ -1329,6 +1471,12 @@ button * {
         animation: none;
         /* 移动端不需要呼吸效果 */
         background: transparent;
+    }
+
+    #chat-container.minimized::before {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: transparent !important;
     }
 }
 

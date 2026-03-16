@@ -3,6 +3,8 @@
 N.E.K.O. 统一启动器
 启动所有服务器，等待它们准备就绪后启动主程序，并监控主程序状态
 """
+from __future__ import annotations
+
 import sys
 import os
 import io
@@ -59,6 +61,16 @@ LAUNCH_ID = uuid.uuid4().hex
 INSTANCE_ID = os.environ.get("NEKO_INSTANCE_ID") or uuid.uuid4().hex
 os.environ.setdefault("NEKO_INSTANCE_ID", INSTANCE_ID)
 
+# 确保本地服务间通信不走系统代理（防止 Clash/Surge 等代理软件拦截 localhost 请求）
+# httpx 优先读小写 no_proxy，因此大小写都需要设置
+# 使用精确 token 匹配，防止 "127.0.0.1" in "127.0.0.10" 这类子串误判
+for _key in ("NO_PROXY", "no_proxy"):
+    _no_proxy_raw = os.environ.get(_key, "")
+    _tokens = set(map(str.strip, filter(None, _no_proxy_raw.split(","))))
+    for _host in ("127.0.0.1", "localhost"):
+        _tokens.add(_host)
+    os.environ[_key] = ",".join(_tokens)
+
 JOB_HANDLE = None
 _cleanup_lock = threading.Lock()
 _cleanup_done = False
@@ -71,11 +83,15 @@ DEFAULT_PORTS = {
     "TOOL_SERVER_PORT": TOOL_SERVER_PORT,
 }
 INTERNAL_DEFAULT_PORTS = {
+    "USER_PLUGIN_SERVER_PORT": 48916,
     "AGENT_MQ_PORT": 48917,
     "MAIN_AGENT_EVENT_PORT": 48918,
+    "ZMQ_SESSION_PUB_PORT": 48961,
+    "ZMQ_AGENT_PUSH_PORT": 48962,
+    "ZMQ_ANALYZE_PUSH_PORT": 48963,
 }
 # 该区间保留给 N.E.K.O 已知默认端口，避免 fallback 与伴生服务冲突。
-AVOID_FALLBACK_PORTS = set(range(48911, 48919))
+AVOID_FALLBACK_PORTS = set(range(48911, 48919)) | {48961, 48962, 48963}
 
 # 模块名到端口键的映射（用于判断已有 N.E.K.O 实例是否占用对应端口）
 MODULE_TO_PORT_KEY: dict[str, str] = {
@@ -84,6 +100,36 @@ MODULE_TO_PORT_KEY: dict[str, str] = {
     "main_server": "MAIN_SERVER_PORT",
     "lan_proxy": "LAN_PROXY_PORT",
 }
+
+
+def _install_logging_brace_compat() -> None:
+    if getattr(logging, "_neko_brace_compat_installed", False):
+        return
+
+    original_get_message = logging.LogRecord.getMessage
+
+    def _compat_get_message(record: logging.LogRecord) -> str:
+        try:
+            return original_get_message(record)
+        except TypeError:
+            msg = str(record.msg)
+            args = record.args
+            if not args or "%" in msg or "{" not in msg or "}" not in msg:
+                raise
+            try:
+                if isinstance(args, dict):
+                    return msg.format(**args)
+                if not isinstance(args, tuple):
+                    args = (args,)
+                return msg.format(*args)
+            except Exception:
+                return f"{msg} | args={record.args!r}"
+
+    logging.LogRecord.getMessage = _compat_get_message
+    logging._neko_brace_compat_installed = True
+
+
+_install_logging_brace_compat()
 
 
 def _show_error_dialog(message: str):
@@ -233,7 +279,7 @@ def setup_job_object():
         print(f"[Launcher] Warning: Job Object setup failed: {e}", flush=True)
         return None
 
-# 服务器配置
+# 服务器配置（按内存占用从轻到重排列，用于分步启动以降低峰值内存）
 SERVERS = [
     {
         'name': 'Memory Server',
@@ -243,16 +289,16 @@ SERVERS = [
         'ready_event': None,
     },
     {
-        'name': 'Agent Server', 
-        'module': 'agent_server',
-        'port': TOOL_SERVER_PORT,
+        'name': 'Main Server',
+        'module': 'main_server',
+        'port': MAIN_SERVER_PORT,
         'process': None,
         'ready_event': None,
     },
     {
-        'name': 'Main Server',
-        'module': 'main_server',
-        'port': MAIN_SERVER_PORT,
+        'name': 'Agent Server',
+        'module': 'agent_server',
+        'port': TOOL_SERVER_PORT,
         'process': None,
         'ready_event': None,
     },
@@ -267,7 +313,7 @@ SERVERS = [
 
 # 不再启动主程序，用户自己启动 lanlan_frd.exe
 
-def run_memory_server(ready_event: Event):
+def run_memory_server(ready_event: Event, import_event: Event | None = None):
     """运行 Memory Server"""
     try:
         # 确保工作目录正确
@@ -291,15 +337,20 @@ def run_memory_server(ready_event: Event):
         
         import memory_server
         import uvicorn
+        if import_event:
+            import_event.set()
         
         print(f"[Memory Server] Starting on port {MEMORY_SERVER_PORT}")
         
+        _behind_proxy = os.environ.get("NEKO_BEHIND_PROXY", "").strip().lower() in ("1", "true", "yes")
         # 使用 Server 对象，在启动后通知父进程
         config = uvicorn.Config(
             app=memory_server.app,
             host="127.0.0.1",
             port=MEMORY_SERVER_PORT,
-            log_level="error"
+            log_level="error",
+            proxy_headers=_behind_proxy,
+            forwarded_allow_ips="*" if _behind_proxy else None,
         )
         server = uvicorn.Server(config)
         
@@ -334,7 +385,7 @@ def run_memory_server(ready_event: Event):
         import traceback
         traceback.print_exc()
 
-def run_agent_server(ready_event: Event):
+def run_agent_server(ready_event: Event, import_event: Event | None = None):
     """运行 Agent Server (不需要等待初始化)"""
     try:
         # 确保工作目录正确
@@ -358,19 +409,29 @@ def run_agent_server(ready_event: Event):
         
         import agent_server
         import uvicorn
+        if import_event:
+            import_event.set()
         
         print(f"[Agent Server] Starting on port {TOOL_SERVER_PORT}")
         
         # Agent Server 不需要等待，立即通知就绪
         ready_event.set()
         
-        uvicorn.run(agent_server.app, host="127.0.0.1", port=TOOL_SERVER_PORT, log_level="error")
+        _behind_proxy = os.environ.get("NEKO_BEHIND_PROXY", "").strip().lower() in ("1", "true", "yes")
+        uvicorn.run(
+            agent_server.app,
+            host="127.0.0.1",
+            port=TOOL_SERVER_PORT,
+            log_level="error",
+            proxy_headers=_behind_proxy,
+            forwarded_allow_ips="*" if _behind_proxy else None,
+        )
     except Exception as e:
         print(f"Agent Server error: {e}")
         import traceback
         traceback.print_exc()
 
-def run_main_server(ready_event: Event):
+def run_main_server(ready_event: Event, import_event: Event | None = None):
     """运行 Main Server"""
     try:
         # 确保工作目录正确
@@ -385,9 +446,12 @@ def run_main_server(ready_event: Event):
         print("[Main Server] Importing main_server module...")
         import main_server
         import uvicorn
+        if import_event:
+            import_event.set()
         
         print(f"[Main Server] Starting on port {MAIN_SERVER_PORT}")
         
+        _behind_proxy = os.environ.get("NEKO_BEHIND_PROXY", "").strip().lower() in ("1", "true", "yes")
         # 直接运行 FastAPI app，不依赖 main_server 的 __main__ 块
         # host="127.0.0.1" 仅本地访问，P2P 连接通过 lan_proxy 转发
         config = uvicorn.Config(
@@ -397,6 +461,8 @@ def run_main_server(ready_event: Event):
             log_level="error",
             loop="asyncio",
             reload=False,
+            proxy_headers=_behind_proxy,
+            forwarded_allow_ips="*" if _behind_proxy else None,
         )
         server = uvicorn.Server(config)
         
@@ -859,10 +925,15 @@ def start_server(server: Dict) -> bool:
 
         # 创建进程间同步事件
         server['ready_event'] = Event()
+        server['import_event'] = Event()
 
         # 使用 multiprocessing 启动服务器
         # 注意：不能设置 daemon=True，因为 main_server 自己会创建子进程
-        server['process'] = Process(target=target_func, args=(server['ready_event'],), daemon=False)
+        server['process'] = Process(
+            target=target_func,
+            args=(server['ready_event'], server['import_event']),
+            daemon=False,
+        )
         server['process'].start()
 
         print(f"✓ {server['name']} 已启动 (PID: {server['process'].pid})", flush=True)
@@ -1148,13 +1219,48 @@ def main():
         print("N.E.K.O. 服务器启动器", flush=True)
         print("=" * 60, flush=True)
 
-        # 1. 启动所有服务器
+        # 1. 分步启动服务器（错开 import 阶段以降低内存峰值）
+        #    Windows spawn 模式下每个子进程独立加载所有依赖，
+        #    同时 import 会导致 3 个进程同时分配大量临时对象，
+        #    在 <=4GB 内存的机器上容易 OOM。
+        #    只需等 import 完成（内存稳定）即可放行下一个，
+        #    后续 uvicorn 初始化很轻量，可并行。
         print("\n正在启动服务器...\n", flush=True)
         all_started = True
-        for server in SERVERS:
+        import_timeout = 90  # 单个服务 import 阶段超时秒数
+        for i, server in enumerate(SERVERS):
             if not start_server(server):
                 all_started = False
                 break
+
+            evt = server.get('import_event')
+            is_last = (i == len(SERVERS) - 1)
+            if evt and not is_last:
+                print(f"  等待 {server['name']} 模块加载...", flush=True)
+                proc = server.get('process')
+                poll_interval = 2  # seconds
+                remaining = import_timeout
+                import_ok = False
+                while remaining > 0:
+                    if evt.wait(timeout=min(poll_interval, remaining)):
+                        import_ok = True
+                        break
+                    remaining -= poll_interval
+                    if proc and not proc.is_alive():
+                        report_startup_failure(
+                            f"Startup failed: {server['name']} exited early "
+                            f"(exitcode={proc.exitcode})"
+                        )
+                        break
+                if not import_ok:
+                    if not (proc and not proc.is_alive()):
+                        report_startup_failure(
+                            f"Startup timeout: {server['name']} import not complete "
+                            f"within {import_timeout}s"
+                        )
+                    all_started = False
+                    break
+                print(f"  ✓ {server['name']} 模块加载完成", flush=True)
 
         if not all_started:
             print("\n启动失败，正在清理...", flush=True)
@@ -1162,7 +1268,7 @@ def main():
             cleanup_servers()
             return 1
 
-        # 2. 等待服务器准备就绪
+        # 2. 等待最后一个服务器也准备就绪
         if not wait_for_servers():
             print("\n启动失败，正在清理...", flush=True)
             report_startup_failure("Startup aborted: services did not become ready before timeout", show_dialog=False)

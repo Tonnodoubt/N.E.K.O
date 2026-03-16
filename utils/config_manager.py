@@ -25,6 +25,7 @@ from utils.api_config_loader import (
     get_assist_api_key_fields,
 )
 from utils.custom_tts_adapter import check_custom_tts_voice_allowed
+from utils.file_utils import atomic_write_json
 from utils.logger_config import get_module_logger
 
 # Workshop配置相关常量 - 将在ConfigManager实例化时使用self.workshop_dir
@@ -316,7 +317,10 @@ def flatten_reserved(catgirl_data: dict) -> dict:
     lighting = get_reserved(result, "avatar", "vrm", "lighting", default=None)
     if isinstance(lighting, dict):
         result["lighting"] = lighting
-
+    
+    touch_set = get_reserved(result, 'touch_set', default=None)
+    if touch_set:
+        result['touch_set'] = touch_set
     return result
 
 
@@ -336,9 +340,24 @@ class ConfigManager:
         # 检测是否在子进程中，子进程静默初始化（通过 main_server.py 设置的环境变量）
         self._verbose = '_NEKO_MAIN_SERVER_INITIALIZED' not in os.environ
         self.docs_dir = self._get_documents_directory()
+
+        # CFA (Windows 受控文件夹访问/反勒索防护) 检测：
+        # 如果原始 Documents 路径可读但不可写，记住它以便从中读取用户数据（模型等）
+        first_readable = getattr(self, '_first_readable_candidate', None)
+        if (first_readable is not None
+                and first_readable != self.docs_dir):
+            self._readable_docs_dir = first_readable
+            print("⚠ WARNING [ConfigManager] 文档目录不可写（可能受Windows安全策略/反勒索防护保护）!", file=sys.stderr)
+            print(f"⚠ WARNING [ConfigManager] 原始文档路径(只读): {first_readable}", file=sys.stderr)
+            print(f"⚠ WARNING [ConfigManager] 回退写入路径: {self.docs_dir}", file=sys.stderr)
+            print("⚠ WARNING [ConfigManager] 用户数据将从原始路径读取，写入操作将使用回退路径", file=sys.stderr)
+        else:
+            self._readable_docs_dir = None
+
         self.app_docs_dir = self.docs_dir / self.app_name
         self.config_dir = self.app_docs_dir / "config"
         self.memory_dir = self.app_docs_dir / "memory"
+        self.plugins_dir = self.app_docs_dir / "plugins"
         self.live2d_dir = self.app_docs_dir / "live2d"
         # VRM模型存储在用户文档目录下（与Live2D保持一致）
         self.vrm_dir = self.app_docs_dir / "vrm"
@@ -427,7 +446,13 @@ class ConfigManager:
             # 添加默认路径候选
             candidates.append(Path.home() / "Documents")
             candidates.append(Path.home() / "文档")
-            
+
+            # AppData/Local 不受 Windows 受控文件夹访问(CFA/反勒索防护)保护，
+            # 作为 Documents 不可写时的优先回退位置
+            localappdata = os.environ.get('LOCALAPPDATA', '')
+            if localappdata:
+                candidates.append(Path(localappdata))
+
             # 如果都不行，使用exe所在目录（打包后）或当前目录（开发时）
             if getattr(sys, 'frozen', False):
                 candidates.append(Path(sys.executable).parent)
@@ -447,8 +472,14 @@ class ConfigManager:
             candidates.append(Path.cwd())
         
         # 遍历候选路径，找到第一个真正可访问且可写的路径
+        # 同时记录第一个可读的路径（即使不可写），用于 CFA 场景下的只读回退
+        first_readable = None
         for docs_dir in candidates:
             try:
+                # 记录第一个存在且可读的路径（CFA 只阻止写入，不阻止读取）
+                if first_readable is None and docs_dir.exists() and os.access(str(docs_dir), os.R_OK):
+                    first_readable = docs_dir
+
                 # 检查路径是否存在且可访问
                 if docs_dir.exists() and os.access(str(docs_dir), os.R_OK | os.W_OK):
                     # 尝试在该目录创建测试文件，确保真的可写
@@ -457,11 +488,12 @@ class ConfigManager:
                         test_path.touch()
                         test_path.unlink()
                         self._log(f"[ConfigManager] ✓ Using documents directory: {docs_dir}")
+                        self._first_readable_candidate = first_readable
                         return docs_dir
                     except Exception as e:
                         self._log(f"[ConfigManager] Path exists but not writable: {docs_dir} - {e}")
                         continue
-                
+
                 # 如果路径不存在，尝试创建（测试是否可写）
                 if not docs_dir.exists():
                     # 分步创建父目录
@@ -472,23 +504,25 @@ class ConfigManager:
                         current = current.parent
                         if current == current.parent:  # 到达根目录
                             break
-                    
+
                     # 从最顶层开始创建
                     for dir_path in reversed(dirs_to_create):
                         if not dir_path.exists():
                             dir_path.mkdir(exist_ok=True)
-                    
+
                     # 测试可写性
                     test_path = docs_dir / ".test_neko_write"
                     test_path.touch()
                     test_path.unlink()
                     self._log(f"[ConfigManager] ✓ Using documents directory (created): {docs_dir}")
+                    self._first_readable_candidate = first_readable
                     return docs_dir
             except Exception as e:
                 self._log(f"[ConfigManager] Failed to use path {docs_dir}: {e}")
                 continue
-        
+
         # 如果所有候选都失败，返回当前目录
+        self._first_readable_candidate = first_readable
         fallback = Path.cwd()
         self._log(f"[ConfigManager] ⚠ All document directories failed, using fallback: {fallback}")
         return fallback
@@ -595,6 +629,18 @@ class ConfigManager:
         except Exception as e:
             print(f"Warning: Failed to create memory directory: {e}", file=sys.stderr)
             return False
+
+    def ensure_plugins_directory(self):
+        """确保我的文档下的plugins目录存在"""
+        try:
+            if not self._ensure_app_docs_directory():
+                return False
+
+            self.plugins_dir.mkdir(exist_ok=True)
+            return True
+        except Exception as e:
+            print(f"Warning: Failed to create plugins directory: {e}", file=sys.stderr)
+            return False
     
     def ensure_live2d_directory(self):
         """确保我的文档下的live2d目录存在"""
@@ -602,13 +648,29 @@ class ConfigManager:
             # 先确保app_docs_dir存在
             if not self._ensure_app_docs_directory():
                 return False
-            
+
             self.live2d_dir.mkdir(exist_ok=True)
             return True
         except Exception as e:
             print(f"Warning: Failed to create live2d directory: {e}", file=sys.stderr)
             return False
-        
+
+    @property
+    def readable_live2d_dir(self):
+        """原始 Documents 下的 live2d 目录（只读，用于 CFA 场景）。
+
+        当 Windows 受控文件夹访问(CFA/反勒索防护) 阻止写入 Documents 时，
+        写入操作回退到 AppData，但用户的模型文件仍在原始 Documents 中。
+        此属性返回原始 Documents 中的 live2d 路径以供读取。
+
+        非 CFA 场景下返回 None（此时 live2d_dir 本身就指向 Documents）。
+        """
+        if self._readable_docs_dir is not None:
+            p = self._readable_docs_dir / self.app_name / "live2d"
+            if p.exists():
+                return p
+        return None
+
     def ensure_vrm_directory(self):
         """确保用户文档目录下的vrm目录和animation子目录存在"""
         try:
@@ -853,8 +915,7 @@ class ConfigManager:
         # 确保config目录存在
         self.ensure_config_directory()
 
-        with open(character_json_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(character_json_path, data, ensure_ascii=False, indent=2)
 
     # --- Voice storage helpers ---
 
@@ -874,6 +935,13 @@ class ConfigManager:
             logger.error("保存音色配置失败: %s", e)
             raise
 
+    @staticmethod
+    def is_legacy_cosyvoice_id(voice_id: str) -> bool:
+        """CosyVoice v2 / v3 的克隆音色 ID 已随 CosyVoice 3.5 升级而失效。"""
+        return bool(voice_id) and (
+            voice_id.startswith("cosyvoice-v2") or voice_id.startswith("cosyvoice-v3-")
+        )
+
     def get_voices_for_current_api(self):
         """获取当前 TTS 配置对应的所有音色
         
@@ -890,12 +958,12 @@ class ConfigManager:
         
         if is_local_tts:
             all_voices = voice_storage.get('__LOCAL_TTS__', {})
-            return {k: v for k, v in all_voices.items() if not k.startswith("cosyvoice-v2")}
+            return {k: v for k, v in all_voices.items() if not self.is_legacy_cosyvoice_id(k)}
         
         tts_api_key = tts_config.get('api_key', '')
         if tts_api_key:
             all_voices = voice_storage.get(tts_api_key, {})
-            return {k: v for k, v in all_voices.items() if not k.startswith("cosyvoice-v2")}
+            return {k: v for k, v in all_voices.items() if not self.is_legacy_cosyvoice_id(k)}
         
         core_config = self.get_core_config()
         audio_api_key = core_config.get('AUDIO_API_KEY', '')
@@ -905,7 +973,7 @@ class ConfigManager:
             return {}
 
         all_voices = voice_storage.get(audio_api_key, {})
-        return {k: v for k, v in all_voices.items() if not k.startswith("cosyvoice-v2")}
+        return {k: v for k, v in all_voices.items() if not self.is_legacy_cosyvoice_id(k)}
 
     def save_voice_for_current_api(self, voice_id, voice_data):
         """为当前 AUDIO_API_KEY 保存音色"""
@@ -933,6 +1001,25 @@ class ConfigManager:
 
         voice_storage[api_key][voice_id] = voice_data
         self.save_voice_storage(voice_storage)
+
+    def find_voice_by_audio_md5(self, api_key: str, audio_md5: str, ref_language: str | None = None):
+        """在指定 API Key 下按参考音频 MD5（及可选 ref_language）查找已有音色。
+
+        返回 (voice_id, voice_data) 或 None。
+        旧条目没有 audio_md5 字段时会被自动跳过（向后兼容）。
+        当 ref_language 不为 None 时，要求 voice_data 中的 ref_language 也匹配
+        （旧条目无 ref_language 字段视为 'ch'）。
+        """
+        if not api_key or not audio_md5:
+            return None
+        voice_storage = self.load_voice_storage()
+        voices = voice_storage.get(api_key, {})
+        for vid, vdata in voices.items():
+            if isinstance(vdata, dict) and vdata.get('audio_md5') == audio_md5:
+                if ref_language is not None and vdata.get('ref_language', 'ch') != ref_language:
+                    continue
+                return (vid, vdata)
+        return None
 
     def delete_voice_for_current_api(self, voice_id):
         """删除当前 TTS 配置下的指定音色"""
@@ -966,7 +1053,7 @@ class ConfigManager:
         """校验 voice_id 是否在当前 AUDIO_API_KEY 下有效。
         
         校验覆盖四类 voice_id：
-          1. "cosyvoice-v2..." → 旧版格式，始终无效
+          1. "cosyvoice-v2/v3..." → 旧版格式，始终无效
           2. "gsv:xxx" → 委托 check_custom_tts_voice_allowed (custom_tts_adapter)
              判定，由适配器根据 tts_custom 配置决定有效性
           3. 普通 ID → 在 voice_storage (CosyVoice 云端克隆音色) 中查找
@@ -977,7 +1064,7 @@ class ConfigManager:
         if not voice_id:
             return True
 
-        if voice_id.startswith("cosyvoice-v2"):
+        if self.is_legacy_cosyvoice_id(voice_id):
             return False
 
         custom_tts_allowed = check_custom_tts_voice_allowed(voice_id, self.get_model_api_config)
@@ -1001,7 +1088,7 @@ class ConfigManager:
         if not voice_id:
             return True
 
-        if voice_id.startswith("cosyvoice-v2"):
+        if self.is_legacy_cosyvoice_id(voice_id):
             return False
 
         custom_tts_allowed = check_custom_tts_voice_allowed(voice_id, self.get_model_api_config)
@@ -1026,27 +1113,35 @@ class ConfigManager:
         通过 validate_voice_id 统一判定有效性，不含 provider 专属逻辑。
         注意：免费预设音色在此处不会被清理（validate_voice_id 白名单放行），
         实际可用性由 core.py 运行时按 free + lanlan.app/lanlan.tech 线路决定。
+
+        Returns:
+            (cleaned_count, legacy_cosyvoice_names): 清理总数 及 因旧版 CosyVoice 被清理的角色名列表
         """
         character_data = self.load_characters()
         cleaned_count = 0
+        legacy_cosyvoice_names: list[str] = []
 
         catgirls = character_data.get('猫娘', {})
         for name, config in catgirls.items():
             voice_id = get_reserved(config, 'voice_id', default='', legacy_keys=('voice_id',))
             if voice_id and not self.validate_voice_id(voice_id):
+                is_legacy = self.is_legacy_cosyvoice_id(voice_id)
                 logger.warning(
-                    "猫娘 '%s' 的 voice_id '%s' 在当前 API 的 voice_storage 中不存在，已清除",
+                    "猫娘 '%s' 的 voice_id '%s' 在当前 API 的 voice_storage 中不存在，已清除%s",
                     name,
                     voice_id,
+                    "（旧版 CosyVoice 音色）" if is_legacy else "",
                 )
                 set_reserved(config, 'voice_id', '')
                 cleaned_count += 1
+                if is_legacy:
+                    legacy_cosyvoice_names.append(name)
 
         if cleaned_count > 0:
             self.save_characters(character_data)
             logger.info("已清理 %d 个无效的 voice_id 引用", cleaned_count)
 
-        return cleaned_count
+        return cleaned_count, legacy_cosyvoice_names
 
     # --- Character metadata helpers ---
 
@@ -1094,7 +1189,6 @@ class ConfigManager:
             lanlan_prompt_map[name] = prompt_value
 
         memory_base = str(self.memory_dir)
-        semantic_store = {name: f'{memory_base}/semantic_memory_{name}' for name in catgirl_names}
         time_store = {name: f'{memory_base}/time_indexed_{name}' for name in catgirl_names}
         setting_store = {name: f'{memory_base}/settings_{name}.json' for name in catgirl_names}
         recent_log = {name: f'{memory_base}/recent_{name}.json' for name in catgirl_names}
@@ -1106,7 +1200,6 @@ class ConfigManager:
             catgirl_data,
             name_mapping,
             lanlan_prompt_map,
-            semantic_store,
             time_store,
             setting_store,
             recent_log,
@@ -1114,38 +1207,100 @@ class ConfigManager:
 
     # --- Core config helpers ---
 
-    # Cache for region check to avoid repeated calls (None = not checked, True/False = result)
+    # Combined region cache (None = not checked, True = non-mainland, False = mainland)
     _region_cache = None
-    
-    def _check_non_mainland(self) -> bool:
-        """Check if user is non-mainland China (cached, lazy evaluation)."""
-        if ConfigManager._region_cache is not None:
-            return ConfigManager._region_cache
-        
+    # Individual caches for dual check (None = not yet tried, True/False = result,
+    # _GEO_INDETERMINATE = tried but got no usable answer → do not retry)
+    _ip_check_cache = None
+    _steam_check_cache = None
+    # Sentinel stored in _ip_check_cache when the HTTP probe fails, so we never
+    # re-attempt it (and never pay the timeout again) within the same process.
+    _GEO_INDETERMINATE = object()
+    _geo_indeterminate_logged = False
+
+    @staticmethod
+    def _check_ip_non_mainland_http():
+        """Independent IP geolocation via China-fast HTTP API (ip-api.com over HTTP)."""
+        cache = ConfigManager._ip_check_cache
+        if cache is not None:
+            # True/False → deterministic result; sentinel → tried-and-failed, skip retry
+            return None if cache is ConfigManager._GEO_INDETERMINATE else cache
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                "http://ip-api.com/json/?fields=countryCode",
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            # 显式禁用代理，避免探测到代理服务器所在国家而非用户真实 IP 所在地。
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode())
+            country = (data.get("countryCode") or "").upper()
+            if country:
+                result = country != "CN"
+                ConfigManager._ip_check_cache = result
+                print(f"[GeoIP] HTTP IP check: country={country}, non_mainland={result}", file=sys.stderr)
+                return result
+        except Exception as e:
+            print(f"[GeoIP] HTTP IP check failed: {e}", file=sys.stderr)
+        # Mark as attempted-but-indeterminate so the network probe is never retried.
+        ConfigManager._ip_check_cache = ConfigManager._GEO_INDETERMINATE
+        return None
+
+    @staticmethod
+    def _check_steam_non_mainland():
+        """Steam-based IP country check via Steamworks SDK."""
+        if ConfigManager._steam_check_cache is not None:
+            return ConfigManager._steam_check_cache
         try:
             from main_routers.shared_state import get_steamworks
             steamworks = get_steamworks()
-            
             if steamworks is None:
-                return False  # Don't cache, retry next time
-            
+                return None
             ip_country = steamworks.Utils.GetIPCountry()
             if isinstance(ip_country, bytes):
                 ip_country = ip_country.decode('utf-8')
-            
-            result = (ip_country.upper() != 'CN') if ip_country else False
-            
-            print(f"[GeoIP] _check_non_mainland: country={ip_country}, non_mainland={result}", file=sys.stderr)
-            
-            ConfigManager._region_cache = result
-            return result
-            
+            if ip_country:
+                result = ip_country.upper() != "CN"
+                ConfigManager._steam_check_cache = result
+                print(f"[GeoIP] Steam IP check: country={ip_country}, non_mainland={result}", file=sys.stderr)
+                return result
         except ImportError:
-            return False  # Don't cache, module not available yet
+            pass
         except Exception as e:
-            print(f"[GeoIP] _check_non_mainland exception: {e}", file=sys.stderr)
+            print(f"[GeoIP] Steam IP check failed: {e}", file=sys.stderr)
+        return None
+
+    def _check_non_mainland(self) -> bool:
+        """Dual validation: both HTTP IP geo AND Steam geo must indicate non-mainland."""
+        if ConfigManager._region_cache is not None:
+            return ConfigManager._region_cache
+
+        ip_result = self._check_ip_non_mainland_http()
+        steam_result = self._check_steam_non_mainland()
+
+        if ip_result is True and steam_result is True:
+            ConfigManager._region_cache = True
+            ConfigManager._geo_indeterminate_logged = False
+            print(f"[GeoIP] Dual check PASS: non-mainland (IP={ip_result}, Steam={steam_result})", file=sys.stderr)
+            return True
+
+        if ip_result is False or steam_result is False:
+            ConfigManager._region_cache = False
+            ConfigManager._geo_indeterminate_logged = False
+            print(f"[GeoIP] Dual check FAIL: mainland (IP={ip_result}, Steam={steam_result})", file=sys.stderr)
             return False
-    
+
+        # Both sources simultaneously indeterminate (e.g. ip-api.com blocked AND Steam not
+        # yet initialised).  Do NOT write to _region_cache: Steam may initialise shortly
+        # after this call, and caching False here would permanently suppress re-evaluation.
+        # Callers that iterate get_core_config() will simply retry the geo check on the
+        # next invocation until at least one source becomes definitive.
+        if not ConfigManager._geo_indeterminate_logged:
+            ConfigManager._geo_indeterminate_logged = True
+            print(f"[GeoIP] Dual check indeterminate (IP={ip_result}, Steam={steam_result}), transient mainland default", file=sys.stderr)
+        return False
+
     def _adjust_free_api_url(self, url: str, is_free: bool) -> str:
         """Internal URL adjustment for free API users based on region."""
         if not url or 'lanlan.tech' not in url:
@@ -1328,11 +1483,11 @@ class ConfigManager:
 
         # 文本模式回复长度守卫上限（字/词数，超限会丢弃并重试）
         try:
-            config['TEXT_GUARD_MAX_LENGTH'] = int(core_cfg.get('textGuardMaxLength', 400))
+            config['TEXT_GUARD_MAX_LENGTH'] = int(core_cfg.get('textGuardMaxLength', 300))
             if config['TEXT_GUARD_MAX_LENGTH'] <= 0:
-                config['TEXT_GUARD_MAX_LENGTH'] = 400
+                config['TEXT_GUARD_MAX_LENGTH'] = 300
         except (TypeError, ValueError):
-            config['TEXT_GUARD_MAX_LENGTH'] = 400
+            config['TEXT_GUARD_MAX_LENGTH'] = 300
         
         # 只有在启用自定义API时才允许覆盖各模型相关字段
         if enable_custom_api:
@@ -1407,6 +1562,10 @@ class ConfigManager:
         for key, value in config.items():
             if key.endswith('_URL') and isinstance(value, str):
                 config[key] = self._adjust_free_api_url(value, True)
+
+        # Agent model always uses international API regardless of region
+        if isinstance(config.get('AGENT_MODEL_URL'), str):
+            config['AGENT_MODEL_URL'] = config['AGENT_MODEL_URL'].replace('lanlan.tech', 'lanlan.app')
 
         return config
 
@@ -1647,8 +1806,7 @@ class ConfigManager:
             used += units
             data = {"date": today, "used": used}
             try:
-                with open(quota_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+                atomic_write_json(quota_path, data, ensure_ascii=False, indent=2)
             except Exception as e:
                 logger.warning("保存 Agent 配额计数失败: %s", e)
 
@@ -1701,9 +1859,7 @@ class ConfigManager:
         config_path = self.config_dir / filename
         
         try:
-            with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                f.flush()  # 强制刷新缓冲区
+            atomic_write_json(config_path, data, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"Error saving {filename}: {e}", file=sys.stderr)
             raise
@@ -1742,6 +1898,7 @@ class ConfigManager:
             "app_dir": str(self.app_docs_dir),
             "config_dir": str(self.config_dir),
             "memory_dir": str(self.memory_dir),
+            "plugins_dir": str(self.plugins_dir),
             "live2d_dir": str(self.live2d_dir),
             "workshop_dir": str(self.workshop_dir),
             "chara_dir": str(self.chara_dir),
@@ -1898,8 +2055,7 @@ class ConfigManager:
             os.makedirs(os.path.dirname(config_path), exist_ok=True)
             
             # 保存配置
-            with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump(config_data, f, indent=4, ensure_ascii=False)
+            atomic_write_json(config_path, config_data, indent=4, ensure_ascii=False)
             
             logger.info(f"成功保存workshop配置: {config_data}")
         except Exception as e:
@@ -1985,6 +2141,13 @@ def get_config_manager(app_name=None):
 def get_config_path(filename):
     """获取配置文件路径"""
     return get_config_manager().get_config_path(filename)
+
+
+def get_plugins_directory(app_name=None):
+    """获取用户插件根目录，默认位于应用文档目录下的 ``plugins``。"""
+    manager = ConfigManager(app_name)
+    manager.ensure_plugins_directory()
+    return manager.plugins_dir
 
 
 def load_json_config(filename, default_value=None):

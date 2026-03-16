@@ -781,6 +781,15 @@
                 element.alt = text;
             }
         });
+
+        // 更新所有带有 data-i18n-aria 属性的元素
+        document.querySelectorAll('[data-i18n-aria]').forEach(element => {
+            const key = element.getAttribute('data-i18n-aria');
+            const text = i18next.t(key, {});
+            if (text && text !== key) {
+                element.setAttribute('aria-label', text);
+            }
+        });
     }
 
     /**
@@ -867,10 +876,9 @@
             }
         }
 
-        // Support structured error objects (future-proofing)
+        // Support structured error objects: {"code": "XXX", "details": {...}}
         if (message && typeof message === 'object') {
             if (message.code && typeof message.code === 'string') {
-                // Use error code for translation (preferred method)
                 const translationKey = `errors.${message.code}`;
                 const details = message.details || {};
                 const translated = i18next.t(translationKey, details);
@@ -878,10 +886,9 @@
                 // If translation succeeds (doesn't return the key), return it
                 if (translated && translated !== translationKey) return translated;
                 
-                // Fallbacks if no translation available
-                return message.message || details.msg || String(message);
+                // Fallback: use message field or details.msg or raw code
+                return message.message || details.msg || message.code;
             }
-            // If object has message property, use it
             if (message.message) {
                 message = message.message;
             } else {
@@ -889,39 +896,8 @@
             }
         }
 
-        if (!message || typeof message !== 'string') return message;
-
-        // Pattern-matching fallback (temporary compatibility layer)
-        // WARNING: This is fragile and will break if backend messages change
-        const messageMap = [
-            {
-                pattern: /启动超时/i,
-                translator: () => i18next.t('app.sessionTimeout')
-            },
-            {
-                pattern: /无法连接/i,
-                translator: () => i18next.t('app.websocketNotConnectedError')
-            },
-            {
-                pattern: /Session启动失败/i,
-                translator: () => i18next.t('app.sessionStartFailed')
-            },
-            {
-                pattern: /记忆服务器.*崩溃/i,
-                translator: (match) => {
-                    const portMatch = match.match(/端口(\d+)/);
-                    return i18next.t('app.memoryServerCrashed', { port: portMatch ? portMatch[1] : 'unknown' });
-                }
-            }
-        ];
-
-        for (const { pattern, translator } of messageMap) {
-            if (pattern.test(message)) {
-                return translator(message);
-            }
-        }
-
-        return message;
+        // Plain string passthrough (legacy)
+        return message || '';
     }
 
 })();

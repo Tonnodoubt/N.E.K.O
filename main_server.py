@@ -157,6 +157,7 @@ def get_default_steam_info():
 # Steamworks 初始化将在 @app.on_event("startup") 中延迟执行
 # 这样可以避免在模块导入时就执行 DLL 加载等操作
 steamworks = None
+_server_loop: asyncio.AbstractEventLoop | None = None
 
 _config_manager = get_config_manager()
 
@@ -187,7 +188,6 @@ master_basic_config = None
 lanlan_basic_config = None
 name_mapping = None
 lanlan_prompt = None
-semantic_store = None
 time_store = None
 setting_store = None
 recent_log = None
@@ -244,7 +244,13 @@ async def _handle_agent_event(event: dict):
                     except Exception:
                         pass
             return
+        if not mgr and event_type in ("proactive_message", "task_result"):
+            # No target session found — drop the event entirely.
+            # Do NOT broadcast text to other sessions to prevent cross-session leaks.
+            logger.info("[EventBus] %s dropped: no target session for lanlan=%s", event_type, lanlan)
+            return
         if not mgr:
+            logger.info("[EventBus] %s dropped: no session_manager for lanlan=%s", event_type, lanlan)
             return
         if event_type in ("task_result", "proactive_message"):
             text = (event.get("text") or "").strip()
@@ -263,7 +269,7 @@ async def _handle_agent_event(event: dict):
                     "timestamp": event.get("timestamp") or "",
                 }
                 mgr.enqueue_agent_callback(callback)
-                # Attempt immediate delivery; re-queued automatically if session is busy
+                logger.info("[EventBus] %s enqueued callback, scheduling trigger_agent_callbacks", event_type)
                 mgr._pending_agent_callback_task = asyncio.create_task(mgr.trigger_agent_callbacks())
                 if mgr.websocket and hasattr(mgr.websocket, "send_json"):
                     try:
@@ -277,8 +283,26 @@ async def _handle_agent_event(event: dict):
                         if err_msg:
                             notif["error_message"] = err_msg[:500]
                         await mgr.websocket.send_json(notif)
-                    except Exception:
-                        pass
+                        logger.info("[EventBus] agent_notification sent to frontend: %.60s", text[:60])
+                    except Exception as e:
+                        logger.warning("[EventBus] agent_notification WS send failed: %s", e)
+                else:
+                    logger.warning("[EventBus] agent_notification: no websocket available")
+        elif event_type == "agent_notification":
+            if mgr.websocket and hasattr(mgr.websocket, "send_json"):
+                try:
+                    notif = {
+                        "type": "agent_notification",
+                        "text": event.get("text", ""),
+                        "source": event.get("source", "brain"),
+                        "status": event.get("status", "error"),
+                    }
+                    err_msg = event.get("error_message") or ""
+                    if err_msg:
+                        notif["error_message"] = err_msg[:500]
+                    await mgr.websocket.send_json(notif)
+                except Exception as e:
+                    logger.debug("[EventBus] agent_notification send failed: %s", e)
         elif event_type == "task_update":
             if mgr.websocket and hasattr(mgr.websocket, "send_json"):
                 try:
@@ -291,16 +315,23 @@ async def _handle_agent_event(event: dict):
 async def initialize_character_data():
     """初始化或重新加载角色配置数据"""
     global master_name, her_name, master_basic_config, lanlan_basic_config
-    global name_mapping, lanlan_prompt, semantic_store, time_store, setting_store, recent_log
+    global name_mapping, lanlan_prompt, time_store, setting_store, recent_log
     global catgirl_names, sync_message_queue, sync_shutdown_event, session_manager, session_id, sync_process, websocket_locks
     
     logger.info("正在加载角色配置...")
     
-    # 清理无效的voice_id引用
-    _config_manager.cleanup_invalid_voice_ids()
+    # 清理无效的voice_id引用；如果发现旧版 CosyVoice 音色，推入通知缓冲池等前端连接后弹出
+    _cleaned, _legacy_names = _config_manager.cleanup_invalid_voice_ids()
+    if _legacy_names:
+        core.enqueue_prominent_notice({
+            "code": "notice.voiceMigration.legacyRemoved",
+            "message": "CosyVoice 现已升级至 3.5，您的旧语音已失效，请重新克隆语音。",
+            "message_en": "CosyVoice has been upgraded to 3.5. Your old voices are no longer valid — please re-clone your voices.",
+            "details": {"voices": _legacy_names},
+        })
     
     # 加载最新的角色数据
-    master_name, her_name, master_basic_config, lanlan_basic_config, name_mapping, lanlan_prompt, semantic_store, time_store, setting_store, recent_log = _config_manager.get_character_data()
+    master_name, her_name, master_basic_config, lanlan_basic_config, name_mapping, lanlan_prompt, time_store, setting_store, recent_log = _config_manager.get_character_data()
     catgirl_names = list(lanlan_prompt.keys())
     
     # 为新增的角色初始化资源
@@ -349,7 +380,6 @@ async def initialize_character_data():
                         _,
                         _,
                         lanlan_basic_config_updated,
-                        _,
                         _,
                         _,
                         _,
@@ -406,9 +436,26 @@ async def initialize_character_data():
         
         if need_start_thread:
             try:
+                _char_name = k
+                def _make_status_cb(char_name):
+                    def _cb(msg):
+                        mgr = session_manager.get(char_name)
+                        if not mgr:
+                            return
+                        loop = _server_loop
+                        if loop is None or loop.is_closed():
+                            return
+                        ws = mgr.websocket
+                        if ws and hasattr(ws, 'client_state') and ws.client_state == ws.client_state.CONNECTED:
+                            import json as _json
+                            data = _json.dumps({"type": "status", "message": msg})
+                            asyncio.run_coroutine_threadsafe(ws.send_text(data), loop)
+                    return _cb
+                _status_cb = _make_status_cb(_char_name)
+
                 sync_process[k] = Thread(
                     target=cross_server.sync_connector_process,
-                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://127.0.0.1:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True}),
+                    args=(sync_message_queue[k], sync_shutdown_event[k], k, f"ws://127.0.0.1:{MONITOR_SERVER_PORT}", {'bullet': False, 'monitor': True}, _status_cb),
                     daemon=True,
                     name=f"SyncConnector-{k}"
                 )
@@ -506,10 +553,23 @@ if _IS_MAIN_PROCESS:
     _config_manager.ensure_live2d_directory()
     _config_manager.ensure_vrm_directory()
     _config_manager.ensure_chara_directory()
-    user_live2d_path = str(_config_manager.live2d_dir)
-    if os.path.exists(user_live2d_path):
-        app.mount("/user_live2d", CustomStaticFiles(directory=user_live2d_path), name="user_live2d")
-        logger.info(f"已挂载用户Live2D目录: {user_live2d_path}")
+
+    # CFA (反勒索防护) 感知挂载：
+    # 优先从原始 Documents 目录（可读）提供模型文件，
+    # 可写回退目录（AppData）作为辅助挂载供新导入的模型使用
+    _readable_live2d = _config_manager.readable_live2d_dir
+    _serve_live2d_path = str(_readable_live2d) if _readable_live2d else str(_config_manager.live2d_dir)
+
+    if os.path.exists(_serve_live2d_path):
+        app.mount("/user_live2d", CustomStaticFiles(directory=_serve_live2d_path), name="user_live2d")
+        logger.info(f"已挂载用户Live2D目录: {_serve_live2d_path}")
+
+    # CFA 场景：可写回退目录额外挂载，供新导入的模型使用
+    if _readable_live2d and str(_config_manager.live2d_dir) != _serve_live2d_path:
+        _writable_live2d_path = str(_config_manager.live2d_dir)
+        if os.path.exists(_writable_live2d_path):
+            app.mount("/user_live2d_local", CustomStaticFiles(directory=_writable_live2d_path), name="user_live2d_local")
+            logger.info(f"已挂载本地Live2D目录(CFA回退): {_writable_live2d_path}")
 
     # 挂载VRM动画目录（static/vrm/animation） 必须第一个挂载
     vrm_animation_path = str(_config_manager.vrm_animation_dir)
@@ -549,6 +609,7 @@ from main_routers import ( # noqa
     agent_router,
     system_router,
 )
+from main_routers import music_router # noqa
 from main_routers.cookies_login_router import router as cookies_login_router # noqa
 from main_routers.shared_state import init_shared_state # noqa
 
@@ -688,6 +749,7 @@ app.include_router(memory_router)
 app.include_router(websocket_router)
 app.include_router(agent_router)
 app.include_router(system_router)
+app.include_router(music_router.router)
 app.include_router(cookies_login_router) # Cookies登录相关路由，放在最后以避免与其他API路由冲突
 app.include_router(pages_router)  # 兜底路由需最后挂载
 
@@ -800,7 +862,7 @@ def _sync_preload_modules():
         import asyncio
         
         async def _warmup_httpx():
-            async with httpx.AsyncClient(timeout=1.0) as client:
+            async with httpx.AsyncClient(timeout=1.0, proxy=None, trust_env=False) as client:
                 # 发送一个简单请求预热 SSL 上下文
                 try:
                     await client.get("http://127.0.0.1:1", timeout=0.01)
@@ -832,7 +894,8 @@ def _sync_preload_modules():
 async def on_startup():
     """服务器启动时执行的初始化操作"""
     if _IS_MAIN_PROCESS:
-        global steamworks, _preload_task, agent_event_bridge
+        global steamworks, _preload_task, agent_event_bridge, _server_loop
+        _server_loop = asyncio.get_running_loop()
         logger.info("正在初始化 Steamworks...")
         steamworks = initialize_steamworks()
         
@@ -889,6 +952,15 @@ async def on_startup():
             _wr._ugc_warmup_task = asyncio.create_task(_warmup_only())
             _wr._ugc_sync_task = asyncio.create_task(_sync_characters_only())
         
+        # 初始化全局 LLM Token 用量追踪器
+        try:
+            from utils.token_tracker import TokenTracker, install_hooks
+            install_hooks()
+            TokenTracker.get_instance().start_periodic_save()
+            logger.info("Token usage tracker initialized")
+        except Exception as e:
+            logger.warning(f"Token tracker initialization failed (non-critical): {e}")
+
         logger.info("Startup 初始化完成，后台正在预加载音频模块...")
 
         # 初始化全局语言变量（优先级：Steam设置 > 系统设置）
@@ -929,7 +1001,32 @@ async def on_shutdown():
             except Exception as e:
                 logger.debug(f"Agent event bridge cleanup failed: {e}", exc_info=True)
         
-        logger.info("✅ 资源清理完成")
+        # 释放 soxr ResampleStream（nanobind C 扩展），避免解释器退出时泄漏警告
+        try:
+            for mgr in session_manager.values():
+                if hasattr(mgr, 'audio_resampler'):
+                    mgr.audio_resampler = None
+        except Exception as e:
+            logger.debug(f"soxr resampler cleanup failed: {e}")
+
+        # 保存 Token 用量数据
+        try:
+            from utils.token_tracker import TokenTracker
+            TokenTracker.get_instance().save()
+        except Exception as e:
+            logger.debug(f"Token usage save on shutdown failed: {e}")
+
+        # 关闭音乐爬虫连接池
+        try:
+            from utils.music_crawlers import close_all_crawlers
+            # 【核心修改】增加 1 秒超时兜底。如果 1 秒内关不完，直接抛弃，保障服务器顺利退出
+            await asyncio.wait_for(close_all_crawlers(), timeout=1.0)
+            
+        except asyncio.TimeoutError:
+            # 单独捕获超时异常，记录警告但放行
+            logger.warning("音乐爬虫连接池清理超时，已强制跳过以保证服务正常退出。")
+        except Exception as e:
+            logger.debug(f"音乐爬虫清理失败: {e}", exc_info=True)
 
 # 使用 FastAPI 的 app.state 来管理启动配置
 def get_start_config():
@@ -1020,7 +1117,7 @@ async def shutdown_server_async():
         try:
             from config import MEMORY_SERVER_PORT
             shutdown_url = f"http://127.0.0.1:{MEMORY_SERVER_PORT}/shutdown"
-            async with httpx.AsyncClient(timeout=1) as client:
+            async with httpx.AsyncClient(timeout=1, proxy=None, trust_env=False) as client:
                 response = await client.post(shutdown_url)
                 if response.status_code == 200:
                     logger.info("已向memory_server发送关闭信号")
@@ -1176,6 +1273,7 @@ if __name__ == "__main__":
         raise SystemExit(1)
 
     # 1) 配置 UVicorn
+    _behind_proxy = os.environ.get("NEKO_BEHIND_PROXY", "").strip().lower() in ("1", "true", "yes")
     config = uvicorn.Config(
         app=app,
         host="127.0.0.1",  # 仅本地访问，P2P 连接通过 lan_proxy 转发
@@ -1183,6 +1281,8 @@ if __name__ == "__main__":
         log_level="info",
         loop="asyncio",
         reload=False,
+        proxy_headers=_behind_proxy,
+        forwarded_allow_ips="*" if _behind_proxy else None,
     )
     server = uvicorn.Server(config)
     

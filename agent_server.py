@@ -3,14 +3,15 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mimetypes
+import json
 mimetypes.add_type("application/javascript", ".js")
 import asyncio
 import uuid
 import logging
 import time
 import hashlib
-from typing import Dict, Any, Optional, ClassVar
-from datetime import datetime
+from typing import Dict, Any, Optional, ClassVar, List
+from datetime import datetime, timezone
 import httpx
 
 from fastapi import FastAPI, HTTPException
@@ -30,6 +31,13 @@ try:
     from brain.deduper import TaskDeduper
     from brain.task_executor import DirectTaskExecutor
     from brain.agent_session import get_session_manager
+    from brain.result_parser import (
+        parse_computer_use_result,
+        parse_browser_use_result,
+        parse_plugin_result,
+        _phrase as _rp_phrase,
+        _get_lang as _rp_lang,
+    )
 except Exception as e:
     logger.exception(f"[Agent] Module import failed during startup: {e}")
     raise
@@ -42,6 +50,11 @@ class Modules:
     browser_use: BrowserUseAdapter | None = None
     deduper: TaskDeduper | None = None
     task_executor: DirectTaskExecutor | None = None
+    user_plugin_app: FastAPI | None = None
+    user_plugin_http_server: Any = None
+    user_plugin_http_task: Optional[asyncio.Task] = None
+    plugin_lifecycle_started: bool = False
+    _plugin_lifecycle_lock: Optional[asyncio.Lock] = None
     # Task tracking
     task_registry: Dict[str, Dict[str, Any]] = {}
     executor_reset_needed: bool = False
@@ -68,14 +81,174 @@ class Modules:
     # Per-lanlan fingerprint of latest user-turn payload already consumed by analyzer
     last_user_turn_fingerprint: ClassVar[Dict[str, str]] = {}
     capability_cache: Dict[str, Dict[str, Any]] = {
-        "computer_use": {"ready": False, "reason": "not checked"},
-        "browser_use": {"ready": False, "reason": "not checked"},
-        "user_plugin": {"ready": False, "reason": "not checked"},
+        "computer_use": {"ready": False, "reason": "AGENT_PRECHECK_PENDING"},
+        "browser_use": {"ready": False, "reason": "AGENT_PRECHECK_PENDING"},
+        "user_plugin": {"ready": False, "reason": "AGENT_PRECHECK_PENDING"},
     }
     _background_tasks: ClassVar[set] = set()
     _persistent_tasks: ClassVar[set] = set()
     # Cancellable background task handles by logical task_id
     task_async_handles: ClassVar[Dict[str, asyncio.Task]] = {}
+
+
+# 插件名称缓存（避免频繁 HTTP 调用）
+import threading
+_plugin_name_cache: Dict[str, str] = {}
+_plugin_name_cache_time: float = 0.0
+_plugin_name_cache_lock = threading.Lock()
+PLUGIN_NAME_CACHE_TTL: float = 30.0  # 缓存 30 秒
+TASK_REGISTRY_CLEANUP_TTL: float = 300.0  # 已完成任务保留 5 分钟
+DEFERRED_TASK_TIMEOUT: float = 3600.0  # deferred 任务超时 1 小时
+_task_registry_last_cleanup: float = 0.0
+
+
+def _cleanup_task_registry() -> List[Dict[str, Any]]:
+    """清理 task_registry 中超过 5 分钟的已完成/失败/取消任务，防止内存泄漏；同时检查 deferred 任务超时
+
+    返回超时的 deferred 任务列表（需要发送 task_update 通知前端）
+    """
+    global _task_registry_last_cleanup
+    now = time.time()
+    timed_out: List[Dict[str, Any]] = []
+    if now - _task_registry_last_cleanup < 60:  # 最多每 60 秒清理一次
+        return timed_out
+    _task_registry_last_cleanup = now
+    to_remove = []
+    for tid, info in Modules.task_registry.items():
+        st = info.get("status")
+
+        # 检查 deferred 任务是否超时（防止绑定失败导致任务永远卡在 running）
+        if st == "running" and info.get("deferred_timeout"):
+            if now > info.get("deferred_timeout", float('inf')):
+                logger.warning("[TaskRegistry] Deferred task %s timed out, marking as failed", tid)
+                info["status"] = "failed"
+                info["end_time"] = _now_iso()
+                info["error"] = "Deferred task timeout (callback not received)"
+                # 收集超时任务，需要通知前端
+                timed_out.append({
+                    "id": tid,
+                    "status": "failed",
+                    "type": info.get("type"),
+                    "start_time": info.get("start_time"),
+                    "end_time": info.get("end_time"),
+                    "error": info.get("error"),
+                    "params": info.get("params", {}),
+                    "lanlan_name": info.get("lanlan_name"),
+                })
+                continue
+
+        if st not in ("completed", "failed", "cancelled"):
+            continue
+        end_time_str = info.get("end_time")
+        if end_time_str:
+            try:
+                end_dt = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - end_dt).total_seconds()
+                if age > TASK_REGISTRY_CLEANUP_TTL:
+                    to_remove.append(tid)
+            except Exception:
+                to_remove.append(tid)  # 解析失败的旧条目直接清理
+        else:
+            # 没有 end_time 的终态任务，用 start_time 估算
+            start_str = info.get("start_time", "")
+            try:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - start_dt).total_seconds()
+                if age > TASK_REGISTRY_CLEANUP_TTL * 2:  # 宽松一点
+                    to_remove.append(tid)
+            except Exception:
+                pass
+    for tid in to_remove:
+        del Modules.task_registry[tid]
+    if to_remove:
+        logger.debug("[TaskRegistry] Cleaned up %d completed tasks", len(to_remove))
+    return timed_out
+
+
+def _bind_deferred_task(plugin_id: str, reminder_id: str, agent_task_id: str) -> None:
+    """通过插件服务将 agent_task_id 关联到提醒记录，供 daemon 触发时回调使用。
+    bind_task 是快速操作（只写文件），触发 run 后短暂轮询等待完成。"""
+    try:
+        import time as _time
+        with httpx.Client(timeout=5.0, proxy=None, trust_env=False) as client:
+            # 1. 触发 bind_task entry
+            resp = client.post(
+                f"http://127.0.0.1:{USER_PLUGIN_SERVER_PORT}/runs",
+                json={
+                    "plugin_id": plugin_id,
+                    "entry_id": "bind_task",
+                    "args": {"reminder_id": reminder_id, "agent_task_id": agent_task_id},
+                },
+            )
+            if resp.status_code != 200:
+                logger.warning("[Deferred] bind_task start HTTP %s", resp.status_code)
+                return
+            run_id = resp.json().get("run_id")
+            if not run_id:
+                return
+            # 2. 短暂轮询等待完成（bind_task 应在 <1s 内完成）
+            for _ in range(20):
+                _time.sleep(0.1)
+                r = client.get(f"http://127.0.0.1:{USER_PLUGIN_SERVER_PORT}/runs/{run_id}")
+                if r.status_code == 200:
+                    if r.json().get("status", "") in ("succeeded", "failed", "canceled", "timeout"):
+                        break
+            logger.info("[Deferred] bind_task done: plugin=%s reminder=%s agent_task=%s", plugin_id, reminder_id, agent_task_id)
+    except Exception as e:
+        logger.warning("[Deferred] bind failed: plugin=%s reminder=%s error=%s", plugin_id, reminder_id, e)
+
+
+def _get_plugin_friendly_name(plugin_id: str) -> str | None:
+    """获取插件的友好名称（用于 HUD 显示）
+
+    通过 HTTP 调用嵌入式插件服务的 /plugins 端点获取插件列表，
+    并使用缓存减少请求次数。使用线程锁保证多线程安全。
+    """
+    global _plugin_name_cache, _plugin_name_cache_time
+
+    # 检查缓存（加锁读取）
+    now = time.time()
+    with _plugin_name_cache_lock:
+        if _plugin_name_cache and (now - _plugin_name_cache_time) < PLUGIN_NAME_CACHE_TTL:
+            return _plugin_name_cache.get(plugin_id)
+
+    # 缓存过期或为空，从嵌入式插件服务获取
+    new_cache = {}
+    cache_time = now
+    try:
+        with httpx.Client(timeout=1.0, proxy=None, trust_env=False) as client:
+            resp = client.get(f"http://127.0.0.1:{USER_PLUGIN_SERVER_PORT}/plugins")
+            if resp.status_code == 200:
+                data = resp.json()
+                plugins = data.get("plugins", [])
+                # 构建新缓存
+                for p in plugins:
+                    if isinstance(p, dict):
+                        pid = p.get("id")
+                        pname = p.get("name")
+                        if pid and pname:
+                            new_cache[pid] = pname
+                        elif pid:
+                            new_cache[pid] = pid
+                # 更新全局缓存（加锁写入）
+                with _plugin_name_cache_lock:
+                    _plugin_name_cache = new_cache
+                    _plugin_name_cache_time = cache_time
+                return new_cache.get(plugin_id)
+    except Exception as e:
+        logger.warning("[AgentServer] Failed to fetch plugin names from port %s: %s", USER_PLUGIN_SERVER_PORT, e)
+
+    # HTTP 调用失败，尝试本地 state（兼容某些部署场景）
+    try:
+        from plugin.core.state import state
+        with state.acquire_plugins_read_lock():
+            meta = state.plugins.get(plugin_id)
+            if isinstance(meta, dict):
+                return meta.get("name") or meta.get("id")
+    except Exception:
+        pass
+
+    return None
 
 
 def _rewire_computer_use_dependents() -> None:
@@ -108,25 +281,170 @@ def _try_refresh_computer_use_adapter(force: bool = False) -> bool:
         return False
 
 
+def _get_throttled_logger() -> ThrottledLogger:
+    throttled = Modules.throttled_logger
+    if throttled is None:
+        throttled = ThrottledLogger(logger, interval=30.0)
+        Modules.throttled_logger = throttled
+    return throttled
+
+
+async def _start_embedded_user_plugin_server() -> None:
+    """Start the plugin HTTP server inside the agent process."""
+    existing_task = Modules.user_plugin_http_task
+    if existing_task is not None and not existing_task.done():
+        return
+
+    # Replicate the sys.path setup from user_plugin_server.py so that
+    # plugin entry points like "plugins.testPlugin:HelloPlugin" resolve
+    # correctly (the "plugins" package lives under <project>/plugin/).
+    _plugin_package_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugin")
+    if _plugin_package_root not in sys.path:
+        sys.path.insert(1, _plugin_package_root)
+
+    try:
+        from plugin.server.http_app import build_plugin_server_app
+        import uvicorn
+    except Exception as exc:
+        raise RuntimeError(f"failed to import embedded user plugin server: {exc}") from exc
+
+    if Modules.user_plugin_app is None:
+        Modules.user_plugin_app = build_plugin_server_app()
+
+    config = uvicorn.Config(
+        Modules.user_plugin_app,
+        host="127.0.0.1",
+        port=USER_PLUGIN_SERVER_PORT,
+        log_config=None,
+        backlog=4096,
+        timeout_keep_alive=30,
+    )
+    server = uvicorn.Server(config)
+    server.install_signal_handlers = lambda: None
+    task = asyncio.create_task(server.serve(), name="embedded-user-plugin-server")
+    Modules.user_plugin_http_server = server
+    Modules.user_plugin_http_task = task
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10.0
+    while True:
+        if getattr(server, "started", False):
+            logger.debug("[Agent] Embedded user plugin server started on 127.0.0.1:%s", USER_PLUGIN_SERVER_PORT)
+            return
+
+        if task.done():
+            Modules.user_plugin_http_server = None
+            Modules.user_plugin_http_task = None
+            try:
+                exc = task.exception()
+            except asyncio.CancelledError as cancelled_exc:
+                raise RuntimeError("embedded user plugin server was cancelled during startup") from cancelled_exc
+            if exc is not None:
+                raise RuntimeError(f"embedded user plugin server exited early: {exc}") from exc
+            raise RuntimeError("embedded user plugin server exited before signaling readiness")
+
+        if loop.time() >= deadline:
+            server.should_exit = True
+            Modules.user_plugin_http_server = None
+            Modules.user_plugin_http_task = None
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            raise RuntimeError("timed out waiting for embedded user plugin server startup")
+
+        await asyncio.sleep(0.1)
+
+
+async def _stop_embedded_user_plugin_server() -> None:
+    """Stop the plugin HTTP server hosted inside the agent process."""
+    server = Modules.user_plugin_http_server
+    task = Modules.user_plugin_http_task
+    Modules.user_plugin_http_server = None
+    Modules.user_plugin_http_task = None
+
+    if server is not None:
+        server.should_exit = True
+
+    if task is None:
+        return
+
+    try:
+        await asyncio.wait_for(task, timeout=10.0)
+    except asyncio.TimeoutError:
+        logger.warning("[Agent] Embedded user plugin server shutdown timed out")
+        if server is not None:
+            server.force_exit = True
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+async def _ensure_plugin_lifecycle_started() -> bool:
+    """Start the plugin lifecycle (load & run plugins). Returns True on success."""
+    if Modules.plugin_lifecycle_started:
+        return True
+    if Modules._plugin_lifecycle_lock is None:
+        Modules._plugin_lifecycle_lock = asyncio.Lock()
+    async with Modules._plugin_lifecycle_lock:
+        if Modules.plugin_lifecycle_started:
+            return True
+        try:
+            from plugin.server.lifecycle import startup as plugin_lifecycle_startup
+            await plugin_lifecycle_startup()
+            Modules.plugin_lifecycle_started = True
+            logger.info("[Agent] Plugin lifecycle started")
+            return True
+        except Exception as exc:
+            logger.error("[Agent] Plugin lifecycle startup failed: %s", exc)
+            return False
+
+
+async def _ensure_plugin_lifecycle_stopped() -> None:
+    """Stop the plugin lifecycle (stop plugin processes, cleanup)."""
+    if not Modules.plugin_lifecycle_started:
+        return
+    if Modules._plugin_lifecycle_lock is None:
+        Modules._plugin_lifecycle_lock = asyncio.Lock()
+    async with Modules._plugin_lifecycle_lock:
+        if not Modules.plugin_lifecycle_started:
+            return
+        try:
+            from plugin.server.lifecycle import shutdown as plugin_lifecycle_shutdown
+            await plugin_lifecycle_shutdown()
+            logger.info("[Agent] Plugin lifecycle stopped")
+        except Exception as exc:
+            logger.warning("[Agent] Plugin lifecycle shutdown error: %s", exc)
+        finally:
+            Modules.plugin_lifecycle_started = False
+
+
 async def _fire_user_plugin_capability_check() -> None:
     """Probe the user plugin server to determine if user_plugin capability is ready."""
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0), proxy=None, trust_env=False) as client:
             r = await client.get(f"http://127.0.0.1:{USER_PLUGIN_SERVER_PORT}/plugins")
             if r.status_code == 200:
                 data = r.json()
                 plugins = data.get("plugins", []) if isinstance(data, dict) else []
                 if plugins:
                     _set_capability("user_plugin", True, "")
-                    logger.info("[Agent] UserPlugin capability check passed (%d plugins)", len(plugins))
+                    logger.debug("[Agent] UserPlugin capability check passed (%d plugins)", len(plugins))
                 else:
-                    _set_capability("user_plugin", False, "未发现可用插件")
-                    logger.info("[Agent] UserPlugin capability check: no plugins found")
+                    _set_capability("user_plugin", False, "AGENT_NO_PLUGINS_FOUND")
+                    logger.debug("[Agent] UserPlugin capability check: no plugins found")
             else:
-                _set_capability("user_plugin", False, f"plugin server returned {r.status_code}")
-                logger.warning("[Agent] UserPlugin capability check failed: status %s", r.status_code)
+                _set_capability("user_plugin", False, "AGENT_PLUGIN_SERVER_ERROR")
+                _get_throttled_logger().warning(
+                    "user_plugin_capability_check_failed",
+                    "[Agent] UserPlugin capability check failed: status %s",
+                    r.status_code,
+                )
     except Exception as e:
-        _set_capability("user_plugin", False, str(e))
+        _set_capability("user_plugin", False, "AGENT_PLUGIN_SERVER_ERROR")
         logger.debug("[Agent] UserPlugin capability check error: %s", e)
 
 
@@ -156,14 +474,14 @@ async def _fire_agent_llm_connectivity_check() -> None:
 
         try:
             ok = await asyncio.get_event_loop().run_in_executor(None, _probe)
-            reason = "" if ok else (adapter.last_error or "Agent LLM unreachable")
+            reason = "" if ok else "AGENT_LLM_UNREACHABLE"
             _set_capability("computer_use", ok, reason)
             bu = Modules.browser_use
             if bu is not None:
                 if not ok:
                     _set_capability("browser_use", False, reason)
                 elif not getattr(bu, "_ready_import", False):
-                    _set_capability("browser_use", False, f"browser-use not installed: {bu.last_error}")
+                    _set_capability("browser_use", False, "AGENT_BROWSER_USE_NOT_INSTALLED")
                 else:
                     _set_capability("browser_use", True, "")
 
@@ -173,22 +491,22 @@ async def _fire_agent_llm_connectivity_check() -> None:
                 logger.warning("[Agent] Agent-LLM connectivity check failed: %s", reason)
                 if Modules.agent_flags.get("computer_use_enabled"):
                     Modules.agent_flags["computer_use_enabled"] = False
-                    Modules.notification = f"已自动关闭键鼠控制: {reason}"
+                    Modules.notification = json.dumps({"code": "AGENT_AUTO_DISABLED_COMPUTER", "details": {"reason_code": reason}})
                 if Modules.agent_flags.get("browser_use_enabled"):
                     Modules.agent_flags["browser_use_enabled"] = False
-                    Modules.notification = f"已自动关闭浏览器控制: {reason}"
+                    Modules.notification = json.dumps({"code": "AGENT_AUTO_DISABLED_BROWSER", "details": {"reason_code": reason}})
 
             _bump_state_revision()
             await _emit_agent_status_update()
         except Exception as e:
             logger.warning("[Agent] Agent-LLM connectivity check error: %s", e)
-            _set_capability("computer_use", False, str(e))
-            _set_capability("browser_use", False, str(e))
+            _set_capability("computer_use", False, "AGENT_LLM_UNREACHABLE")
+            _set_capability("browser_use", False, "AGENT_LLM_UNREACHABLE")
             if Modules.agent_flags.get("computer_use_enabled"):
                 Modules.agent_flags["computer_use_enabled"] = False
             if Modules.agent_flags.get("browser_use_enabled"):
                 Modules.agent_flags["browser_use_enabled"] = False
-            Modules.notification = f"Agent LLM 连接检查异常: {e}"
+            Modules.notification = json.dumps({"code": "AGENT_LLM_CHECK_ERROR"})
             _bump_state_revision()
             await _emit_agent_status_update()
 
@@ -199,8 +517,41 @@ def _bump_state_revision() -> int:
 
 
 def _set_capability(name: str, ready: bool, reason: str = "") -> None:
+    def _normalize_precheck_reason(raw_reason: str) -> str:
+        text = str(raw_reason or "").strip()
+        if not text:
+            return ""
+        if text.startswith("AGENT_"):
+            return text
+
+        lower = text.lower()
+        # Normalize legacy Chinese/English free-text reasons into stable i18n codes.
+        if "未检查" in text or "not checked" in lower or "pending" in lower:
+            return "AGENT_PRECHECK_PENDING"
+        if "模型未配置" in text or "model not configured" in lower:
+            return "AGENT_MODEL_NOT_CONFIGURED"
+        if "api url 未配置" in lower or "url not configured" in lower:
+            return "AGENT_URL_NOT_CONFIGURED"
+        if "api key 未配置" in lower or "key not configured" in lower:
+            return "AGENT_KEY_NOT_CONFIGURED"
+        if "endpoint not configured" in lower or "api 未配置" in lower:
+            return "AGENT_ENDPOINT_NOT_CONFIGURED"
+        if "pyautogui" in lower and ("not installed" in lower or "未安装" in text):
+            return "AGENT_PYAUTOGUI_NOT_INSTALLED"
+        if "browser-use" in lower and ("not installed" in lower or "未安装" in text):
+            return "AGENT_BROWSER_USE_NOT_INSTALLED"
+        if "not initialized" in lower or "初始化失败" in text:
+            return "AGENT_NOT_INITIALIZED"
+        if "未发现可用插件" in text or "no plugins" in lower:
+            return "AGENT_NO_PLUGINS_FOUND"
+        if "plugin server" in lower or "插件服务" in text or "user_plugin server responded" in lower:
+            return "AGENT_PLUGIN_SERVER_ERROR"
+        if "unreachable" in lower or "连接失败" in text or "connectivity" in lower:
+            return "AGENT_LLM_UNREACHABLE"
+        return "AGENT_LLM_UNREACHABLE"
+
     prev = Modules.capability_cache.get(name, {})
-    normalized_reason = reason or ""
+    normalized_reason = _normalize_precheck_reason(reason)
     Modules.capability_cache[name] = {"ready": bool(ready), "reason": normalized_reason}
     if prev.get("ready") != bool(ready) or prev.get("reason", "") != normalized_reason:
         _bump_state_revision()
@@ -275,6 +626,25 @@ async def _emit_task_result(
     )
 
 
+def _lookup_llm_result_fields(plugin_id: str, entry_id: Optional[str]) -> Optional[list]:
+    """从 plugin_list 中查找指定 entry 的 llm_result_fields 声明。"""
+    try:
+        plugins = getattr(Modules.task_executor, "plugin_list", None) or []
+        for p in plugins:
+            if not isinstance(p, dict) or p.get("id") != plugin_id:
+                continue
+            for e in p.get("entries") or []:
+                if not isinstance(e, dict):
+                    continue
+                if e.get("id") == entry_id:
+                    fields = e.get("llm_result_fields")
+                    return list(fields) if isinstance(fields, list) else None
+            break
+    except Exception as e:
+        logger.debug("_lookup_llm_result_fields failed: plugin_id=%s entry_id=%s error=%s", plugin_id, entry_id, e)
+    return None
+
+
 def _check_agent_api_gate() -> Dict[str, Any]:
     """统一 Agent API 门槛检查。"""
     try:
@@ -303,6 +673,9 @@ def _collect_agent_status_snapshot() -> Dict[str, Any]:
     gate = _check_agent_api_gate()
     flags = dict(Modules.agent_flags or {})
     capabilities = dict(Modules.capability_cache or {})
+    # Periodic cleanup of completed tasks to prevent memory leak
+    # Note: _emit_agent_status_update also calls this and handles timed_out tasks
+    _cleanup_task_registry()
     # Include active (queued/running) tasks so frontend can restore after page refresh
     active_tasks = []
     for tid, info in Modules.task_registry.items():
@@ -316,6 +689,7 @@ def _collect_agent_status_snapshot() -> Dict[str, Any]:
                     "start_time": info.get("start_time"),
                     "params": info.get("params", {}),
                     "session_id": info.get("session_id"),
+                    "lanlan_name": info.get("lanlan_name"),
                 })
         except Exception:
             continue
@@ -369,6 +743,26 @@ def _build_user_turn_fingerprint(messages: Any) -> Optional[str]:
 
 async def _emit_agent_status_update(lanlan_name: Optional[str] = None) -> None:
     try:
+        # 先检查超时的 deferred 任务并发送 task_update 通知
+        timed_out = _cleanup_task_registry()
+        for task_info in timed_out:
+            try:
+                await _emit_main_event(
+                    "task_update",
+                    task_info.get("lanlan_name"),
+                    task={
+                        "id": task_info.get("id"),
+                        "status": "failed",
+                        "type": task_info.get("type"),
+                        "start_time": task_info.get("start_time"),
+                        "end_time": task_info.get("end_time"),
+                        "error": task_info.get("error"),
+                        "params": task_info.get("params", {}),
+                    },
+                )
+            except Exception as e:
+                logger.warning("[Agent] Failed to emit task_update for timed-out task %s: %s", task_info.get("id"), e)
+
         snapshot = _collect_agent_status_snapshot()
         await _emit_main_event(
             "agent_status_update",
@@ -482,10 +876,7 @@ async def _run_computer_use_task(
                 res["success"] = True
             success = bool(res.get("success", False))
             info["result"] = res
-            if isinstance(res, dict):
-                cu_detail = res.get("result") or res.get("message") or res.get("reason") or ""
-            else:
-                cu_detail = str(res) if res is not None else ""
+            _cu_ok, cu_detail = parse_computer_use_result(res)
     except asyncio.CancelledError:
         info["error"] = "Task was cancelled"
         logger.info("[ComputerUse] Task %s was cancelled", task_id)
@@ -501,6 +892,10 @@ async def _run_computer_use_task(
         logger.error("[ComputerUse] Task %s failed: %s", task_id, e)
     finally:
         info["status"] = "cancelled" if info.get("error") == "Task was cancelled" else ("completed" if success else "failed")
+        info["end_time"] = _now_iso()
+        # 失败时将解析后的 cu_detail 写入 info["error"]（仅在非异常路径下补全）
+        if not success and not info.get("error") and cu_detail:
+            info["error"] = cu_detail[:500]
         Modules.computer_use_running = False
         Modules.active_computer_use_task_id = None
         Modules.active_computer_use_async_task = None
@@ -512,7 +907,7 @@ async def _run_computer_use_task(
                 task={
                     "id": task_id, "status": info["status"], "type": "computer_use",
                     "start_time": info.get("start_time"), "end_time": _now_iso(),
-                    "error": info.get("error"),
+                    "error": info.get("error") if not success else None,
                 },
             ))
             Modules._background_tasks.add(task_obj)
@@ -522,25 +917,26 @@ async def _run_computer_use_task(
 
         # Emit structured task_result
         try:
-            _done = "已完成" if success else "已结束"
+            _lang = _rp_lang(None)
+            _done = _rp_phrase('cu_status_done', _lang) if success else _rp_phrase('cu_status_ended', _lang)
             params = info.get("params") or {}
             desc = params.get("query") or params.get("instruction") or ""
             if cu_detail and desc:
-                summary = f'你的任务“{desc}”{_done}：{cu_detail}'
+                summary = _rp_phrase('cu_task_done', _lang, desc=desc, status=_done, detail=cu_detail)
             elif cu_detail:
-                summary = f'你的任务{_done}：{cu_detail}'
+                summary = _rp_phrase('cu_task_done_no_desc', _lang, status=_done, detail=cu_detail)
             elif desc:
-                summary = f'你的任务“{desc}”{_done}'
+                summary = _rp_phrase('cu_task_desc_only', _lang, desc=desc, status=_done)
             else:
-                summary = "任务已完成" if success else "任务执行失败"
+                summary = _rp_phrase('cu_done', _lang) if success else _rp_phrase('cu_fail', _lang)
             task_obj = asyncio.create_task(_emit_task_result(
                 lanlan_name,
                 channel="computer_use",
                 task_id=task_id,
                 success=success,
                 summary=summary,
-                detail=cu_detail,
-                error_message=(info.get("error") or "") if not success else "",
+                detail=cu_detail if success else "",
+                error_message=cu_detail if not success else "",
             ))
             Modules._background_tasks.add(task_obj)
             task_obj.add_done_callback(Modules._background_tasks.discard)
@@ -627,7 +1023,18 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
             return
         
         if not result.has_task:
-            logger.debug("[TaskExecutor] No actionable task found")
+            reason = getattr(result, "reason", "") or ""
+            if "error" in reason.lower() or "timed out" in reason.lower() or "failed" in reason.lower():
+                logger.warning("[TaskExecutor] Assessment failed: %s", reason)
+                await _emit_main_event(
+                    "agent_notification", lanlan_name,
+                    text=f"⚠️ Agent评估失败: {reason[:200]}",
+                    source="brain",
+                    status="error",
+                    error_message=reason[:500],
+                )
+            else:
+                logger.debug("[TaskExecutor] No actionable task found")
             return
 
         if not Modules.analyzer_enabled:
@@ -721,17 +1128,25 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                 plugin_args = result.tool_args or {}
                 entry_id = result.entry_id
                 up_start = _now_iso()
+                # 获取插件友好名称（用于 HUD 显示）
+                plugin_name = _get_plugin_friendly_name(plugin_id)
                 logger.info(
-                    "[TaskExecutor] Dispatching UserPlugin: plugin_id=%s, entry_id=%s",
-                    plugin_id, entry_id,
+                    "[TaskExecutor] Dispatching UserPlugin: plugin_id=%s, entry_id=%s, plugin_name=%s",
+                    plugin_id, entry_id, plugin_name,
                 )
+                # 构建任务参数（包含友好名称）
+                task_params = {"plugin_id": plugin_id, "entry_id": entry_id}
+                if plugin_name:
+                    task_params["plugin_name"] = plugin_name
+                if result.task_description:
+                    task_params["description"] = result.task_description
                 # Register in task_registry (mirrors CU _spawn_task) so GET /tasks can recover on refresh
                 Modules.task_registry[result.task_id] = {
                     "id": result.task_id,
                     "type": "user_plugin",
                     "status": "running",
                     "start_time": up_start,
-                    "params": {"plugin_id": plugin_id, "entry_id": entry_id},
+                    "params": task_params,
                     "lanlan_name": lanlan_name,
                     "result": None,
                     "error": None,
@@ -742,7 +1157,7 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                         "task_update", lanlan_name,
                         task={"id": result.task_id, "status": "running", "type": "user_plugin",
                               "start_time": up_start,
-                              "params": {"plugin_id": plugin_id, "entry_id": entry_id}},
+                              "params": task_params},
                     )
                 except Exception as emit_err:
                     logger.debug("[TaskExecutor] emit task_update(running) failed: task_id=%s plugin_id=%s error=%s", result.task_id, plugin_id, emit_err)
@@ -753,7 +1168,7 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                     task_payload: Dict[str, Any] = {
                         "id": result.task_id, "status": "running", "type": "user_plugin",
                         "start_time": up_start,
-                        "params": {"plugin_id": plugin_id, "entry_id": entry_id},
+                        "params": task_params,
                     }
                     if progress is not None:
                         task_payload["progress"] = progress
@@ -781,20 +1196,43 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                             on_progress=_on_plugin_progress,
                         )
                         up_terminal = "completed" if up_result.success else "failed"
-                        # Update task_registry with terminal state
-                        _reg = Modules.task_registry.get(result.task_id)
-                        if _reg:
-                            _reg["status"] = up_terminal
-                            _reg["result"] = up_result.result
-                            if not up_result.success and up_result.error:
-                                _reg["error"] = str(up_result.error)[:500]
                         run_data = up_result.result.get("run_data") if isinstance(up_result.result, dict) else None
-                        detail = str(run_data)[:500] if run_data else ""
-                        if up_result.success:
+                        run_error = up_result.result.get("run_error") if isinstance(up_result.result, dict) else None
+                        _llm_fields = _lookup_llm_result_fields(plugin_id, entry_id)
+                        _plugin_msg = str(up_result.result.get("message") or "") if isinstance(up_result.result, dict) else ""
+                        _error_to_pass = (run_error or up_result.error) if not up_result.success else None
+                        detail = parse_plugin_result(
+                            run_data,
+                            llm_result_fields=_llm_fields,
+                            plugin_message=_plugin_msg,
+                            error=_error_to_pass,
+                        )
+                        # 检查插件是否返回 deferred 标志（如备忘提醒：调度成功但提醒尚未触发）
+                        is_deferred = isinstance(run_data, dict) and run_data.get("deferred") is True
+                        # Update task_registry（deferred 任务保持 running，不写 terminal 状态）
+                        _reg = Modules.task_registry.get(result.task_id)
+                        if _reg and not (up_result.success and is_deferred):
+                            _reg["status"] = up_terminal
+                            _reg["end_time"] = _now_iso()
+                            _reg["result"] = up_result.result
+                            if not up_result.success:
+                                _reg["error"] = (detail or str(up_result.error or ""))[:500]
+                        if up_result.success and is_deferred:
+                            # 保持任务为 running 状态，等待 daemon 触发后回调完成
+                            reminder_id = run_data.get("reminder_id") if isinstance(run_data, dict) else None
+                            logger.info("[Deferred] Task %s kept running, reminder_id=%s", result.task_id, reminder_id)
+                            # 设置超时，防止绑定失败导致任务永远卡在 running
+                            if _reg:
+                                _reg["deferred_timeout"] = time.time() + DEFERRED_TASK_TIMEOUT
+                            if reminder_id:
+                                # 在线程中执行（含 HTTP 轮询，避免阻塞事件循环）
+                                loop = asyncio.get_event_loop()
+                                loop.run_in_executor(None, _bind_deferred_task, plugin_id, reminder_id, result.task_id)
+                            # 不进入后续 completed/failed 流程
+                        elif up_result.success:
                             logger.info(f"[TaskExecutor] ✅ UserPlugin completed: {plugin_id}")
-                            summary = f'插件任务 "{plugin_id}" 已完成'
-                            if detail:
-                                summary = f'插件任务 "{plugin_id}" 已完成：{detail}'
+                            _lang = _rp_lang(None)
+                            summary = _rp_phrase('plugin_done_with', _lang, id=plugin_id, detail=detail) if detail else _rp_phrase('plugin_done', _lang, id=plugin_id)
                             try:
                                 await _emit_task_result(
                                     lanlan_name,
@@ -808,27 +1246,31 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                                 logger.debug("[TaskExecutor] emit task_result(success) failed: task_id=%s plugin_id=%s error=%s", up_result.task_id, plugin_id, emit_err)
                         else:
                             logger.warning(f"[TaskExecutor] ❌ UserPlugin failed: {up_result.error}")
+                            _lang = _rp_lang(None)
                             try:
+                                _fail_summary = _rp_phrase('plugin_failed_with', _lang, id=plugin_id, detail=detail) if detail else _rp_phrase('plugin_failed', _lang, id=plugin_id)
                                 await _emit_task_result(
                                     lanlan_name,
                                     channel="user_plugin",
                                     task_id=str(up_result.task_id or ""),
                                     success=False,
-                                    summary=f'插件任务 "{plugin_id}" 执行失败',
-                                    error_message=str(up_result.error or "unknown error")[:500],
+                                    summary=_fail_summary[:500],
+                                    error_message=(detail or str(up_result.error or ""))[:500],
                                 )
                             except Exception as emit_err:
                                 logger.debug("[TaskExecutor] emit task_result(failed) failed: task_id=%s plugin_id=%s error=%s", up_result.task_id, plugin_id, emit_err)
-                        # Emit task_update (terminal) so AgentHUD removes the running card
-                        try:
-                            await _emit_main_event(
-                                "task_update", lanlan_name,
-                                task={"id": result.task_id, "status": up_terminal, "type": "user_plugin",
-                                      "start_time": up_start, "end_time": _now_iso(),
-                                      "error": str(up_result.error or "")[:500] if not up_result.success else None},
-                            )
-                        except Exception as emit_err:
-                            logger.debug("[TaskExecutor] emit task_update(terminal) failed: task_id=%s plugin_id=%s error=%s", result.task_id, plugin_id, emit_err)
+                        # Emit task_update (terminal) — deferred 任务跳过，保持 running
+                        if not (up_result.success and is_deferred):
+                            try:
+                                await _emit_main_event(
+                                    "task_update", lanlan_name,
+                                    task={"id": result.task_id, "status": up_terminal, "type": "user_plugin",
+                                          "start_time": up_start, "end_time": _now_iso(),
+                                          "params": task_params,
+                                          "error": (detail or str(up_result.error or ""))[:500] if not up_result.success else None},
+                                )
+                            except Exception as emit_err:
+                                logger.debug("[TaskExecutor] emit task_update(terminal) failed: task_id=%s plugin_id=%s error=%s", result.task_id, plugin_id, emit_err)
                     except asyncio.CancelledError as e:
                         cancel_msg = str(e)[:500] if str(e) else "cancelled"
                         _reg = Modules.task_registry.get(result.task_id)
@@ -841,7 +1283,7 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                                 channel="user_plugin",
                                 task_id=str(result.task_id or ""),
                                 success=False,
-                                summary='插件任务已取消',
+                                summary=_rp_phrase('plugin_cancelled', _rp_lang(None)),
                                 error_message=cancel_msg,
                             )
                         except Exception as emit_err:
@@ -851,6 +1293,7 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                                 "task_update", lanlan_name,
                                 task={"id": result.task_id, "status": "cancelled", "type": "user_plugin",
                                       "start_time": up_start, "end_time": _now_iso(),
+                                      "params": task_params,
                                       "error": cancel_msg},
                             )
                         except Exception as emit_err:
@@ -878,6 +1321,7 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                                 "task_update", lanlan_name,
                                 task={"id": result.task_id, "status": "failed", "type": "user_plugin",
                                       "start_time": up_start, "end_time": _now_iso(),
+                                      "params": task_params,
                                       "error": str(e)[:500]},
                             )
                         except Exception as emit_err:
@@ -929,35 +1373,34 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                             session_id=bu_session.session_id,
                         )
                         success = bres.get("success", False) if isinstance(bres, dict) else False
-                        summary = f'你的任务"{result.task_description}"已完成' if success else f'你的任务"{result.task_description}"已结束（未完全成功）'
-                        result_detail = ""
-                        error_detail = ""
-                        if isinstance(bres, dict):
-                            result_detail = str(bres.get("result") or bres.get("message") or "")
-                            error_detail = str(bres.get("error") or "") if not success else ""
-                            display_detail = result_detail or error_detail
-                            if success:
-                                summary = f'你的任务"{result.task_description}"已完成：{result_detail}' if result_detail else f'你的任务"{result.task_description}"已完成'
-                            else:
-                                summary = f'你的任务"{result.task_description}"已结束（未完全成功）：{display_detail}' if display_detail else f'你的任务"{result.task_description}"已结束（未完全成功）'
-                        bu_session.complete_task(result_detail or summary, success)
+                        _bu_ok, bu_parsed = parse_browser_use_result(bres)
+                        _lang = _rp_lang(None)
+                        _done = _rp_phrase('cu_status_done', _lang) if success else _rp_phrase('cu_status_ended', _lang)
+                        if bu_parsed:
+                            summary = _rp_phrase('cu_task_done', _lang, desc=result.task_description, status=_done, detail=bu_parsed)
+                        else:
+                            summary = _rp_phrase('cu_task_desc_only', _lang, desc=result.task_description, status=_done)
+                        bu_session.complete_task(bu_parsed or summary, success)
                         bu_info["status"] = "completed" if success else "failed"
+                        bu_info["end_time"] = _now_iso()
                         bu_info["result"] = bres
+                        if not success:
+                            bu_info["error"] = (bu_parsed or "")[:500]
                         await _emit_task_result(
                             lanlan_name,
                             channel="browser_use",
                             task_id=bu_task_id,
                             success=success,
                             summary=summary,
-                            detail=result_detail,
-                            error_message=error_detail,
+                            detail=bu_parsed if success else "",
+                            error_message=bu_parsed if not success else "",
                         )
                         try:
                             await _emit_main_event(
                                 "task_update", lanlan_name,
                                 task={"id": bu_task_id, "status": bu_info["status"],
                                       "type": "browser_use", "start_time": bu_start, "end_time": _now_iso(),
-                                      "error": error_detail[:500] if error_detail else "",
+                                      "error": (bu_parsed[:500] if bu_parsed else "") if not success else None,
                                       "session_id": bu_session.session_id},
                             )
                         except Exception as emit_err:
@@ -991,6 +1434,7 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
                     except Exception as e:
                         logger.warning(f"[BrowserUse] Failed: {e}")
                         bu_info["status"] = "failed"
+                        bu_info["end_time"] = _now_iso()
                         bu_info["error"] = str(e)[:500]
                         bu_session.complete_task(str(e), success=False)
                         try:
@@ -1032,37 +1476,65 @@ async def _do_analyze_and_plan(messages: list[dict[str, Any]], lanlan_name: Opti
     
     except Exception as e:
         logger.error(f"[TaskExecutor] Background task error: {e}", exc_info=True)
+        try:
+            await _emit_main_event(
+                "agent_notification", lanlan_name,
+                text=f"💥 Agent后台任务异常: {type(e).__name__}: {e}",
+                source="brain",
+                status="error",
+                error_message=str(e)[:500],
+            )
+        except Exception:
+            pass
 
 @app.on_event("startup")
 async def startup():
+    # Install token tracking hooks for this process
+    try:
+        from utils.token_tracker import TokenTracker, install_hooks
+        install_hooks()
+        TokenTracker.get_instance().start_periodic_save()
+    except Exception as e:
+        logger.warning(f"[Agent] Token tracker init failed: {e}")
+
+    os.environ["NEKO_PLUGIN_HOSTED_BY_AGENT"] = "true"
     Modules.computer_use = ComputerUseAdapter()
-    Modules.browser_use = BrowserUseAdapter()
-    Modules.task_executor = DirectTaskExecutor(computer_use=Modules.computer_use, browser_use=Modules.browser_use)
+    Modules.task_executor = DirectTaskExecutor(computer_use=Modules.computer_use, browser_use=None)
     Modules.deduper = TaskDeduper()
+    Modules.throttled_logger = ThrottledLogger(logger, interval=30.0)
     _rewire_computer_use_dependents()
+
+    async def _init_browser_use_background():
+        try:
+            bu = await asyncio.to_thread(BrowserUseAdapter)
+            Modules.browser_use = bu
+            Modules.task_executor.browser_use = bu
+            logger.info("[Agent] BrowserUseAdapter ready (background init)")
+            try:
+                await _fire_agent_llm_connectivity_check()
+            except Exception:
+                logger.debug("[Agent] Post-browser-init capability refresh failed", exc_info=True)
+        except Exception as exc:
+            logger.error("[Agent] BrowserUseAdapter background init failed: %s", exc)
+
+    _bu_task = asyncio.create_task(_init_browser_use_background())
+    Modules._persistent_tasks.add(_bu_task)
+    _bu_task.add_done_callback(Modules._persistent_tasks.discard)
+    try:
+        await _start_embedded_user_plugin_server()
+    except Exception as e:
+        logger.warning(f"[Agent] Failed to start embedded user plugin server: {e}")
     # Both CUA and BrowserUse share the agent LLM — default to "not connected"
     # and probe in background.  The single check updates both capability caches.
     _set_capability("computer_use", False, "connectivity check pending")
     _set_capability("browser_use", False, "connectivity check pending")
-    _set_capability("user_plugin", False, "connectivity check pending")
+    # Plugin capability = ready (embedded HTTP server is always up), but lifecycle
+    # is NOT started here — it syncs with user_plugin_enabled (default OFF).
+    # The lifecycle starts on-demand when the user toggles the plugin flag ON.
+    _set_capability("user_plugin", True, "")
     _llm_probe_task = asyncio.create_task(_fire_agent_llm_connectivity_check())
     Modules._persistent_tasks.add(_llm_probe_task)
     _llm_probe_task.add_done_callback(Modules._persistent_tasks.discard)
-    # UserPlugin probe — plugin server may start slightly later, so retry a few times
-    async def _delayed_user_plugin_check():
-        prev_cap = dict(Modules.capability_cache.get("user_plugin", {}))
-        for attempt in range(6):
-            await asyncio.sleep(2)
-            await _fire_user_plugin_capability_check()
-            cap = Modules.capability_cache.get("user_plugin", {})
-            if cap != prev_cap:
-                await _emit_agent_status_update()
-                prev_cap = dict(cap)
-            if cap.get("ready"):
-                break
-    _plugin_probe_task = asyncio.create_task(_delayed_user_plugin_check())
-    Modules._persistent_tasks.add(_plugin_probe_task)
-    _plugin_probe_task.add_done_callback(Modules._persistent_tasks.discard)
     
     try:
         async def _http_plugin_provider(force_refresh: bool = False):
@@ -1070,7 +1542,7 @@ async def startup():
             if force_refresh:
                 url += "?refresh=true"
             try:
-                async with httpx.AsyncClient(timeout=1.0) as client:
+                async with httpx.AsyncClient(timeout=1.0, proxy=None, trust_env=False) as client:
                     r = await client.get(url)
                     if r.status_code == 200:
                         try:
@@ -1086,7 +1558,7 @@ async def startup():
         # inject http-based provider so DirectTaskExecutor can pick up user_plugin_server plugins
         try:
             Modules.task_executor.set_plugin_list_provider(_http_plugin_provider)
-            logger.info("[Agent] Registered http plugin_list_provider for task_executor")
+            logger.debug("[Agent] Registered http plugin_list_provider for task_executor")
         except Exception as e:
             logger.warning(f"[Agent] Failed to inject plugin_list_provider into task_executor: {e}")
     except Exception as e:
@@ -1111,6 +1583,12 @@ async def shutdown():
     """Gracefully stop running tasks and release async resources."""
     logger.info("[Agent] Shutdown initiated — stopping running tasks")
 
+    try:
+        from utils.token_tracker import TokenTracker
+        TokenTracker.get_instance().save()
+    except Exception:
+        pass
+
     if Modules.computer_use:
         Modules.computer_use.cancel_running()
     if Modules.browser_use:
@@ -1124,6 +1602,16 @@ async def shutdown():
             t.cancel()
     if Modules.active_computer_use_async_task and not Modules.active_computer_use_async_task.done():
         Modules.active_computer_use_async_task.cancel()
+
+    try:
+        await _ensure_plugin_lifecycle_stopped()
+    except Exception as e:
+        logger.warning(f"[Agent] Plugin lifecycle cleanup error: {e}")
+
+    try:
+        await _stop_embedded_user_plugin_server()
+    except Exception as e:
+        logger.warning(f"[Agent] Embedded user plugin server cleanup error: {e}")
 
     logger.info("[Agent] 正在清理 AsyncClient 资源...")
 
@@ -1256,13 +1744,19 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
     # Log request
     logger.info(f"[Plugin] Direct execute request: plugin_id={plugin_id}, entry_id={entry_id}, lanlan={lanlan_name}")
 
+    # 获取插件友好名称（用于 HUD 显示）
+    plugin_name = _get_plugin_friendly_name(plugin_id)
+    task_params = {"plugin_id": plugin_id, "entry_id": entry_id, "args": args}
+    if plugin_name:
+        task_params["plugin_name"] = plugin_name
+
     # Ensure task registry entry for tracking
     info = {
         "id": task_id,
         "type": "plugin_direct",
         "status": "running",
         "start_time": _now_iso(),
-        "params": {"plugin_id": plugin_id, "entry_id": entry_id, "args": args},
+        "params": task_params,
         "lanlan_name": lanlan_name,
         "result": None,
         "error": None,
@@ -1279,7 +1773,7 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
                     "status": "running",
                     "type": "plugin_direct",
                     "start_time": info["start_time"],
-                    "params": {"plugin_id": plugin_id, "entry_id": entry_id},
+                    "params": task_params,
                 },
             )
         except Exception as emit_err:
@@ -1293,7 +1787,7 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
                 "status": "running",
                 "type": "plugin_direct",
                 "start_time": info["start_time"],
-                "params": {"plugin_id": plugin_id, "entry_id": entry_id},
+                "params": task_params,
             }
             if progress is not None:
                 task_payload["progress"] = progress
@@ -1319,17 +1813,26 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
             )
             info["result"] = res.result
             info["status"] = "completed" if res.success else "failed"
-            if not res.success and res.error:
-                info["error"] = str(res.error)[:500]
+            info["end_time"] = _now_iso()
             try:
                 run_data = res.result.get("run_data") if isinstance(res.result, dict) else None
-                detail = str(run_data)[:500] if run_data else ""
+                run_error = res.result.get("run_error") if isinstance(res.result, dict) else None
+                _llm_fields = _lookup_llm_result_fields(plugin_id, entry_id)
+                _plugin_msg = str(res.result.get("message") or "") if isinstance(res.result, dict) else ""
+                _error_to_pass = (run_error or res.error) if not res.success else None
+                detail = parse_plugin_result(
+                    run_data,
+                    llm_result_fields=_llm_fields,
+                    plugin_message=_plugin_msg,
+                    error=_error_to_pass,
+                )
+                if not res.success:
+                    info["error"] = (detail or str(res.error or ""))[:500]
+                _lang = _rp_lang(None)
                 if res.success:
-                    summary = f'插件任务 "{plugin_id}" 已完成'
-                    if detail:
-                        summary = f'插件任务 "{plugin_id}" 已完成：{detail}'
+                    summary = _rp_phrase('plugin_done_with', _lang, id=plugin_id, detail=detail) if detail else _rp_phrase('plugin_done', _lang, id=plugin_id)
                 else:
-                    summary = f'插件任务 "{plugin_id}" 执行失败'
+                    summary = _rp_phrase('plugin_failed_with', _lang, id=plugin_id, detail=detail) if detail else _rp_phrase('plugin_failed', _lang, id=plugin_id)
                 await _emit_task_result(
                     lanlan_name,
                     channel="user_plugin",
@@ -1337,7 +1840,7 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
                     success=res.success,
                     summary=summary[:500],
                     detail=detail if res.success else "",
-                    error_message=str(res.error or "")[:500] if not res.success else "",
+                    error_message=(detail or str(res.error or ""))[:500] if not res.success else "",
                 )
             except Exception as emit_err:
                 logger.debug("[Plugin] emit task_result failed: task_id=%s plugin_id=%s error=%s", task_id, plugin_id, emit_err)
@@ -1351,7 +1854,7 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
                     channel="user_plugin",
                     task_id=task_id,
                     success=False,
-                    summary=f'插件任务 "{plugin_id}" 已取消',
+                    summary=_rp_phrase('plugin_cancelled_id', _rp_lang(None), id=plugin_id),
                     error_message="cancelled",
                 )
             except Exception as emit_err:
@@ -1359,6 +1862,7 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
             raise
         except Exception as e:
             info["status"] = "failed"
+            info["end_time"] = _now_iso()
             info["error"] = str(e)[:500]
             logger.error(f"[Plugin] Direct execute failed: {e}", exc_info=True)
             try:
@@ -1367,7 +1871,7 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
                     channel="user_plugin",
                     task_id=task_id,
                     success=False,
-                    summary=f'插件任务 "{plugin_id}" 执行异常: {str(e)[:200]}',
+                    summary=_rp_phrase('plugin_exception', _rp_lang(None), id=plugin_id, err=str(e)[:200]),
                     error_message=str(e)[:500],
                 )
             except Exception as emit_err:
@@ -1382,6 +1886,7 @@ async def plugin_execute_direct(payload: Dict[str, Any]):
                         "type": "plugin_direct",
                         "start_time": info.get("start_time"),
                         "end_time": _now_iso(),
+                        "params": info.get("params", {}),
                         "error": info.get("error"),
                     },
                 )
@@ -1442,12 +1947,52 @@ async def cancel_task(task_id: str):
         await _emit_main_event(
             "task_update", lanlan_name,
             task={"id": task_id, "status": "cancelled", "type": task_type,
-                  "end_time": _now_iso(), "error": "Cancelled by user"},
+                  "end_time": _now_iso(), "params": info.get("params", {}),
+                  "error": "Cancelled by user"},
         )
     except Exception:
         pass
     logger.info("[Agent] Task %s (%s) cancelled by user", task_id, task_type)
     return {"success": True, "task_id": task_id, "status": "cancelled"}
+
+
+@app.post("/api/agent/tasks/{task_id}/complete")
+async def complete_deferred_task(task_id: str):
+    """供插件 daemon 回调：将 deferred 任务标记为已完成并通知前端 HUD。"""
+    info = Modules.task_registry.get(task_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if info.get("status") != "running":
+        # 已经是 terminal 状态，幂等返回
+        return {"ok": True, "skipped": True, "status": info.get("status")}
+
+    # 验证这是一个 deferred 任务（只有 user_plugin 且有 deferred_timeout 的任务才能通过此端点完成）
+    if info.get("type") != "user_plugin":
+        raise HTTPException(status_code=403, detail="Only user_plugin tasks can be completed via this endpoint")
+    if not info.get("deferred_timeout"):
+        raise HTTPException(status_code=400, detail="Not a deferred task - use normal completion flow")
+
+    info["status"] = "completed"
+    info["end_time"] = _now_iso()
+    lanlan_name = info.get("lanlan_name")
+
+    try:
+        await _emit_main_event(
+            "task_update", lanlan_name,
+            task={
+                "id": task_id,
+                "status": "completed",
+                "type": info.get("type"),
+                "start_time": info.get("start_time"),
+                "end_time": info["end_time"],
+                "params": info.get("params", {}),
+            },
+        )
+    except Exception as e:
+        logger.warning("[Deferred] emit task_update(complete) failed: task_id=%s error=%s", task_id, e)
+
+    logger.info("[Deferred] Task %s marked completed via callback", task_id)
+    return {"ok": True}
 
 
 @app.get("/capabilities")
@@ -1496,7 +2041,12 @@ async def set_agent_flags(payload: Dict[str, Any]):
         Modules.agent_flags["computer_use_enabled"] = False
         Modules.agent_flags["browser_use_enabled"] = False
         Modules.agent_flags["user_plugin_enabled"] = False
-        Modules.notification = f"无法开启 Agent: {(gate.get('reasons') or ['Agent API 未配置'])[0]}"
+        first_reason = (gate.get('reasons') or ['AGENT_ENDPOINT_NOT_CONFIGURED'])[0]
+        _set_capability("computer_use", False, first_reason)
+        _set_capability("browser_use", False, first_reason)
+        _set_capability("user_plugin", False, first_reason)
+        await _ensure_plugin_lifecycle_stopped()
+        Modules.notification = None
         if Modules.agent_flags != old_flags:
             _bump_state_revision()
             await _emit_agent_status_update(lanlan_name=lanlan_name)
@@ -1511,11 +2061,11 @@ async def set_agent_flags(payload: Dict[str, Any]):
                 _try_refresh_computer_use_adapter(force=True)
             if not Modules.computer_use:
                 Modules.agent_flags["computer_use_enabled"] = False
-                Modules.notification = "无法开启 Computer Use: 模块未加载"
+                Modules.notification = json.dumps({"code": "AGENT_CU_MODULE_NOT_LOADED"})
                 logger.warning("[Agent] Cannot enable Computer Use: Module not loaded")
             elif not getattr(Modules.computer_use, "init_ok", False):
                 Modules.agent_flags["computer_use_enabled"] = True
-                Modules.notification = "键鼠控制已开启，Agent LLM 连接确认中..."
+                Modules.notification = json.dumps({"code": "AGENT_CU_ENABLED_CHECKING"})
                 asyncio.ensure_future(_fire_agent_llm_connectivity_check())
             else:
                 try:
@@ -1526,12 +2076,12 @@ async def set_agent_flags(payload: Dict[str, Any]):
                         Modules.agent_flags["computer_use_enabled"] = True
                     else:
                         Modules.agent_flags["computer_use_enabled"] = False
-                        reason = avail.get('reasons', [])[0] if avail.get('reasons') else '未知原因'
-                        Modules.notification = f"无法开启 Computer Use: {reason}"
+                        reason = avail.get('reasons', [])[0] if avail.get('reasons') else 'unknown'
+                        Modules.notification = json.dumps({"code": "AGENT_CU_UNAVAILABLE", "details": {"reason_code": reason}})
                         logger.warning(f"[Agent] Cannot enable Computer Use: {avail.get('reasons')}")
                 except Exception as e:
                     Modules.agent_flags["computer_use_enabled"] = False
-                    Modules.notification = f"开启 Computer Use 失败: {str(e)}"
+                    Modules.notification = json.dumps({"code": "AGENT_CU_ENABLE_FAILED", "details": {"error": str(e)}})
                     logger.error(f"[Agent] Cannot enable Computer Use: Check failed {e}")
         else: # Disabling
             Modules.agent_flags["computer_use_enabled"] = False
@@ -1542,13 +2092,13 @@ async def set_agent_flags(payload: Dict[str, Any]):
             bu = getattr(Modules, "browser_use", None)
             if not bu:
                 Modules.agent_flags["browser_use_enabled"] = False
-                Modules.notification = "无法开启 Browser Use: 模块未加载"
+                Modules.notification = json.dumps({"code": "AGENT_BU_MODULE_NOT_LOADED"})
             elif not getattr(bu, "_ready_import", False):
                 Modules.agent_flags["browser_use_enabled"] = False
-                Modules.notification = f"无法开启 Browser Use: browser-use not installed: {bu.last_error}"
+                Modules.notification = json.dumps({"code": "AGENT_BU_NOT_INSTALLED", "details": {"error": str(bu.last_error)}})
             elif not getattr(Modules.computer_use, "init_ok", False):
                 Modules.agent_flags["browser_use_enabled"] = True
-                Modules.notification = "浏览器控制已开启，Agent LLM 连接确认中..."
+                Modules.notification = json.dumps({"code": "AGENT_BU_ENABLED_CHECKING"})
                 asyncio.ensure_future(_fire_agent_llm_connectivity_check())
             else:
                 Modules.agent_flags["browser_use_enabled"] = True
@@ -1557,33 +2107,68 @@ async def set_agent_flags(payload: Dict[str, Any]):
             Modules.agent_flags["browser_use_enabled"] = False
             
     if isinstance(uf, bool):
-        if uf:  # Attempting to enable UserPlugin
-            try:
-                async with httpx.AsyncClient(timeout=1.0) as client:
-                    r = await client.get(f"http://127.0.0.1:{USER_PLUGIN_SERVER_PORT}/plugins")
-                    if r.status_code != 200:
-                        _set_capability("user_plugin", False, f"user_plugin server responded {r.status_code}")
+        if uf:  # Attempting to enable UserPlugin — non-blocking (like CUA)
+            Modules.agent_flags["user_plugin_enabled"] = True
+            Modules.notification = json.dumps({"code": "AGENT_UP_ENABLED_CHECKING"})
+
+            async def _bg_plugin_enable():
+                _ln = lanlan_name
+                try:
+                    started = await _ensure_plugin_lifecycle_started()
+                    if not started:
                         Modules.agent_flags["user_plugin_enabled"] = False
-                        Modules.notification = "无法开启 UserPlugin: 插件服务不可用"
-                        logger.warning("[Agent] Cannot enable UserPlugin: service unavailable")
-                        return {"success": True, "agent_flags": Modules.agent_flags}
-                    data = r.json()
-                    plugins = data.get("plugins", []) if isinstance(data, dict) else []
+                        Modules.notification = json.dumps({"code": "AGENT_PLUGIN_SERVER_ERROR"})
+                        logger.warning("[Agent] Cannot enable UserPlugin: lifecycle startup failed")
+                        _bump_state_revision()
+                        await _emit_agent_status_update(lanlan_name=_ln)
+                        return
+
+                    plugins = []
+                    for _attempt in range(8):
+                        await asyncio.sleep(0.5)
+                        try:
+                            async with httpx.AsyncClient(timeout=1.0, proxy=None, trust_env=False) as client:
+                                r = await client.get(f"http://127.0.0.1:{USER_PLUGIN_SERVER_PORT}/plugins")
+                                if r.status_code == 200:
+                                    data = r.json()
+                                    plugins = data.get("plugins", []) if isinstance(data, dict) else []
+                                    if plugins:
+                                        break
+                        except Exception:
+                            pass
+
                     if not plugins:
-                        _set_capability("user_plugin", False, "未发现可用插件")
                         Modules.agent_flags["user_plugin_enabled"] = False
-                        Modules.notification = "无法开启 UserPlugin: 未发现可用插件"
-                        logger.warning("[Agent] Cannot enable UserPlugin: no plugins found")
-                        return {"success": True, "agent_flags": Modules.agent_flags}
-            except Exception as e:
-                _set_capability("user_plugin", False, str(e))
-                Modules.agent_flags["user_plugin_enabled"] = False
-                Modules.notification = f"开启 UserPlugin 失败: {str(e)}"
-                logger.error(f"[Agent] Cannot enable UserPlugin: {e}")
-                return {"success": True, "agent_flags": Modules.agent_flags}
-        if uf:
+                        Modules.notification = json.dumps({"code": "AGENT_NO_PLUGINS_FOUND"})
+                        logger.warning("[Agent] Cannot enable UserPlugin: no plugins found after lifecycle start")
+                        await _ensure_plugin_lifecycle_stopped()
+                    else:
+                        _set_capability("user_plugin", True, "")
+                        logger.info("[Agent] UserPlugin lifecycle ready (%d plugins)", len(plugins))
+                except Exception as exc:
+                    Modules.agent_flags["user_plugin_enabled"] = False
+                    Modules.notification = json.dumps({"code": "AGENT_PLUGIN_SERVER_ERROR"})
+                    logger.error("[Agent] Background plugin enable failed: %s", exc)
+                finally:
+                    _bump_state_revision()
+                    await _emit_agent_status_update(lanlan_name=_ln)
+
+            _bg = asyncio.create_task(_bg_plugin_enable())
+            Modules._persistent_tasks.add(_bg)
+            _bg.add_done_callback(Modules._persistent_tasks.discard)
+        else:  # Disabling UserPlugin — non-blocking
+            Modules.agent_flags["user_plugin_enabled"] = False
             _set_capability("user_plugin", True, "")
-        Modules.agent_flags["user_plugin_enabled"] = uf
+
+            async def _bg_plugin_disable():
+                try:
+                    await _ensure_plugin_lifecycle_stopped()
+                except Exception as exc:
+                    logger.warning("[Agent] Background plugin disable error: %s", exc)
+
+            _bg = asyncio.create_task(_bg_plugin_disable())
+            Modules._persistent_tasks.add(_bg)
+            _bg.add_done_callback(Modules._persistent_tasks.discard)
 
     try:
         new_up = Modules.agent_flags.get("user_plugin_enabled", False)
@@ -1616,7 +2201,9 @@ async def agent_command(payload: Dict[str, Any]):
             Modules.agent_flags["computer_use_enabled"] = False
             Modules.agent_flags["browser_use_enabled"] = False
             Modules.agent_flags["user_plugin_enabled"] = False
+            _set_capability("user_plugin", True, "")
             await admin_control({"action": "end_all"})
+            await _ensure_plugin_lifecycle_stopped()
         _bump_state_revision()
         await _emit_agent_status_update(lanlan_name=lanlan_name)
         total_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -1653,7 +2240,7 @@ async def computer_use_availability():
     if not Modules.computer_use:
         if Modules.agent_flags.get("computer_use_enabled"):
             Modules.agent_flags["computer_use_enabled"] = False
-            Modules.notification = "Computer Use 模块未加载，已自动关闭"
+            Modules.notification = json.dumps({"code": "AGENT_CU_AUTO_CLOSED"})
         raise HTTPException(503, "ComputerUse not ready")
     if not getattr(Modules.computer_use, "init_ok", False):
         asyncio.ensure_future(_fire_agent_llm_connectivity_check())
@@ -1666,7 +2253,7 @@ async def computer_use_availability():
     if not status.get("ready") and Modules.agent_flags.get("computer_use_enabled"):
         logger.info("[Agent] Computer Use capability lost, disabling flag")
         Modules.agent_flags["computer_use_enabled"] = False
-        Modules.notification = f"Computer Use 不可用: {status.get('reasons', [])[0] if status.get('reasons') else '未知原因'}"
+        Modules.notification = json.dumps({"code": "AGENT_CU_CAPABILITY_LOST", "details": {"reason_code": status.get('reasons', [])[0] if status.get('reasons') else 'unknown'}})
         
     return status
 
@@ -1892,4 +2479,11 @@ if __name__ == "__main__":
     # Add filter to uvicorn access logger (uvicorn仍使用标准logging)
     logging.getLogger("uvicorn.access").addFilter(create_agent_server_filter())
     
-    uvicorn.run(app, host="127.0.0.1", port=TOOL_SERVER_PORT)
+    _behind_proxy = os.environ.get("NEKO_BEHIND_PROXY", "").strip().lower() in ("1", "true", "yes")
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=TOOL_SERVER_PORT,
+        proxy_headers=_behind_proxy,
+        forwarded_allow_ips="*" if _behind_proxy else None,
+    )

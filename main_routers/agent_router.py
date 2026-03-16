@@ -13,7 +13,7 @@ import time
 
 from utils.logger_config import get_module_logger
 from fastapi import APIRouter, Request, Body
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 import httpx
 from .shared_state import get_session_manager, get_config_manager
 from config import TOOL_SERVER_PORT, USER_PLUGIN_SERVER_PORT
@@ -32,6 +32,8 @@ def _get_http_client() -> httpx.AsyncClient:
         _HTTP_CLIENT = httpx.AsyncClient(
             timeout=httpx.Timeout(2.5, connect=0.5),
             limits=httpx.Limits(max_connections=64, max_keepalive_connections=16),
+            proxy=None,
+            trust_env=False,
         )
     return _HTTP_CLIENT
 
@@ -51,7 +53,7 @@ async def update_agent_flags(request: Request):
         data = await request.json()
         _config_manager = get_config_manager()
         session_manager = get_session_manager()
-        _, her_name_current, _, _, _, _, _, _, _, _ = _config_manager.get_character_data()
+        _, her_name_current, _, _, _, _, _, _, _ = _config_manager.get_character_data()
         lanlan = data.get('lanlan_name') or her_name_current
         flags = data.get('flags') or {}
         mgr = session_manager.get(lanlan)
@@ -125,7 +127,7 @@ async def post_agent_command(request: Request):
         cfg = get_config_manager()
         if not lanlan:
             try:
-                _, her_name_current, _, _, _, _, _, _, _, _ = cfg.get_character_data()
+                _, her_name_current, _, _, _, _, _, _, _ = cfg.get_character_data()
                 lanlan = her_name_current
                 data["lanlan_name"] = lanlan
             except Exception:
@@ -152,7 +154,7 @@ async def post_agent_command(request: Request):
 
         t_proxy = time.perf_counter()
         client = _get_http_client()
-        r = await client.post(f"{TOOL_SERVER_BASE}/agent/command", json=data, timeout=1.5)
+        r = await client.post(f"{TOOL_SERVER_BASE}/agent/command", json=data, timeout=8.0)
         proxy_ms = round((time.perf_counter() - t_proxy) * 1000, 2)
         if not r.is_success:
             # Rollback local state on upstream failure.
@@ -231,6 +233,11 @@ async def proxy_cu_availability():
 @router.get('/mcp/availability')
 async def proxy_mcp_availability():
     return {"ready": False, "capabilities_count": 0, "reasons": ["MCP 已移除"]}
+
+
+@router.get('/user_plugin/dashboard')
+async def redirect_plugin_dashboard():
+    return RedirectResponse(f"{USER_PLUGIN_BASE}/ui")
 
 
 @router.get('/user_plugin/availability')

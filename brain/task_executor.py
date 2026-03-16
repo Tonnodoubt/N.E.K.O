@@ -13,6 +13,7 @@ import httpx
 from config import get_extra_body, USER_PLUGIN_SERVER_PORT
 from utils.config_manager import get_config_manager
 from utils.logger_config import get_module_logger
+from utils.token_tracker import set_call_type
 from .computer_use import ComputerUseAdapter
 from .browser_use_adapter import BrowserUseAdapter
 
@@ -71,7 +72,7 @@ class DirectTaskExecutor:
     
     def __init__(self, computer_use: Optional[ComputerUseAdapter] = None, browser_use: Optional[BrowserUseAdapter] = None):
         self.computer_use = computer_use or ComputerUseAdapter()
-        self.browser_use = browser_use or BrowserUseAdapter()
+        self.browser_use = browser_use
         self._config_manager = get_config_manager()
         self.plugin_list = []
         self.user_plugin_enabled_default = False
@@ -104,7 +105,7 @@ class DirectTaskExecutor:
                 url = f"http://127.0.0.1:{USER_PLUGIN_SERVER_PORT}/plugins"
                 # increase timeout and avoid awaiting a non-awaitable .json()
                 timeout = httpx.Timeout(5.0, connect=2.0)
-                async with httpx.AsyncClient(timeout=timeout) as _client:
+                async with httpx.AsyncClient(timeout=timeout, proxy=None, trust_env=False) as _client:
                     resp = await _client.get(url)
                     try:
                         data = resp.json()
@@ -123,6 +124,7 @@ class DirectTaskExecutor:
 
     def _get_client(self):
         """动态获取 OpenAI 客户端"""
+        set_call_type("agent")
         api_config = self._config_manager.get_model_api_config('summary')
         return AsyncOpenAI(
             api_key=api_config['api_key'],
@@ -140,10 +142,7 @@ class DirectTaskExecutor:
         ok, info = self._config_manager.consume_agent_daily_quota(source=source, units=1)
         if ok:
             return None
-        return (
-            f"免费 Agent 模型今日试用次数已达上限 "
-            f"({info.get('used', 0)}/{info.get('limit', 300)})，请明日再试。"
-        )
+        return json.dumps({"code": "AGENT_QUOTA_EXCEEDED", "details": {"used": info.get('used', 0), "limit": info.get('limit', 300)}})
     
     def _format_messages(self, messages: List[Dict[str, str]]) -> str:
         """格式化对话消息"""
@@ -433,7 +432,7 @@ Rules:
         
         # Strongly enforce JSON-only output to reduce parsing errors
         # NOTE: Require the model to return entry_id when has_task and can_execute are true.
-        system_prompt = f"""You are a User Plugin selection agent. AVAILABLE PLUGINS:
+        system_prompt = f"""You are a User Plugin automation assessment agent, AVAILABLE PLUGINS:
 {plugins_desc}
 
 INSTRUCTIONS:
@@ -791,31 +790,7 @@ Return only the JSON object, nothing else.
                 logger.info(f"[BrowserUse] has_task={getattr(bu_decision,'has_task',None)}, can_execute={getattr(bu_decision,'can_execute',None)}, reason={getattr(bu_decision,'reason',None)}")
         
         # 决策逻辑
-        # 1. BrowserUse
-        if bu_decision and bu_decision.has_task and bu_decision.can_execute:
-            logger.info(f"[TaskExecutor] ✅ Using BrowserUse: {bu_decision.task_description}")
-            return TaskResult(
-                task_id=task_id,
-                has_task=True,
-                task_description=bu_decision.task_description,
-                execution_method='browser_use',
-                success=False,
-                reason=bu_decision.reason
-            )
-
-        # 2. ComputerUse
-        if cu_decision and cu_decision.has_task and cu_decision.can_execute:
-            logger.info(f"[TaskExecutor] ✅ Using ComputerUse: {cu_decision.task_description}")
-            return TaskResult(
-                task_id=task_id,
-                has_task=True,
-                task_description=cu_decision.task_description,
-                execution_method='computer_use',
-                success=False,  # 标记为待执行
-                reason=cu_decision.reason
-            )
-        
-        # 3. UserPlugin — 只返回 Decision，不执行（与 CU/BU 一致，由 agent_server dispatch）
+        # 1. UserPlugin — 只返回 Decision，不执行（与 CU/BU 一致，由 agent_server dispatch）
         #    can_execute is a hard requirement; if false, refuse and return has_task=False.
         if isinstance(up_decision, UserPluginDecision) and up_decision.has_task and up_decision.plugin_id and up_decision.entry_id:
             if not up_decision.can_execute:
@@ -840,6 +815,30 @@ Return only the JSON object, nothing else.
                 tool_args=up_decision.plugin_args,
                 entry_id=up_decision.entry_id,
                 reason=up_decision.reason
+            )
+
+        # 2. BrowserUse
+        if bu_decision and bu_decision.has_task and bu_decision.can_execute:
+            logger.info(f"[TaskExecutor] ✅ Using BrowserUse: {bu_decision.task_description}")
+            return TaskResult(
+                task_id=task_id,
+                has_task=True,
+                task_description=bu_decision.task_description,
+                execution_method='browser_use',
+                success=False,
+                reason=bu_decision.reason
+            )
+
+        # 3. ComputerUse
+        if cu_decision and cu_decision.has_task and cu_decision.can_execute:
+            logger.info(f"[TaskExecutor] ✅ Using ComputerUse: {cu_decision.task_description}")
+            return TaskResult(
+                task_id=task_id,
+                has_task=True,
+                task_description=cu_decision.task_description,
+                execution_method='computer_use',
+                success=False,  # 标记为待执行
+                reason=cu_decision.reason
             )
                 
         # 4. 没有可执行的分支，汇总原因
@@ -1018,7 +1017,7 @@ Return only the JSON object, nothing else.
             }
 
             timeout = httpx.Timeout(10.0, connect=2.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, proxy=None, trust_env=False) as client:
                 r = await client.post(runs_endpoint, json=run_body)
                 if not (200 <= r.status_code < 300):
                     logger.warning(
@@ -1149,7 +1148,7 @@ Return only the JSON object, nothing else.
         _consecutive_errors = 0
         _MAX_CONSECUTIVE_ERRORS = 3
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=2.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=2.0), proxy=None, trust_env=False) as client:
             # ── Phase 1: poll until terminal ──
             while True:
                 remaining = deadline - asyncio.get_event_loop().time()

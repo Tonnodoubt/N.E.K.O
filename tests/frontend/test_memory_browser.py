@@ -1,7 +1,8 @@
 import pytest
-import json
 from pathlib import Path
 from playwright.sync_api import Page, expect
+
+from utils.file_utils import atomic_write_json
 
 
 @pytest.fixture
@@ -54,8 +55,7 @@ def seed_memory_file(clean_user_data_dir):
     ]
     
     memory_file = memory_dir / "recent_测试猫娘.json"
-    with open(memory_file, 'w', encoding='utf-8') as f:
-        json.dump(test_data, f, ensure_ascii=False, indent=2)
+    atomic_write_json(memory_file, test_data, ensure_ascii=False, indent=2)
     
     return memory_file
 

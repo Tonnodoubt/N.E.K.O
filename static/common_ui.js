@@ -34,15 +34,26 @@ function scrollToBottom() {
 }
 
 // --- 添加新消息函数 (修正) ---
-function addNewMessage(messageHTML) {
-    if (!chatContentWrapper) return; // 安全检查
+function addNewMessage(message) {
+    if (!chatContentWrapper) return;
 
+    // 【修改】如果是 Node 类型，直接进入容器，防止产生匿名的外层包裹 div 导致清理残留
+    if (message instanceof Node) {
+        chatContentWrapper.appendChild(message);
+        scrollToBottom();
+        return message;
+    }
+
+    // 字符串类型的消息维持原有的包裹逻辑
     const newMessageElement = document.createElement('div');
-    newMessageElement.innerHTML = messageHTML;
-    chatContentWrapper.appendChild(newMessageElement);
+    if (typeof message === 'string') {
+        newMessageElement.textContent = message;
+    }
 
-    // 确保在添加消息后立即滚动到底部
-    setTimeout(scrollToBottom, 10); // 短暂延迟确保DOM更新
+    newMessageElement.className = 'chat-message';
+    chatContentWrapper.appendChild(newMessageElement);
+    scrollToBottom();
+    return newMessageElement;
 }
 
 // --- 整个对话区可拖拽缩放（输入区/按钮高度固定，历史区自适应） ---
@@ -306,16 +317,25 @@ if (toggleBtn) {
         isTransitioning = true;
 
         try {
-            // 移动端：仅折叠内容区与标题，不最小化整个容器，保持输入区常驻
+            // 移动端：折叠时隐藏所有内容，仅保留切换按钮
             if (uiIsMobileWidth()) {
                 const becomingCollapsed = !chatContainer.classList.contains('mobile-collapsed');
+                const textInputArea = document.getElementById('text-input-area');
+                const chatHeader = document.getElementById('chat-header');
                 if (becomingCollapsed) {
+                    if (chatContentWrapper) {
+                        chatContentWrapper.dataset.prevDisplay = chatContentWrapper.style.display;
+                        chatContentWrapper.style.display = 'none';
+                    }
+                    if (chatHeader) {
+                        chatHeader.dataset.prevDisplay = chatHeader.style.display;
+                        chatHeader.style.display = 'none';
+                    }
+                    if (textInputArea) {
+                        textInputArea.dataset.prevDisplay = textInputArea.style.display;
+                        textInputArea.style.display = 'none';
+                    }
                     chatContainer.classList.add('mobile-collapsed');
-                    // 隐藏内容区与标题
-                    if (chatContentWrapper) chatContentWrapper.style.display = 'none';
-                    const chatHeader = document.getElementById('chat-header');
-                    if (chatHeader) chatHeader.style.display = 'none';
-                    // 确保切换按钮始终可见
                     if (toggleBtn) {
                         toggleBtn.style.display = 'block';
                         toggleBtn.style.visibility = 'visible';
@@ -323,17 +343,28 @@ if (toggleBtn) {
                     }
                 } else {
                     chatContainer.classList.remove('mobile-collapsed');
-                    // 显示内容区与标题
-                    if (chatContentWrapper) chatContentWrapper.style.removeProperty('display');
-                    const chatHeader = document.getElementById('chat-header');
-                    if (chatHeader) chatHeader.style.removeProperty('display');
+                    if (chatContentWrapper) {
+                        const prev = chatContentWrapper.dataset.prevDisplay;
+                        if (prev) { chatContentWrapper.style.display = prev; } else { chatContentWrapper.style.removeProperty('display'); }
+                        delete chatContentWrapper.dataset.prevDisplay;
+                    }
+                    if (chatHeader) {
+                        const prev = chatHeader.dataset.prevDisplay;
+                        if (prev) { chatHeader.style.display = prev; } else { chatHeader.style.removeProperty('display'); }
+                        delete chatHeader.dataset.prevDisplay;
+                    }
+                    if (textInputArea) {
+                        const prev = textInputArea.dataset.prevDisplay;
+                        if (prev) { textInputArea.style.display = prev; } else { textInputArea.style.removeProperty('display'); }
+                        delete textInputArea.dataset.prevDisplay;
+                    }
                     if (toggleBtn) {
                         toggleBtn.style.removeProperty('display');
                         toggleBtn.style.removeProperty('visibility');
                         toggleBtn.style.removeProperty('opacity');
                     }
                 }
-                
+
                 // 获取或创建图标
                 let iconImg = toggleBtn.querySelector('img');
                 if (!iconImg) {
@@ -348,7 +379,7 @@ if (toggleBtn) {
                     iconImg.style.width = '32px';
                     iconImg.style.height = '32px';
                 }
-                
+
                 if (becomingCollapsed) {
                     iconImg.src = '/static/icons/expand_icon_off.png';
                     iconImg.alt = window.t ? window.t('common.expand') : '展开';
@@ -379,20 +410,20 @@ if (toggleBtn) {
                 const targetSize = 50;
                 const scaleX = rect.width > 0 ? Math.min(1, targetSize / rect.width) : 1;
                 const scaleY = rect.height > 0 ? Math.min(1, targetSize / rect.height) : 1;
-                
+
                 chatContainer.style.setProperty('--chat-collapse-scale-x', '1');
                 chatContainer.style.setProperty('--chat-collapse-scale-y', '1');
                 chatContainer.classList.add('collapsing');
-                
+
                 void chatContainer.offsetHeight;
-                
+
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
                         chatContainer.style.setProperty('--chat-collapse-scale-x', String(scaleX));
                         chatContainer.style.setProperty('--chat-collapse-scale-y', String(scaleY));
                     });
                 });
-                
+
                 let handled = false;
                 const finishCollapse = () => {
                     if (handled) return;
@@ -409,7 +440,7 @@ if (toggleBtn) {
                     finishCollapse();
                 };
                 chatContainer.addEventListener('transitionend', onCollapseEnd);
-                
+
                 const transitionDuration = 350;
                 setTimeout(() => {
                     finishCollapse();
@@ -423,9 +454,9 @@ if (toggleBtn) {
                     chatContainer.removeAttribute('class');
                 }
             }
-            
+
             const isMinimized = willMinimize;
-            
+
             // 获取图标元素（HTML中应该已经有img标签）
             let iconImg = toggleBtn.querySelector('img');
             if (!iconImg) {
@@ -433,7 +464,7 @@ if (toggleBtn) {
                 iconImg = document.createElement('img');
                 iconImg.style.width = '32px';  /* 图标尺寸 */
                 iconImg.style.height = '32px';  /* 图标尺寸 */
-                iconImg.style.objectFit = 'cover';
+                iconImg.style.objectFit = 'contain'; // 修复：与原生初始化保持一致，防止图标被裁剪
                 iconImg.style.pointerEvents = 'none'; /* 确保图标不干扰点击事件 */
                 toggleBtn.innerHTML = '';
                 toggleBtn.appendChild(iconImg);
@@ -495,7 +526,7 @@ if (toggleBtn) {
 }
 
 // --- 对话区拖动功能 ---
-(function() {
+(function () {
     let isDragging = false;
     let hasMoved = false; // 用于判断是否发生了实际的移动
     let dragStartedFromToggleBtn = false; // 记录是否从 toggleBtn 开始拖动
@@ -549,7 +580,13 @@ if (toggleBtn) {
     // 获取聊天框当前的位置（left, bottom）
     function getChatContainerPosition() {
         const computedStyle = window.getComputedStyle(chatContainer);
-        const rect = chatContainer.getBoundingClientRect();
+        let rect = chatContainer.getBoundingClientRect();
+        if (isCollapsed() && toggleBtn) {
+            const toggleRect = toggleBtn.getBoundingClientRect();
+            if (toggleRect.width > 0 && toggleRect.height > 0) {
+                rect = toggleRect;
+            }
+        }
 
         let left = parseFloat(computedStyle.left);
         if (!Number.isFinite(left)) {
@@ -658,31 +695,31 @@ if (toggleBtn) {
         isDragging = true;
         hasMoved = false;
         dragStartedFromToggleBtn = (e.target === toggleBtn || toggleBtn.contains(e.target));
-        
+
         // 获取初始鼠标/触摸位置
         const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
         const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
-        
+
         // 记录开始时的鼠标位置
         startMouseX = clientX;
         startMouseY = clientY;
-        
+
         // 获取当前容器的实际位置（从计算样式中读取，确保准确）
         const computedStyle = window.getComputedStyle(chatContainer);
         startContainerLeft = parseFloat(computedStyle.left) || 0;
         startContainerBottom = parseFloat(computedStyle.bottom) || 0;
-        
+
         console.log('[Drag Start] Mouse:', clientX, clientY, 'Container:', startContainerLeft, startContainerBottom);
-        
+
         // 添加拖动样式
         chatContainer.style.cursor = 'grabbing';
         if (chatHeader) chatHeader.style.cursor = 'grabbing';
-        
+
         // 开始拖动时，临时禁用按钮的 pointer-events（使用 live2d-ui-drag.js 中的共享工具函数）
         if (window.DragHelpers) {
             window.DragHelpers.disableButtonPointerEvents();
         }
-        
+
         // 阻止默认行为（除非明确跳过）
         if (!skipPreventDefault) {
             e.preventDefault();
@@ -692,32 +729,41 @@ if (toggleBtn) {
     // 移动中
     function onDragMove(e) {
         if (!isDragging) return;
-        
+
         const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
         const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
-        
+
         // 计算鼠标的位移
         const deltaX = clientX - startMouseX;
         const deltaY = clientY - startMouseY;
-        
+
         // 检查是否真的移动了（移动距离超过5px）
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        
+
         if (distance > 5) {
             hasMoved = true;
         }
-        
+
         // 立即更新位置：初始位置 + 鼠标位移
         const newLeft = startContainerLeft + deltaX;
         // 注意：Y轴向下为正，但bottom值向上为正，所以要减去deltaY
         const newBottom = startContainerBottom - deltaY;
-        
+
         // 限制在视口内
-        const maxLeft = window.innerWidth - chatContainer.offsetWidth;
-        const maxBottomRaw = window.innerHeight - chatContainer.offsetHeight;
+        let effectiveWidth = chatContainer.offsetWidth;
+        let effectiveHeight = chatContainer.offsetHeight;
+        if (isCollapsed() && toggleBtn) {
+            const toggleRect = toggleBtn.getBoundingClientRect();
+            if (toggleRect.width > 0 && toggleRect.height > 0) {
+                effectiveWidth = toggleRect.width;
+                effectiveHeight = toggleRect.height;
+            }
+        }
+        const maxLeft = window.innerWidth - effectiveWidth;
+        const maxBottomRaw = window.innerHeight - effectiveHeight;
         const topBoundary = CHAT_SNAP_CONFIG.margin;
         const maxBottom = Math.max(0, maxBottomRaw - topBoundary);
-        
+
         chatContainer.style.left = Math.max(0, Math.min(maxLeft, newLeft)) + 'px';
         chatContainer.style.bottom = Math.max(0, Math.min(maxBottom, newBottom)) + 'px';
     }
@@ -728,20 +774,20 @@ if (toggleBtn) {
             const wasDragging = isDragging;
             const didMove = hasMoved;
             const fromToggleBtn = dragStartedFromToggleBtn;
-            
+
             isDragging = false;
             hasMoved = false;
             dragStartedFromToggleBtn = false;
             chatContainer.style.cursor = '';
             if (chatHeader) chatHeader.style.cursor = '';
-            
+
             // 拖拽结束后恢复按钮的 pointer-events（使用 live2d-ui-drag.js 中的共享工具函数）
             if (window.DragHelpers) {
                 window.DragHelpers.restoreButtonPointerEvents();
             }
-            
+
             console.log('[Drag End] Moved:', didMove, 'FromToggleBtn:', fromToggleBtn);
-            
+
             // 如果发生了移动，标记 justDragged 以阻止后续的 click 事件
             if (didMove && fromToggleBtn) {
                 justDragged = true;
@@ -750,7 +796,7 @@ if (toggleBtn) {
                     justDragged = false;
                 }, 100);
             }
-            
+
             // 如果在折叠状态下，没有发生移动，则触发展开
             // 但如果是从 toggleBtn 开始的，让自然的 click 事件处理
             if (wasDragging && !didMove && isCollapsed() && !fromToggleBtn) {
@@ -773,7 +819,7 @@ if (toggleBtn) {
                 startDrag(e);
             }
         });
-        
+
         // 触摸事件
         chatHeader.addEventListener('touchstart', (e) => {
             if (!isCollapsed()) {
@@ -781,7 +827,7 @@ if (toggleBtn) {
             }
         }, { passive: false });
     }
-    
+
     // 让切换按钮也可以触发拖拽（任何状态下都可以）
     if (toggleBtn) {
         // 鼠标事件
@@ -790,14 +836,14 @@ if (toggleBtn) {
             startDrag(e, true);
             e.stopPropagation(); // 阻止事件冒泡到 chatContainer
         });
-        
+
         // 触摸事件
         toggleBtn.addEventListener('touchstart', (e) => {
             startDrag(e, true);
             e.stopPropagation(); // 阻止事件冒泡到 chatContainer
         }, { passive: false });
     }
-    
+
     // 输入区域整体可拖动，但排除 textarea/button 等交互子元素
     if (textInputArea) {
         const isInteractiveTarget = (el) =>
@@ -823,7 +869,7 @@ if (toggleBtn) {
             if (e.target === toggleBtn || toggleBtn.contains(e.target)) {
                 return;
             }
-            
+
             // 启动拖动（移动时拖动，不移动时会在 endDrag 中展开）
             startDrag(e, true); // 跳过 preventDefault，允许后续的 click 事件
         }
@@ -835,7 +881,7 @@ if (toggleBtn) {
             if (e.target === toggleBtn || toggleBtn.contains(e.target)) {
                 return;
             }
-            
+
             // 启动拖动
             startDrag(e);
         }
@@ -857,8 +903,10 @@ if (toggleBtn) {
 // 注意：sidebar元素本身需要保留（虽然隐藏），因为app.js中的功能逻辑仍需要使用sidebar内的按钮元素
 const sidebar = document.getElementById('sidebar');
 
+
 // --- 初始化 ---
 document.addEventListener('DOMContentLoaded', () => {
+
     setupResizableChatContainer();
 
     // 设置初始按钮状态 - 聊天框
@@ -875,7 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
             toggleBtn.innerHTML = '';
             toggleBtn.appendChild(iconImg);
         }
-        
+
         if (isCollapsed()) {
             // 最小化状态，显示展开图标（加号）
             iconImg.src = '/static/icons/expand_icon_off.png';
@@ -905,7 +953,7 @@ const observer = new MutationObserver((mutations) => {
 
 // 开始观察聊天内容区域的变化
 if (chatContentWrapper) {
-    observer.observe(chatContentWrapper, {childList: true, subtree: true});
+    observer.observe(chatContentWrapper, { childList: true, subtree: true });
 }
 
 // ========== Electron 全局快捷键接口 ==========
@@ -915,17 +963,17 @@ if (chatContentWrapper) {
  * 切换语音会话状态（开始/结束）
  * Electron 调用此接口来触发语音按钮的切换
  */
-window.toggleVoiceSession = function() {
+window.toggleVoiceSession = function () {
     // 获取浮动按钮的当前状态
     const micButton = window.live2dManager?._floatingButtons?.mic?.button;
     const isActive = micButton?.dataset.active === 'true';
-    
+
     // 派发切换事件
     const event = new CustomEvent('live2d-mic-toggle', {
         detail: { active: !isActive }
     });
     window.dispatchEvent(event);
-    
+
     console.log('[Electron Shortcut] toggleVoiceSession:', !isActive ? 'start' : 'stop');
 };
 
@@ -933,12 +981,12 @@ window.toggleVoiceSession = function() {
  * 切换屏幕分享状态（开始/结束）
  * Electron 调用此接口来触发屏幕分享按钮的切换
  */
-window.toggleScreenShare = function() {
+window.toggleScreenShare = function () {
     // 获取浮动按钮的当前状态
     const screenBtn = window.live2dManager?._floatingButtons?.screen?.button;
     const isActive = screenBtn?.dataset.active === 'true';
     const isRecording = window.isRecording || false;
-    
+
     // 屏幕分享仅在语音会话中有效
     // 如果尝试开启屏幕分享但语音会话未开启，显示提示并阻止操作
     if (!isActive && !isRecording) {
@@ -951,13 +999,13 @@ window.toggleScreenShare = function() {
         }
         return;
     }
-    
+
     // 派发切换事件
     const event = new CustomEvent('live2d-screen-toggle', {
         detail: { active: !isActive }
     });
     window.dispatchEvent(event);
-    
+
     console.log('[Electron Shortcut] toggleScreenShare:', !isActive ? 'start' : 'stop');
 };
 
@@ -965,13 +1013,13 @@ window.toggleScreenShare = function() {
  * 触发截图功能
  * Electron 调用此接口来触发截图按钮点击
  */
-window.triggerScreenshot = function() {
+window.triggerScreenshot = function () {
     // 语音会话中禁止截图（文本框处于禁用态时意味着用户处于语音会话中）
     if (window.isRecording) {
         console.log('[Electron Shortcut] triggerScreenshot: blocked - in voice session');
         return;
     }
-    
+
     const screenshotButton = document.getElementById('screenshotButton');
     if (screenshotButton && !screenshotButton.disabled) {
         screenshotButton.click();

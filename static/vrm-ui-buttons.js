@@ -138,7 +138,7 @@ VRMManager.prototype.setupFloatingButtons = function () {
     const buttonConfigs = [
         { id: 'mic', emoji: '🎤', title: window.t ? window.t('buttons.voiceControl') : '语音控制', titleKey: 'buttons.voiceControl', hasPopup: true, toggle: true, separatePopupTrigger: true, iconOff: '/static/icons/mic_icon_off.png' + iconVersion, iconOn: '/static/icons/mic_icon_on.png' + iconVersion },
         { id: 'screen', emoji: '🖥️', title: window.t ? window.t('buttons.screenShare') : '屏幕分享', titleKey: 'buttons.screenShare', hasPopup: true, toggle: true, separatePopupTrigger: true, iconOff: '/static/icons/screen_icon_off.png' + iconVersion, iconOn: '/static/icons/screen_icon_on.png' + iconVersion },
-        { id: 'agent', emoji: '🔨', title: window.t ? window.t('buttons.agentTools') : 'Agent工具', titleKey: 'buttons.agentTools', hasPopup: true, popupToggle: true, exclusive: 'settings', iconOff: '/static/icons/Agent_off.png' + iconVersion, iconOn: '/static/icons/Agent_on.png' + iconVersion },
+        { id: 'agent', emoji: '🔨', title: window.t ? window.t('buttons.agentTools') : 'NekoClaw', titleKey: 'buttons.agentTools', hasPopup: true, popupToggle: true, exclusive: 'settings', iconOff: '/static/icons/Agent_off.png' + iconVersion, iconOn: '/static/icons/Agent_on.png' + iconVersion },
         { id: 'settings', emoji: '⚙️', title: window.t ? window.t('buttons.settings') : '设置', titleKey: 'buttons.settings', hasPopup: true, popupToggle: true, exclusive: 'agent', iconOff: '/static/icons/set_off.png' + iconVersion, iconOn: '/static/icons/set_on.png' + iconVersion },
         { id: 'goodbye', emoji: '💤', title: window.t ? window.t('buttons.leave') : '请她离开', titleKey: 'buttons.leave', hasPopup: false, iconOff: '/static/icons/rest_off.png' + iconVersion, iconOn: '/static/icons/rest_on.png' + iconVersion }
     ];
@@ -354,8 +354,11 @@ VRMManager.prototype.setupFloatingButtons = function () {
                     popup.style.opacity !== '';
                 if (!isPopupVisible && config.exclusive) {
                     this.closePopupById(config.exclusive);
-                    // 更新被关闭的互斥按钮的图标
+                    // 更新被关闭的互斥按钮的背景和图标
                     const exclusiveData = this._floatingButtons[config.exclusive];
+                    if (exclusiveData && exclusiveData.button) {
+                        exclusiveData.button.style.background = 'var(--neko-btn-bg, rgba(255, 255, 255, 0.65))';
+                    }
                     if (exclusiveData && exclusiveData.imgOff && exclusiveData.imgOn) {
                         exclusiveData.imgOff.style.opacity = '1';
                         exclusiveData.imgOn.style.opacity = '0';
@@ -363,16 +366,20 @@ VRMManager.prototype.setupFloatingButtons = function () {
                 }
                 isToggling = true;
                 this.showPopup(config.id, popup);
-                // 更新图标状态
+                // 更新背景和图标状态
                 setTimeout(() => {
                     const newPopupVisible = popup.style.display === 'flex' &&
                         popup.style.opacity !== '0' &&
                         popup.style.opacity !== '';
-                    if (imgOff && imgOn) {
-                        if (newPopupVisible) {
+                    if (newPopupVisible) {
+                        btn.style.background = 'var(--neko-btn-bg-active, rgba(255, 255, 255, 0.75))';
+                        if (imgOff && imgOn) {
                             imgOff.style.opacity = '0';
                             imgOn.style.opacity = '1';
-                        } else {
+                        }
+                    } else {
+                        btn.style.background = 'var(--neko-btn-bg, rgba(255, 255, 255, 0.65))';
+                        if (imgOff && imgOn) {
                             imgOff.style.opacity = '1';
                             imgOn.style.opacity = '0';
                         }
@@ -433,21 +440,8 @@ VRMManager.prototype.setupFloatingButtons = function () {
             this._returnButtonContainer.style.display = 'none';
         }
 
-        // 2. 恢复VRM容器和canvas的可见性
-        const vrmContainer = document.getElementById('vrm-container');
-        if (vrmContainer) {
-            vrmContainer.style.removeProperty('visibility');
-            vrmContainer.style.removeProperty('pointer-events');
-            vrmContainer.style.removeProperty('display');
-            vrmContainer.classList.remove('hidden');
-            vrmContainer.classList.remove('minimized');
-        }
-
-        const vrmCanvas = document.getElementById('vrm-canvas');
-        if (vrmCanvas) {
-            vrmCanvas.style.removeProperty('visibility');
-            vrmCanvas.style.removeProperty('pointer-events');
-        }
+        // 2. VRM容器和canvas的可见性恢复由 showCurrentModel() 统一处理（带淡入动画）
+        // 此处不再直接操作容器/canvas样式，避免与 showCurrentModel 的淡入动画竞争导致闪烁
 
         // 3. 检查浮动按钮是否存在，如果不存在则重新创建（防止cleanupUI后按钮丢失）
         const buttonsContainer = document.getElementById('vrm-floating-buttons');
@@ -903,6 +897,31 @@ VRMManager.prototype._startUIUpdateLoop = function () {
                             lockIcon.style.top = `${boundedLockY}px`;
                         }
                         lockIcon.style.display = (this._shouldShowVrmLockIcon && this._shouldShowVrmLockIcon()) ? 'block' : 'none';
+
+                        // 检测锁图标是否被弹出菜单或侧面板覆盖，覆盖时降低不透明度
+                        const lockRect = lockIcon.getBoundingClientRect();
+                        let isLockOverlapped = false;
+                        document.querySelectorAll('[id^="vrm-popup-"]').forEach(popup => {
+                            if (popup.style.display === 'flex' && popup.style.opacity === '1') {
+                                const popupRect = popup.getBoundingClientRect();
+                                if (lockRect.right > popupRect.left && lockRect.left < popupRect.right &&
+                                    lockRect.bottom > popupRect.top && lockRect.top < popupRect.bottom) {
+                                    isLockOverlapped = true;
+                                }
+                            }
+                        });
+                        if (!isLockOverlapped) {
+                            document.querySelectorAll('[data-neko-sidepanel]').forEach(panel => {
+                                if (panel.style.display !== 'none' && parseFloat(panel.style.opacity) > 0) {
+                                    const panelRect = panel.getBoundingClientRect();
+                                    if (lockRect.right > panelRect.left && lockRect.left < panelRect.right &&
+                                        lockRect.bottom > panelRect.top && lockRect.top < panelRect.bottom) {
+                                        isLockOverlapped = true;
+                                    }
+                                }
+                            });
+                        }
+                        lockIcon.style.opacity = isLockOverlapped ? '0.3' : '';
                     }
                 }
             }

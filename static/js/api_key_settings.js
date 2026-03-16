@@ -1,4 +1,8 @@
-
+/**
+ * API 密钥设置模块
+ * 负责处理 API 密钥的存储、验证和显示
+ * 包含对中国大陆用户的特殊处理
+ */
 // 全局变量：是否为中国大陆用户
 let isMainlandChinaUser = false;
 
@@ -572,9 +576,10 @@ async function fetchGptSovitsVoices(silent = false) {
                 showStatus(window.t ? window.t('api.gptsovitsVoicesLoaded', { count: result.voices.length }) : `已加载 ${result.voices.length} 个语音配置`, 'success');
             }
         } else {
-            grid.innerHTML = '<div class="gsv-voices-empty">' + _escHtml(result.error || (window.t ? window.t('api.gptsovitsVoicesLoadFailed') : '获取语音列表失败')) + '</div>';
+            const _errMsg = (result.code && window.t) ? window.t('errors.' + result.code, result.details || {}) : result.error;
+            grid.innerHTML = '<div class="gsv-voices-empty">' + _escHtml(_errMsg || (window.t ? window.t('api.gptsovitsVoicesLoadFailed') : '获取语音列表失败')) + '</div>';
             if (!silent) {
-                showStatus(result.error || (window.t ? window.t('api.gptsovitsVoicesLoadFailed') : '获取语音列表失败'), 'error');
+                showStatus(_errMsg || (window.t ? window.t('api.gptsovitsVoicesLoadFailed') : '获取语音列表失败'), 'error');
             }
         }
     } catch (e) {
@@ -748,6 +753,20 @@ document.addEventListener('DOMContentLoaded', function () {
     if (enableCustomApi) {
         enableCustomApi.addEventListener('change', toggleCustomApi);
     }
+
+    // 拦截所有 target="_blank" 的外部链接，使用系统默认浏览器打开
+    document.querySelectorAll('a[target="_blank"]').forEach(function (link) {
+        link.addEventListener('click', function (e) {
+            e.preventDefault();
+            var href = link.getAttribute('href');
+            if (!href) return;
+            if (window.electronShell && window.electronShell.openExternal) {
+                window.electronShell.openExternal(href);
+            } else {
+                window.open(href, '_blank', 'noopener,noreferrer');
+            }
+        });
+    });
 });
 
 

@@ -5,27 +5,180 @@ HTTP 服务器主入口文件。
 """
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-
 import asyncio
+import faulthandler
 import logging
 import os
+import signal
+import socket
 import sys
+import threading
 from pathlib import Path
-
-from loguru import logger as logger
-from plugin.logging_config import configure_default_logger
-
-# 配置默认 logger 格式（统一所有模块的日志格式）
-configure_default_logger()
+from types import FrameType
+from typing import IO
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
+_PLUGIN_PACKAGE_ROOT = Path(__file__).resolve().parent
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+
+def _prepend_sys_path(path: Path, index: int) -> None:
+    value = str(path)
+    try:
+        while value in sys.path:
+            sys.path.remove(value)
+    except Exception:
+        pass
+    sys.path.insert(index, value)
+
+
+# Keep import resolution deterministic even when launcher/sitecustomize preloads paths.
+_prepend_sys_path(_PROJECT_ROOT, 0)
+_prepend_sys_path(_PLUGIN_PACKAGE_ROOT, 1)
+
+
+def _parse_tcp_endpoint(endpoint: str) -> tuple[str, int] | None:
+    if not isinstance(endpoint, str) or not endpoint.startswith("tcp://"):
+        return None
+    host_port = endpoint[6:]
+    if ":" not in host_port:
+        return None
+    host, port_text = host_port.rsplit(":", 1)
+    if not host:
+        return None
+    try:
+        port = int(port_text)
+    except (TypeError, ValueError):
+        return None
+    if port <= 0 or port > 65535:
+        return None
+    return host, port
+
+
+def _is_tcp_port_available(host: str, port: int) -> bool:
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            probe.close()
+        except OSError:
+            pass
+
+
+def _find_next_available_port(host: str, start_port: int, max_tries: int = 50) -> int | None:
+    for port in range(start_port, start_port + max_tries):
+        if _is_tcp_port_available(host, port):
+            return port
+    return None
+
+
+def _ensure_plugin_zmq_endpoint_available() -> None:
+    endpoint = os.getenv("NEKO_PLUGIN_ZMQ_IPC_ENDPOINT", "tcp://127.0.0.1:38765")
+    parsed = _parse_tcp_endpoint(endpoint)
+    if parsed is None:
+        return
+    host, base_port = parsed
+    if _is_tcp_port_available(host, base_port):
+        return
+
+    fallback_port = _find_next_available_port(host, base_port + 1, max_tries=100)
+    if fallback_port is None:
+        return
+
+    fallback_endpoint = f"tcp://{host}:{fallback_port}"
+    os.environ["NEKO_PLUGIN_ZMQ_IPC_ENDPOINT"] = fallback_endpoint
+    try:
+        print(
+            (
+                "[user_plugin_server] NEKO_PLUGIN_ZMQ_IPC_ENDPOINT occupied, "
+                f"fallback to {fallback_endpoint}"
+            ),
+            file=sys.stderr,
+        )
+    except (OSError, ValueError, RuntimeError):
+        pass
+
+
+_ensure_plugin_zmq_endpoint_available()
+
 from config import USER_PLUGIN_SERVER_PORT
+from plugin.logging_config import configure_default_logger, get_logger
+
+
+def _install_logging_brace_compat() -> None:
+    if getattr(logging, "_neko_brace_compat_installed", False):
+        return
+
+    original_get_message = logging.LogRecord.getMessage
+
+    def _compat_get_message(self: logging.LogRecord) -> str:
+        try:
+            return original_get_message(self)
+        except TypeError:
+            msg = str(self.msg)
+            args = self.args
+            if not args or "%" in msg or "{" not in msg or "}" not in msg:
+                raise
+            try:
+                if isinstance(args, dict):
+                    return msg.format(**args)
+                if not isinstance(args, tuple):
+                    args = (args,)
+                return msg.format(*args)
+            except Exception:
+                return f"{msg} | args={self.args!r}"
+
+    setattr(logging.LogRecord, "getMessage", _compat_get_message)
+    setattr(logging, "_neko_brace_compat_installed", True)
+
+
+_install_logging_brace_compat()
+
+
+configure_default_logger()
+logger = get_logger("server.user_plugin_server")
+
+
+def _can_register_faulthandler_signal() -> bool:
+    return hasattr(faulthandler, "register") and hasattr(signal, "SIGUSR1")
+
+
+def _configure_windows_event_loop_policy() -> None:
+    if sys.platform != "win32":
+        return
+    policy_cls = getattr(asyncio, "WindowsSelectorEventLoopPolicy", None)
+    if policy_cls is None:
+        return
+    try:
+        asyncio.set_event_loop_policy(policy_cls())
+    except (RuntimeError, ValueError, TypeError, AttributeError):
+        try:
+            print("[user_plugin_server] failed to set WindowsSelectorEventLoopPolicy", file=sys.stderr)
+        except (OSError, RuntimeError, ValueError):
+            pass
+
+
+def _disable_windows_plugin_zmq_when_tornado_missing() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import tornado  # type: ignore  # noqa: F401
+        return
+    except Exception:
+        pass
+    os.environ["NEKO_PLUGIN_ZMQ_IPC_ENABLED"] = "false"
+    try:
+        print(
+            "[user_plugin_server] tornado not found on Windows; disable plugin ZeroMQ IPC",
+            file=sys.stderr,
+        )
+    except (OSError, RuntimeError, ValueError):
+        pass
+
 
 try:
     from utils.logger_config import setup_logging
@@ -35,229 +188,168 @@ except ModuleNotFoundError:
     _logger_config_path = _PROJECT_ROOT / "utils" / "logger_config.py"
     _spec = importlib.util.spec_from_file_location("utils.logger_config", _logger_config_path)
     if _spec is None or _spec.loader is None:
-        raise
-    _mod = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(_mod)
-    setup_logging = getattr(_mod, "setup_logging")
+        raise ModuleNotFoundError(f"failed to load logger config from {_logger_config_path}")
+
+    _module = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_module)
+    setup_logging = getattr(_module, "setup_logging")
+
 server_logger, server_log_config = setup_logging(service_name="PluginServer", log_level="INFO", silent=True)
-
-try:
-    for _ln in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        _lg = logging.getLogger(_ln)
-        try:
-            _lg.handlers.clear()
-        except Exception:
-            pass
-        _lg.propagate = True
-except Exception:
-    pass
-
-try:
-    _server_log_path = server_log_config.get_log_file_path()
-    if isinstance(_server_log_path, str) and _server_log_path:
-        logger.add(
-            _server_log_path,
-            rotation="10 MB",
-            retention="30 days",
-            enqueue=True,
-            encoding="utf-8",
-        )
-except Exception:
-    pass
+_ = server_logger
 
 
 class _LoguruInterceptHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            level = logger.level(record.levelname).name
-        except Exception:
+            level: str | int = logger.level(record.levelname).name
+        except (ValueError, AttributeError, TypeError):
             level = record.levelno
 
         logger.opt(exception=record.exc_info).log(level, record.getMessage())
 
 
-try:
+def _configure_uvicorn_logging_bridge() -> None:
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uv_logger = logging.getLogger(logger_name)
+        uv_logger.handlers.clear()
+        uv_logger.propagate = True
+
+
+def _configure_server_log_sink() -> None:
+    if sys.platform == "win32":
+        # Windows multi-process rotation can keep file handles open and
+        # trigger repeated rename failures; keep the robust logger sink only.
+        return
+
+    log_path_obj = server_log_config.get_log_file_path()
+    if not isinstance(log_path_obj, str):
+        return
+
+    log_path = log_path_obj.strip()
+    if not log_path:
+        return
+
+    try:
+        logger.add(
+            log_path,
+            rotation="10 MB",
+            retention="30 days",
+            enqueue=True,
+            encoding="utf-8",
+        )
+    except (TypeError, ValueError, OSError) as exc:
+        logger.warning(
+            "failed to configure server file sink: path={}, err_type={}, err={}",
+            log_path,
+            type(exc).__name__,
+            str(exc),
+        )
+
+
+def _configure_python_logging_root() -> None:
     logging.root.handlers.clear()
     logging.root.addHandler(_LoguruInterceptHandler())
     logging.root.setLevel(logging.INFO)
-    for _ln in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        _lg = logging.getLogger(_ln)
-        _lg.handlers.clear()
-        _lg.propagate = True
-except Exception:
-    pass
-
-from plugin.server.infrastructure.exceptions import register_exception_handlers
-from plugin.server.lifecycle import startup, shutdown
-from plugin.server.routes import (
-    health_router,
-    plugins_router,
-    runs_router,
-    messages_router,
-    metrics_router,
-    config_router,
-    logs_router,
-    frontend_router,
-    websocket_router,
-    plugin_ui_router,
-)
-from plugin.server.routes.frontend import mount_static_files
+    _configure_uvicorn_logging_bridge()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    import asyncio
-    import faulthandler
-    import signal
-    import threading
-    import time
+_configure_uvicorn_logging_bridge()
+_configure_server_log_sink()
+_configure_python_logging_root()
+
+# Must run before any event loop gets created on Windows.
+_configure_windows_event_loop_policy()
+_disable_windows_plugin_zmq_when_tornado_missing()
+
+from plugin.server.http_app import build_plugin_server_app  # noqa: E402
+
+
+app = build_plugin_server_app()
+
+
+def _enable_fault_handler_dump_file() -> IO[str] | None:
+    dump_path = Path(__file__).resolve().parent / "log" / "server" / "faulthandler_dump.log"
+    try:
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning(
+            "failed to create faulthandler dump directory: path={}, err_type={}, err={}",
+            str(dump_path.parent),
+            type(exc).__name__,
+            str(exc),
+        )
 
     try:
-        faulthandler.register(signal.SIGUSR1, all_threads=True)
-    except Exception:
-        pass
+        dump_file = dump_path.open("a", encoding="utf-8")
+    except OSError as exc:
+        logger.warning(
+            "failed to open faulthandler dump file: path={}, err_type={}, err={}",
+            str(dump_path),
+            type(exc).__name__,
+            str(exc),
+        )
+        return None
 
-    stop_event = threading.Event()
-    last_heartbeat = {"t": time.monotonic()}
-
-    async def _heartbeat():
-        while not stop_event.is_set():
-            last_heartbeat["t"] = time.monotonic()
-            await asyncio.sleep(0.5)
-
-    def _watchdog():
-        threshold = 8.0
-        while not stop_event.is_set():
-            now = time.monotonic()
-            dt = now - last_heartbeat["t"]
-            if dt > threshold:
-                try:
-                    logger.error(
-                        "Event loop appears blocked (no heartbeat for {:.1f}s); dumping all thread tracebacks",
-                        dt,
-                    )
-                except Exception:
-                    pass
-                try:
-                    faulthandler.dump_traceback(all_threads=True)
-                except Exception:
-                    pass
-                last_heartbeat["t"] = now
-            time.sleep(1.0)
-
-    watchdog_thread = threading.Thread(target=_watchdog, daemon=True, name="event-loop-watchdog")
-    watchdog_thread.start()
-
-    heartbeat_task = asyncio.create_task(_heartbeat())
-    await startup()
-    yield
-    stop_event.set()
-    heartbeat_task.cancel()
     try:
-        await heartbeat_task
-    except asyncio.CancelledError:
-        pass
-    except Exception:
-        pass
-    await shutdown()
+        faulthandler.enable(file=dump_file)
+        if _can_register_faulthandler_signal():
+            faulthandler.register(signal.SIGUSR1, all_threads=True, file=dump_file)
+        return dump_file
+    except (RuntimeError, OSError, AttributeError, ValueError) as exc:
+        logger.warning(
+            "failed to enable faulthandler dump file: path={}, err_type={}, err={}",
+            str(dump_path),
+            type(exc).__name__,
+            str(exc),
+        )
+        try:
+            dump_file.close()
+        except OSError:
+            logger.debug("failed to close faulthandler dump file")
+        return None
 
 
-app = FastAPI(title="N.E.K.O User Plugin Server", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:48911",
-        "http://127.0.0.1:48911",
-    ],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-register_exception_handlers(app)
-
-mount_static_files(app)
+def _enable_fault_handler_fallback() -> None:
+    try:
+        faulthandler.enable()
+        if _can_register_faulthandler_signal():
+            faulthandler.register(signal.SIGUSR1, all_threads=True)
+    except (RuntimeError, OSError, AttributeError, ValueError) as exc:
+        logger.warning(
+            "failed to enable fallback faulthandler: err_type={}, err={}",
+            type(exc).__name__,
+            str(exc),
+        )
 
 
-@app.middleware("http")
-async def _frontend_cache_headers(request: Request, call_next):
-    response = await call_next(request)
-    path = request.url.path
-
-    if path.startswith("/ui/assets/"):
-        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
-        return response
-
-    if path == "/ui" or path == "/ui/" or (path.startswith("/ui/") and path.endswith(".html")):
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
-
-    return response
-
-
-app.include_router(health_router)
-app.include_router(plugins_router)
-app.include_router(runs_router)
-app.include_router(messages_router)
-app.include_router(metrics_router)
-app.include_router(config_router)
-app.include_router(logs_router)
-app.include_router(frontend_router)
-app.include_router(websocket_router)
-app.include_router(plugin_ui_router)
+def _find_available_port(host: str, start_port: int, max_tries: int = 50) -> int:
+    for port in range(start_port, start_port + max_tries):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))
+            return port
+        except OSError:
+            continue
+        finally:
+            try:
+                sock.close()
+            except OSError:
+                logger.debug("failed to close probing socket")
+    return start_port
 
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    import signal
-    import socket
-    import threading
-    import faulthandler
-    from pathlib import Path
-    
+
     host = "127.0.0.1"
     base_port = int(os.getenv("NEKO_USER_PLUGIN_SERVER_PORT", str(USER_PLUGIN_SERVER_PORT)))
 
-    try:
-        _dump_path = Path(__file__).resolve().parent / "log" / "server" / "faulthandler_dump.log"
-        try:
-            _dump_path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-        _dump_f = open(_dump_path, "a", encoding="utf-8")
-        faulthandler.enable(file=_dump_f)
-        faulthandler.register(signal.SIGUSR1, all_threads=True, file=_dump_f)
-    except Exception:
-        try:
-            faulthandler.enable()
-            faulthandler.register(signal.SIGUSR1, all_threads=True)
-        except Exception:
-            pass
-    
-    def _find_available_port(start_port: int, max_tries: int = 50) -> int:
-        for p in range(start_port, start_port + max_tries):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind((host, p))
-                return p
-            except OSError:
-                continue
-            finally:
-                try:
-                    s.close()
-                except Exception:
-                    pass
-        return start_port
-    
-    selected_port = _find_available_port(base_port)
+    dump_file = _enable_fault_handler_dump_file()
+    if dump_file is None:
+        _enable_fault_handler_fallback()
+
+    selected_port = _find_available_port(host, base_port)
     os.environ["NEKO_USER_PLUGIN_SERVER_PORT"] = str(selected_port)
     if selected_port != base_port:
         logger.warning(
@@ -267,129 +359,148 @@ if __name__ == "__main__":
         )
     else:
         logger.info("User plugin server starting on {}:{}", host, selected_port)
-    
-    _sigint_count = 0
-    _sigint_lock = threading.Lock()
-    _force_exit_timer: threading.Timer | None = None
 
-    # 增加 backlog 和 limit_concurrency 以避免连接排队
-    # backlog: TCP 连接队列大小（默认 2048）
-    # limit_concurrency: 最大并发连接数（默认无限制）
+    sigint_count = 0
+    sigint_lock = threading.Lock()
+    force_exit_timer: threading.Timer | None = None
+
     config = uvicorn.Config(
         app,
         host=host,
         port=selected_port,
         log_config=None,
-        backlog=4096,  # 增加 TCP backlog
-        timeout_keep_alive=30,  # Keep-alive 超时
+        backlog=4096,
+        timeout_keep_alive=30,
     )
     server = uvicorn.Server(config)
 
     def _start_force_exit_watchdog(timeout_s: float) -> None:
-        global _force_exit_timer
-        try:
-            if _force_exit_timer is not None:
-                return
-            def _kill() -> None:
-                try:
-                    os._exit(130)
-                except Exception:
-                    raise SystemExit(130)
-            t = threading.Timer(float(timeout_s), _kill)
-            t.daemon = True
-            _force_exit_timer = t
-            t.start()
-        except Exception:
-            pass
+        global force_exit_timer
+        if force_exit_timer is not None:
+            return
 
-    def _sigint_handler(_signum: int, _frame: object | None) -> None:
-        global _sigint_count
-        with _sigint_lock:
-            _sigint_count += 1
-            n = _sigint_count
-        if n >= 2:
-            try:
-                os._exit(130)
-            except Exception:
-                raise SystemExit(130)
-        try:
-            server.should_exit = True
-            server.force_exit = True
-        except Exception:
-            pass
+        def _kill() -> None:
+            os._exit(130)
+
+        timer = threading.Timer(float(timeout_s), _kill)
+        timer.daemon = True
+        timer.start()
+
+        force_exit_timer = timer
+
+    def _sigint_handler(_signum: int, _frame: FrameType | None) -> None:
+        global sigint_count
+        with sigint_lock:
+            sigint_count += 1
+            current_count = sigint_count
+
+        if current_count >= 2:
+            os._exit(130)
+
+        server.should_exit = True
+        server.force_exit = True
         _start_force_exit_watchdog(timeout_s=2.0)
 
-    _old_sigint = None
+    old_sigint: int | Callable[[int, FrameType | None], object] | None = None
     try:
-        _old_sigint = signal.getsignal(signal.SIGINT)
+        old_sigint = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, _sigint_handler)
-        try:
-            signal.signal(signal.SIGTERM, _sigint_handler)
-        except Exception:
-            pass
-        try:
+        signal.signal(signal.SIGTERM, _sigint_handler)
+        if hasattr(signal, "SIGQUIT"):
             signal.signal(signal.SIGQUIT, _sigint_handler)
-        except Exception:
-            pass
-    except Exception:
-        _old_sigint = None
+    except (ValueError, OSError, RuntimeError) as exc:
+        old_sigint = None
+        logger.warning(
+            "failed to register shutdown signals: err_type={}, err={}",
+            type(exc).__name__,
+            str(exc),
+        )
 
-    try:
-        server.install_signal_handlers = lambda: None  # type: ignore[assignment]
-    except Exception:
-        pass
+    server.install_signal_handlers = lambda: None
 
+    cleanup_old_sigint: int | Callable[[int, FrameType | None], object] | None = None
     try:
         server.run()
     finally:
-        _cleanup_old_sigint = None
         try:
-            _cleanup_old_sigint = signal.getsignal(signal.SIGINT)
+            cleanup_old_sigint = signal.getsignal(signal.SIGINT)
 
-            def _force_quit(*_args: object) -> None:
-                try:
-                    os._exit(130)
-                except Exception:
-                    raise SystemExit(130)
+            def _force_quit(_signum: int, _frame: FrameType | None) -> None:
+                os._exit(130)
 
             signal.signal(signal.SIGINT, _force_quit)
-        except Exception:
-            _cleanup_old_sigint = None
+        except (ValueError, OSError, RuntimeError) as exc:
+            cleanup_old_sigint = None
+            logger.debug(
+                "failed to override SIGINT during cleanup: err_type={}, err={}",
+                type(exc).__name__,
+                str(exc),
+            )
+
         try:
             import psutil
-            parent = psutil.Process(os.getpid())
-            children = parent.children(recursive=True)
-            for child in children:
-                try:
-                    child.terminate()
-                except psutil.NoSuchProcess:
-                    pass
-            
-            _, alive = psutil.wait_procs(children, timeout=0.5)
-            for p in alive:
-                try:
-                    p.kill()
-                except psutil.NoSuchProcess:
-                    pass
-        except KeyboardInterrupt:
-            pass
         except ImportError:
-            if hasattr(os, 'killpg'):
-                try:
-                    os.killpg(os.getpgrp(), signal.SIGKILL)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+            psutil = None
 
-        try:
-            if _force_exit_timer is not None:
-                _force_exit_timer.cancel()
-        except Exception:
-            pass
+        if psutil is not None:
+            try:
+                parent = psutil.Process(os.getpid())
+                children = parent.children(recursive=True)
+                for child in children:
+                    try:
+                        child.terminate()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        logger.debug("failed to terminate child process: pid={}", child.pid)
 
-        try:
-            if _cleanup_old_sigint is not None:
-                signal.signal(signal.SIGINT, _cleanup_old_sigint)
-        except Exception:
-            pass
+                _, alive = psutil.wait_procs(children, timeout=0.5)
+                for process in alive:
+                    try:
+                        process.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        logger.debug("failed to kill child process: pid={}", process.pid)
+            except KeyboardInterrupt:
+                logger.debug("cleanup interrupted by keyboard interrupt")
+            except (psutil.Error, OSError, RuntimeError, ValueError) as exc:
+                logger.warning(
+                    "failed to cleanup child processes: err_type={}, err={}",
+                    type(exc).__name__,
+                    str(exc),
+                )
+        elif hasattr(os, "killpg"):
+            try:
+                os.killpg(os.getpgrp(), signal.SIGKILL)
+            except OSError as exc:
+                logger.debug(
+                    "failed to kill process group: err_type={}, err={}",
+                    type(exc).__name__,
+                    str(exc),
+                )
+
+        if force_exit_timer is not None:
+            force_exit_timer.cancel()
+
+        if cleanup_old_sigint is not None:
+            try:
+                signal.signal(signal.SIGINT, cleanup_old_sigint)
+            except (ValueError, OSError, RuntimeError) as exc:
+                logger.debug(
+                    "failed to restore cleanup SIGINT handler: err_type={}, err={}",
+                    type(exc).__name__,
+                    str(exc),
+                )
+
+        if old_sigint is not None:
+            try:
+                signal.signal(signal.SIGINT, old_sigint)
+            except (ValueError, OSError, RuntimeError) as exc:
+                logger.debug(
+                    "failed to restore original SIGINT handler: err_type={}, err={}",
+                    type(exc).__name__,
+                    str(exc),
+                )
+
+        if dump_file is not None:
+            try:
+                dump_file.close()
+            except OSError:
+                logger.debug("failed to close faulthandler dump file during cleanup")
