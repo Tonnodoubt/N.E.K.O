@@ -54,8 +54,10 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "axios": "^1.13.2",
     "axios-auth-refresh": "^3.3.6",
+    "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.13.0"

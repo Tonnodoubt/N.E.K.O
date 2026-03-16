@@ -9,6 +9,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ChangeEvent } from "react";
+import QRCode from "qrcode";
 import "./ApiKeySettings.css";
 import { getCoreConfig, updateCoreConfig } from "../api/config";
 
@@ -55,6 +56,8 @@ export default function ApiKeySettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [p2pQrUrl, setP2pQrUrl] = useState<string | null>(null);
+  const [p2pLoading, setP2pLoading] = useState(false);
   const [config, setConfig] = useState<ApiConfig>({
     coreApiProvider: "free",
     coreApiKey: "",
@@ -74,6 +77,45 @@ export default function ApiKeySettings() {
   useEffect(() => {
     loadConfig();
   }, []);
+
+  // Load P2P info and generate QR code
+  useEffect(() => {
+    loadP2PInfo();
+  }, []);
+
+  const loadP2PInfo = async () => {
+    try {
+      setP2PLoading(true);
+
+      // 获取 P2P 连接信息
+      const apiBase = window.location.origin;
+      const response = await fetch(`${apiBase}/p2p-info`);
+
+      if (!response.ok) {
+        console.log("P2P info not available");
+        return;
+      }
+
+      const p2pInfo = await response.json();
+
+      // 生成二维码
+      const qrData = JSON.stringify(p2pInfo);
+      const qrUrl = await QRCode.toDataURL(qrData, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: "#000000",
+          light: "#ffffff",
+        },
+      });
+
+      setP2pQrUrl(qrUrl);
+    } catch (err) {
+      console.log("Failed to load P2P info:", err);
+    } finally {
+      setP2PLoading(false);
+    }
+  };
 
   const loadConfig = async () => {
     try {
@@ -366,6 +408,33 @@ export default function ApiKeySettings() {
             </div>
           </div>
         </section>
+
+        {/* P2P Connection QR Code */}
+        {p2pQrUrl && (
+          <section className="neko-card p2p-qr-section">
+            <h3>📱 P2P 连接二维码</h3>
+            <p className="neko-tips">使用手机 App 扫描二维码，即可在局域网内直连</p>
+
+            <div className="p2p-qr-container">
+              <img src={p2pQrUrl} alt="P2P Connection QR Code" className="p2p-qr-image" />
+            </div>
+
+            <div className="p2p-qr-info">
+              <p className="neko-tips">
+                ✅ 三层连接支持：LAN直连 → STUN打洞 → FRP中转
+              </p>
+            </div>
+          </section>
+        )}
+
+        {p2pLoading && !p2pQrUrl && (
+          <section className="neko-card p2p-qr-section">
+            <div className="p2p-qr-loading">
+              <div className="neko-loading-spinner"></div>
+              <span>加载 P2P 连接信息...</span>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

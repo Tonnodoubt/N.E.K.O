@@ -104,3 +104,62 @@
 .neko-input.monospace {
   font-family: var(--neko-font-mono);
 }
+
+/* P2P QR Code Section */
+.p2p-qr-section {
+  margin-top: var(--neko-spacing-xl);
+  text-align: center;
+}
+
+.p2p-qr-section h3 {
+  margin: 0 0 var(--neko-spacing-sm);
+  color: var(--neko-primary);
+  font-size: 1.1rem;
+}
+
+.p2p-qr-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--neko-spacing-lg);
+  background: white;
+  border-radius: var(--neko-radius-md);
+  margin: var(--neko-spacing-lg) 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.p2p-qr-image {
+  max-width: 200px;
+  height: auto;
+}
+
+.p2p-qr-info {
+  margin-top: var(--neko-spacing-md);
+  padding: var(--neko-spacing-md);
+  background: var(--neko-light-bg);
+  border-radius: var(--neko-radius-md);
+}
+
+.p2p-qr-info p {
+  margin: 0;
+  color: var(--neko-text-muted);
+  font-size: 0.9rem;
+}
+
+.p2p-qr-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--neko-spacing-md);
+  padding: var(--neko-spacing-xl);
+  color: var(--neko-text-muted);
+}
+
+/* Dark mode support for P2P QR */
+:root.dark .p2p-qr-container {
+  background: #1e1e1e;
+}
+
+:root.dark .p2p-qr-info {
+  background: rgba(255, 255, 255, 0.05);
+}
