@@ -118,9 +118,7 @@ python3 cloud_registry_client.py
   通过 STUN 服务器发现公网 endpoint → UDP 打洞 → P2P 连接
   成功率：70-80%
   ↓ 失败
-第3层：FRP 中转
-  通过 FRP 服务器中继流量
-  成功率：100%（但有延迟和带宽成本）
+提示用户：自行配置第三方隧道（FRP、Tailscale 等）
 ```
 
 **STUN vs UPnP：**
@@ -182,7 +180,7 @@ uv add async-upnp-client aiohttp redis
 **解决方法：**
 - 登录路由器管理页面，启用 UPnP
 - 联系运营商询问是否支持UPnP
-- 使用 FRP 第三层方案
+- 使用第三方隧道工具（如 FRP、Tailscale、Cloudflare Tunnel）实现远程访问
 
 ### 云端注册失败
 

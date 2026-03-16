@@ -105,7 +105,7 @@ def get_proxy_info_from_file() -> Optional[dict]:
 
 
 class LanProxy:
-    """LAN 代理服务器 - HTTP/WebSocket 反向代理 + STUN + FRP + 云端注册"""
+    """LAN 代理服务器 - HTTP/WebSocket 反向代理 + STUN + 云端注册"""
 
     def __init__(
         self,
@@ -140,11 +140,6 @@ class LanProxy:
 
         # UDP P2P 服务器相关
         self.udp_server: Optional[UDPP2PServer] = None
-
-        # FRP 中转相关
-        self.frp_enabled = False
-        self.frp_ip: Optional[str] = "47.117.174.64"
-        self.frp_port: Optional[int] = 48920
 
     def _get_lan_ip(self) -> str:
         """获取当前WiFi网卡的局域网IP"""
@@ -537,11 +532,8 @@ class LanProxy:
         # LAN 设备直连用（随网络环境变化）
         self.site = web.TCPSite(self.runner, self.lan_ip, PROXY_PORT)
         await self.site.start()
-        # frpc TCP 隧道用（固定 loopback，不受网络环境影响）
-        self.site_loopback = web.TCPSite(self.runner, '127.0.0.1', PROXY_PORT)
-        await self.site_loopback.start()
 
-        print(f"[LAN Proxy] v2 started on {self.lan_ip}:{PROXY_PORT} (also 127.0.0.1:{PROXY_PORT})")
+        print(f"[LAN Proxy] v2 started on {self.lan_ip}:{PROXY_PORT}")
         print(f"[LAN Proxy] Token: {self.token}")
         print(f"[LAN Proxy] Character: {self.character}")
         print(f"[LAN Proxy] Target: {TARGET_BASE}")
@@ -593,33 +585,6 @@ class LanProxy:
         else:
             print("[LAN Proxy] ⚠️ UDP 服务器不可用，跳过启动")
 
-        # ── FRP 中转回退 ──
-        await self._setup_frp_fallback()
-
-        # ── FRP UDP 回退服务器 ──
-        # 如果启用了 FRP，需要在本地 48920 端口也启动一个 UDP 服务器
-        # 因为 FRP 会将远程 48920 端口转发到本地 48920 端口
-        if UDP_SERVER_AVAILABLE and self.frp_enabled and self.frp_port:
-            print("[LAN Proxy] 正在启动 FRP UDP 回退服务器...")
-            try:
-                # FRP 回退使用固定的 frp_port（通常是 48920）
-                # TCP IP 使用 FRP 服务器 IP（因为客户端会通过 FRP 连接）
-                frp_tcp_ip = self.frp_ip if self.frp_ip else tcp_ip
-
-                self.udp_server_frp = UDPP2PServer(
-                    port=self.frp_port,
-                    token=self.token,
-                    tcp_port=PROXY_PORT + 1,  # FRP TCP 隧道独立端口（48921），避免与 UDP:48920 冲突
-                    tcp_ip=frp_tcp_ip      # FRP IP（外网可访问）
-                )
-                await self.udp_server_frp.start()
-                print(f"[LAN Proxy] ✅ FRP UDP 回退服务器已启动，端口: {self.frp_port}")
-                print(f"[LAN Proxy] FRP 客户端将连接到 TCP 端点: {frp_tcp_ip}:{PROXY_PORT + 1}")
-            except Exception as e:
-                print(f"[LAN Proxy] ⚠️ FRP UDP 服务器启动失败: {e}")
-        else:
-            self.udp_server_frp = None
-
         # ── 云端注册 ──
         if self.enable_cloud:
             print("[LAN Proxy] 正在注册到云端...")
@@ -633,8 +598,6 @@ class LanProxy:
                     token=self.token,
                     stun_ip=self.stun_ip,
                     stun_port=self.stun_port,
-                    frp_ip=self.frp_ip if self.frp_enabled else None,
-                    frp_port=self.frp_port if self.frp_enabled else None,
                     character=self.character
                 )
 
@@ -679,14 +642,6 @@ class LanProxy:
             except Exception as e:
                 print(f"[LAN Proxy] UDP 服务器停止失败: {e}")
 
-        # 停止 FRP UDP 回退服务器
-        if hasattr(self, 'udp_server_frp') and self.udp_server_frp:
-            try:
-                await self.udp_server_frp.stop()
-                print("[LAN Proxy] FRP UDP 回退服务器已停止")
-            except Exception as e:
-                print(f"[LAN Proxy] FRP UDP 服务器停止失败: {e}")
-
         if self.site:
             await self.site.stop()
         if hasattr(self, 'site_loopback') and self.site_loopback:
@@ -725,50 +680,6 @@ class LanProxy:
 
         return device_id
 
-    async def _setup_frp_fallback(self):
-        """设置 FRP 中转回退"""
-        print("[LAN Proxy] 正在设置 FRP 中转回退...")
-
-        try:
-            # 检查 FRP 客户端是否已在运行
-            import subprocess
-            result = subprocess.run(
-                ["pgrep", "-f", "frpc.*frpc.toml"],
-                capture_output=True,
-                text=True
-            )
-
-            if result.returncode == 0:
-                # FRP 客户端已运行
-                self.frp_enabled = True
-                print(f"[LAN Proxy] ✅ FRP 客户端已运行")
-            else:
-                # 尝试启动 FRP 客户端
-                from pathlib import Path
-                frp_script = Path(__file__).parent / "start_frpc.sh"
-
-                if frp_script.exists():
-                    print("[LAN Proxy] 正在启动 FRP 客户端...")
-                    result = subprocess.run(
-                        ["bash", str(frp_script)],
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-
-                    if result.returncode == 0:
-                        self.frp_enabled = True
-                        print(f"[LAN Proxy] ✅ FRP 客户端已启动")
-                    else:
-                        print(f"[LAN Proxy] ⚠️ FRP 客户端启动失败: {result.stderr}")
-                else:
-                    print("[LAN Proxy] ⚠️ 未找到 FRP 启动脚本")
-
-            if self.frp_enabled:
-                print(f"[LAN Proxy] FRP 中转地址: {self.frp_ip}:{self.frp_port}")
-        except Exception as e:
-            print(f"[LAN Proxy] ⚠️ FRP 设置失败: {e}")
-
     def _start_cloud_refresh(self):
         """启动云端注册刷新后台任务"""
         async def refresh_loop():
@@ -792,8 +703,6 @@ class LanProxy:
                         token=self.token,
                         stun_ip=self.stun_ip,
                         stun_port=self.stun_port,
-                        frp_ip=self.frp_ip if self.frp_enabled else None,
-                        frp_port=self.frp_port if self.frp_enabled else None,
                         character=self.character
                     )
                     print("[LAN Proxy] 云端注册已刷新")
@@ -830,11 +739,6 @@ class LanProxy:
         if self.stun_ip and self.stun_port:
             info["stun_ip"] = self.stun_ip
             info["stun_port"] = self.stun_port
-
-        # 添加 FRP 中转信息
-        if self.frp_enabled and self.frp_ip and self.frp_port:
-            info["frp_ip"] = self.frp_ip
-            info["frp_port"] = self.frp_port
 
         return info
 

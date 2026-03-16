@@ -35,8 +35,6 @@ class CloudRegistryClient:
         token: str,
         stun_ip: Optional[str] = None,
         stun_port: Optional[int] = None,
-        frp_ip: Optional[str] = None,
-        frp_port: Optional[int] = None,
         character: Optional[str] = None
     ) -> bool:
         """
@@ -48,8 +46,6 @@ class CloudRegistryClient:
             token: 连接 token
             stun_ip: STUN 获取的公网 IP（可选）
             stun_port: STUN 获取的公网端口（可选）
-            frp_ip: FRP 中转服务器 IP（可选）
-            frp_port: FRP 中转端口（可选）
             character: 角色名（可选）
 
         Returns:
@@ -70,10 +66,6 @@ class CloudRegistryClient:
                 payload["stun_ip"] = stun_ip
             if stun_port:
                 payload["stun_port"] = stun_port
-            if frp_ip:
-                payload["frp_ip"] = frp_ip
-            if frp_port:
-                payload["frp_port"] = frp_port
             if character:
                 payload["character"] = character
 

@@ -42,10 +42,6 @@ async def test_udp_client():
                 print(f"   LAN IP: {device_info.get('lan_ip')}")
                 print(f"   STUN IP: {device_info.get('stun_ip')}")
                 print(f"   STUN Port: {device_info.get('stun_port')}")
-                print(f"   FRP IP: {device_info.get('frp_ip')}")
-                print(f"   FRP Port: {device_info.get('frp_port')}")
-                print(f"   FRP IP: {device_info.get('frp_ip')}")
-                print(f"   FRP Port: {device_info.get('frp_port')}")
     except Exception as e:
         print(f"❌ 查询失败: {e}")
         return
@@ -117,44 +113,6 @@ async def test_udp_client():
         print("   可能原因：NAT 不支持打洞，或防火墙阻止")
     except Exception as e:
         print(f"   ❌ 第2层失败: {e}")
-    finally:
-        sock.close()
-
-    # 测试第3层（FRP 中转）
-    print("\n[步骤 4] 尝试第3层：FRP 中转...")
-    frp_ip = device_info.get('frp_ip')
-    frp_port = device_info.get('frp_port')
-
-    if not frp_ip or not frp_port:
-        print("❌ FRP 信息缺失")
-        return
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(10)
-
-    try:
-        # 发送 HELLO 到 FRP 中转
-        hello = {
-            'type': 'HELLO',
-            'token': token,
-            'timestamp': int(datetime.now().timestamp())
-        }
-        sock.sendto(json.dumps(hello).encode(), (frp_ip, frp_port))
-        print(f"   发送 HELLO 到 {frp_ip}:{frp_port}")
-
-        # 等待 ACK
-        data, _ = sock.recvfrom(4096)
-        response = json.loads(data.decode())
-
-        if response.get('type') == 'ACK':
-            print("\n✅ 第3层成功：FRP 中转")
-            print("   通过 FRP 中转服务器连接成功")
-            return
-    except socket.timeout:
-        print("\n❌ 第3层超时")
-        print("   可能原因：FRP 服务未启动")
-    except Exception as e:
-        print(f"\n❌ 第3层失败: {e}")
     finally:
         sock.close()
 

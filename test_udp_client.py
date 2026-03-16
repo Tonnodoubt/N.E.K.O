@@ -58,11 +58,6 @@ class UDPP2PClient:
             logger.info("[UDP Client] ✅ 第2层成功：STUN 打洞")
             return True
 
-        # 第3层：FRP 中转
-        if await self._try_frp_connect(timeout):
-            logger.info("[UDP Client] ✅ 第3层成功：FRP 中转")
-            return True
-
         logger.error("[UDP Client] ❌ 所有连接方式失败")
         return False
 
@@ -129,42 +124,6 @@ class UDPP2PClient:
 
         except Exception as e:
             logger.error(f"[UDP Client] STUN 打洞失败: {e}")
-            return False
-
-    async def _try_frp_connect(self, timeout: int) -> bool:
-        """
-        第3层：FRP 中转连接
-
-        Args:
-            timeout: 超时时间
-
-        Returns:
-            是否成功
-        """
-        try:
-            logger.info("[UDP Client] 第3层：尝试 FRP 中转...")
-
-            # 查询云端获取设备信息
-            device_info = await self._query_cloud()
-            if not device_info:
-                return False
-
-            frp_ip = device_info.get('frp_ip')
-            frp_port = device_info.get('frp_port')
-            self.token = device_info.get('token')
-
-            if not frp_ip or not frp_port or not self.token:
-                logger.warning("[UDP Client] FRP 信息缺失")
-                return False
-
-            logger.info(f"[UDP Client] FRP endpoint: {frp_ip}:{frp_port}")
-
-            # 通过 FRP 中转连接
-            self.server_addr = (frp_ip, frp_port)
-            return await self._send_hello(timeout)
-
-        except Exception as e:
-            logger.error(f"[UDP Client] FRP 中转失败: {e}")
             return False
 
     async def _query_cloud(self) -> Optional[dict]:
