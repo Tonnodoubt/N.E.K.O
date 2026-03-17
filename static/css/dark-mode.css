@@ -124,6 +124,7 @@ html #chat-container {
 /* ===== 暗色模式：全局基础 ===== */
 [data-theme="dark"] body {
   color: #e0e0e0;
+  background: #1a1a1a;
 }
 
 /* ===== 暗色模式：聊天容器 ===== */
@@ -661,8 +662,9 @@ html #chat-container {
   background: #1e1e1e;
   color: #e0e0e0;
 }
+
 [data-theme="dark"] .save-button-box {
-  background: #0f0f0f;
+  background: transparent;
   color: #e0e0e0;
 }
 
@@ -1372,3 +1374,86 @@ html #chat-container {
 }
 
 /* Steam Workshop 图标保持原样（黑夜模式与白天一致） */
+
+/* ===== P2P 手机连接模块 ===== */
+[data-theme="dark"] #p2p-connection-section {
+  background: #252525 !important;
+  border-color: #3a5a6e !important;
+}
+
+[data-theme="dark"] #p2p-connection-section h3 {
+  color: #e0e0e0 !important;
+}
+
+[data-theme="dark"] #p2p-connection-section h3 svg {
+  color: #4aa3df !important;
+}
+
+[data-theme="dark"] #p2p-connection-section > p:first-of-type {
+  color: #b0b0b0 !important;
+}
+
+/* 步骤卡片 */
+[data-theme="dark"] .p2p-step-card {
+  background: #2d2d2d !important;
+  border-color: #444 !important;
+}
+
+[data-theme="dark"] .p2p-step-text {
+  color: #c0c0c0 !important;
+}
+
+[data-theme="dark"] .p2p-step-text strong {
+  color: #4aa3df !important;
+}
+
+/* 二维码容器 */
+[data-theme="dark"] #p2p-qr-container {
+  background: #2d2d2d !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] #p2p-qr-error {
+  color: #888 !important;
+}
+
+/* 刷新二维码按钮 */
+[data-theme="dark"] .p2p-refresh-btn {
+  background: #2a7bc4 !important;
+}
+
+[data-theme="dark"] .p2p-refresh-btn:hover {
+  background: #3590d9 !important;
+}
+
+/* 连接信息区域 */
+[data-theme="dark"] .p2p-info-card {
+  background: #2d2d2d !important;
+  border-color: #444 !important;
+}
+
+[data-theme="dark"] .p2p-info-label {
+  color: #888 !important;
+}
+
+[data-theme="dark"] .p2p-info-value {
+  background: #1a1a1a !important;
+  color: #b0b0b0 !important;
+}
+
+/* 复制连接信息按钮 */
+[data-theme="dark"] .p2p-copy-btn {
+  background: #383838 !important;
+  color: #e0e0e0 !important;
+  border-color: #555 !important;
+}
+
+[data-theme="dark"] .p2p-copy-btn:hover {
+  background: #454545 !important;
+  border-color: #4aa3df !important;
+}
+
+/* 底部提示文字 */
+[data-theme="dark"] .p2p-hint-text {
+  color: #777 !important;
+}
