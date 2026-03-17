@@ -26,9 +26,11 @@
 
 html,
 body {
-height: 100%;
+height: auto;
+min-height: 100%;
 margin: 0;
 padding: 0;
+padding-bottom: 120px;
 background: transparent;
 color: #222;
 font-family: 'Segoe UI', Arial, sans-serif;
@@ -41,9 +43,8 @@ background: #fff;
 border-radius: 0;
 box-shadow: none;
 padding: 0;
-padding-bottom: 100px; /* 归还被保存按钮占用的空间 */
+padding-bottom: 20px; /* 底部间距 */
 position: relative;
-min-height: 100vh;
 }
 
 body .container-header {
@@ -1228,17 +1229,214 @@ font-size: 0.8em;
 
 
 .save-button-box{
-    position: fixed;      
-    bottom: 0;            
+    position: fixed;
+    bottom: 0;
     left: 0;
     right: 0;
     z-index: 999;
-    display: flex;        
-    justify-content: center; 
-    padding: 20px 0;      
-    pointer-events: none; 
+    display: flex;
+    justify-content: center;
+    padding: 20px 0;
+    pointer-events: none;
+    background: transparent;
 }
 .save-button-box > div {
-    pointer-events: auto; 
-    padding: 0 24px;      
+    pointer-events: auto;
+    padding: 0 24px;
+}
+
+/* ===== P2P 手机连接模块 ===== */
+#p2p-connection-section {
+    margin: 20px 32px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e0e0e0;
+}
+
+#p2p-connection-section h3 {
+    margin: 0 0 16px 0;
+    color: #333;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#p2p-connection-section h3 svg {
+    color: #44b7fe;
+}
+
+#p2p-connection-section > p:first-of-type {
+    margin: 0 0 16px 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.p2p-steps-container {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.p2p-step-card {
+    flex: 1;
+    min-width: 140px;
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #e8e8e8;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.p2p-step-number {
+    background: #44b7fe;
+    color: white;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.p2p-step-text {
+    color: #555;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.p2p-step-text strong {
+    color: #333;
+}
+
+.p2p-main-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.p2p-qr-area {
+    flex: 0 0 auto;
+    text-align: center;
+}
+
+#p2p-qr-container {
+    background: white;
+    padding: 12px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    display: inline-block;
+}
+
+#p2p-qr-image {
+    width: 180px;
+    height: 180px;
+    display: block;
+}
+
+#p2p-qr-error {
+    display: none;
+    width: 180px;
+    height: 180px;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+    font-size: 14px;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.p2p-refresh-btn {
+    margin-top: 12px;
+    padding: 8px 16px;
+    background: #44b7fe;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    margin-right: auto;
+    transition: all 0.2s;
+}
+
+.p2p-refresh-btn:hover {
+    background: #3aa0e8;
+    transform: translateY(-1px);
+}
+
+.p2p-info-area {
+    flex: 1;
+    min-width: 200px;
+}
+
+.p2p-info-card {
+    background: white;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid #e8e8e8;
+}
+
+.p2p-info-item {
+    margin-bottom: 12px;
+}
+
+.p2p-info-item:last-of-type {
+    margin-bottom: 16px;
+}
+
+.p2p-info-label {
+    color: #888;
+    font-size: 0.85rem;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.p2p-info-value {
+    background: #f4f4f4;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    display: block;
+    word-break: break-all;
+}
+
+.p2p-copy-btn {
+    width: 100%;
+    padding: 10px;
+    background: #f0f0f0;
+    color: #333;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.p2p-copy-btn:hover {
+    background: #e5e5e5;
+    border-color: #ccc;
+}
+
+.p2p-hint-text {
+    margin: 12px 0 0 0;
+    color: #999;
+    font-size: 0.8rem;
+    line-height: 1.4;
 }

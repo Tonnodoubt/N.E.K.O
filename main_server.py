@@ -54,6 +54,51 @@ from utils.ssl_env_diagnostics import probe_ssl_environment, write_ssl_diagnosti
 
 logger, log_config = setup_logging(service_name="Main", log_level=logging.INFO, silent=not _IS_MAIN_PROCESS)
 
+# 辅助函数：获取 LAN proxy 的真实 IP
+def _get_lan_proxy_ip():
+    """从 LAN proxy 状态文件或 socket 获取真实的局域网 IP"""
+    import json
+    import socket
+    from config import LAN_PROXY_PORT
+
+    # 优先从状态文件读取（最准确）
+    try:
+        status_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".lan_proxy_status.json")
+        if os.path.exists(status_file):
+            with open(status_file, 'r') as f:
+                status = json.load(f)
+                lan_ip = status.get('lan_ip')
+                port = status.get('port')
+                # 验证端口匹配
+                if lan_ip and port == LAN_PROXY_PORT:
+                    return lan_ip
+    except Exception:
+        pass
+
+    # 回退到 socket 方式
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+        return lan_ip
+    except Exception:
+        return "127.0.0.1"
+
+# 辅助函数：检查端口是否可用
+def _check_port(host: str, port: int, timeout: float = 1.0) -> bool:
+    """检查端口是否可用"""
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+
 if _IS_MAIN_PROCESS:
     _ssl_precheck = probe_ssl_environment()
     if not _ssl_precheck.get("ok", True):
@@ -647,33 +692,60 @@ async def p2p_info():
     from fastapi.responses import JSONResponse
     from config import LAN_PROXY_PORT
     import httpx
-    import socket
 
-    try:
-        # 获取本机局域网 IP
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            lan_ip = s.getsockname()[0]
-            s.close()
-        except:
-            lan_ip = "127.0.0.1"
+    # 获取 LAN IP
+    lan_ip = _get_lan_proxy_ip()
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"http://{lan_ip}:{LAN_PROXY_PORT}/p2p-info", timeout=2.0)
-            if response.status_code == 200:
-                return JSONResponse(content=response.json())
-            else:
-                return JSONResponse(
-                    content={"error": "P2P info not available"},
-                    status_code=503
-                )
-    except Exception as e:
-        logger.error(f"Failed to get P2P info: {e}")
+    # 检查端口是否可用
+    if not _check_port(lan_ip, LAN_PROXY_PORT):
+        logger.debug(f"LAN proxy not ready on {lan_ip}:{LAN_PROXY_PORT}")
         return JSONResponse(
-            content={"error": "P2P service unavailable"},
+            content={"error": "LAN proxy service not ready"},
             status_code=503
         )
+
+    # 带重试的请求
+    max_retries = 2
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"http://{lan_ip}:{LAN_PROXY_PORT}/p2p-info",
+                    timeout=2.0
+                )
+
+                if response.status_code == 200:
+                    return JSONResponse(content=response.json())
+                else:
+                    logger.warning(f"LAN proxy returned status {response.status_code}")
+                    return JSONResponse(
+                        content={"error": "P2P info not available"},
+                        status_code=503
+                    )
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            last_error = e
+            logger.debug(f"LAN proxy connection attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                import asyncio
+                await asyncio.sleep(0.5)  # 等待后重试
+            continue
+
+        except Exception as e:
+            logger.error(f"Unexpected error getting P2P info: {e}")
+            return JSONResponse(
+                content={"error": "P2P service error"},
+                status_code=503
+            )
+
+    # 所有重试都失败
+    logger.warning(f"LAN proxy unavailable after {max_retries} attempts: {last_error}")
+    return JSONResponse(
+        content={"error": "P2P service unavailable"},
+        status_code=503
+    )
 
 
 @app.get("/lanproxyqrcode")
@@ -682,44 +754,68 @@ async def lanproxy_qrcode():
     from fastapi.responses import Response, JSONResponse
     from config import LAN_PROXY_PORT
     import httpx
-    import socket
 
-    try:
-        # 获取本机局域网 IP
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            lan_ip = s.getsockname()[0]
-            s.close()
-        except:
-            lan_ip = "127.0.0.1"
+    # 获取 LAN IP
+    lan_ip = _get_lan_proxy_ip()
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"http://{lan_ip}:{LAN_PROXY_PORT}/lanproxyqrcode",
-                timeout=5.0
-            )
-            if response.status_code == 200:
-                return Response(
-                    content=response.content,
-                    media_type="image/png",
-                    headers={
-                        "X-Lan-Ip": response.headers.get("X-Lan-Ip", ""),
-                        "X-Port": response.headers.get("X-Port", ""),
-                        "X-Token": response.headers.get("X-Token", ""),
-                    }
-                )
-            else:
-                return JSONResponse(
-                    content={"error": "QR code not available"},
-                    status_code=503
-                )
-    except Exception as e:
-        logger.error(f"Failed to get QR code: {e}")
+    # 检查端口是否可用
+    if not _check_port(lan_ip, LAN_PROXY_PORT):
+        logger.debug(f"LAN proxy not ready on {lan_ip}:{LAN_PROXY_PORT}")
         return JSONResponse(
-            content={"error": "QR code service unavailable"},
+            content={"error": "LAN proxy service not ready"},
             status_code=503
         )
+
+    # 带重试的请求
+    max_retries = 2
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"http://{lan_ip}:{LAN_PROXY_PORT}/lanproxyqrcode",
+                    timeout=3.0
+                )
+
+                if response.status_code == 200:
+                    return Response(
+                        content=response.content,
+                        media_type="image/png",
+                        headers={
+                            "X-Lan-Ip": response.headers.get("X-Lan-Ip", ""),
+                            "X-Port": response.headers.get("X-Port", ""),
+                            "X-Token": response.headers.get("X-Token", ""),
+                        }
+                    )
+                else:
+                    logger.warning(f"LAN proxy returned status {response.status_code}")
+                    return JSONResponse(
+                        content={"error": "QR code generation failed"},
+                        status_code=503
+                    )
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            last_error = e
+            logger.debug(f"LAN proxy connection attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                import asyncio
+                await asyncio.sleep(0.5)  # 等待后重试
+            continue
+
+        except Exception as e:
+            logger.error(f"Unexpected error getting QR code: {e}")
+            return JSONResponse(
+                content={"error": "QR code service error"},
+                status_code=503
+            )
+
+    # 所有重试都失败
+    logger.warning(f"LAN proxy unavailable after {max_retries} attempts: {last_error}")
+    return JSONResponse(
+        content={"error": "QR code service unavailable"},
+        status_code=503
+    )
 
 
 @app.post('/api/beacon/shutdown')
