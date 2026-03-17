@@ -72,17 +72,17 @@ def _get_lan_proxy_ip():
                 # 验证端口匹配
                 if lan_ip and port == LAN_PROXY_PORT:
                     return lan_ip
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to read LAN proxy status file: {e}")
 
     # 回退到 socket 方式
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        lan_ip = s.getsockname()[0]
-        s.close()
-        return lan_ip
-    except Exception:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            lan_ip = s.getsockname()[0]
+            return lan_ip
+    except Exception as e:
+        logger.warning(f"Failed to determine LAN IP via socket: {e}")
         return "127.0.0.1"
 
 # 辅助函数：检查端口是否可用
@@ -710,7 +710,7 @@ async def p2p_info():
 
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(proxy=None, trust_env=False) as client:
                 response = await client.get(
                     f"http://{lan_ip}:{LAN_PROXY_PORT}/p2p-info",
                     timeout=2.0
@@ -718,11 +718,15 @@ async def p2p_info():
 
                 if response.status_code == 200:
                     return JSONResponse(content=response.json())
+                elif 500 <= response.status_code < 600:
+                    last_error = f"HTTP {response.status_code}"
+                    logger.warning(f"LAN proxy returned 5xx status {response.status_code}, will retry")
+                    continue
                 else:
                     logger.warning(f"LAN proxy returned status {response.status_code}")
                     return JSONResponse(
                         content={"error": "P2P info not available"},
-                        status_code=503
+                        status_code=response.status_code
                     )
 
         except (httpx.ConnectError, httpx.TimeoutException) as e:
@@ -772,7 +776,7 @@ async def lanproxy_qrcode():
 
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(proxy=None, trust_env=False) as client:
                 response = await client.get(
                     f"http://{lan_ip}:{LAN_PROXY_PORT}/lanproxyqrcode",
                     timeout=3.0
@@ -788,11 +792,15 @@ async def lanproxy_qrcode():
                             "X-Token": response.headers.get("X-Token", ""),
                         }
                     )
+                elif 500 <= response.status_code < 600:
+                    last_error = f"HTTP {response.status_code}"
+                    logger.warning(f"LAN proxy returned 5xx status {response.status_code}, will retry")
+                    continue
                 else:
                     logger.warning(f"LAN proxy returned status {response.status_code}")
                     return JSONResponse(
                         content={"error": "QR code generation failed"},
-                        status_code=503
+                        status_code=response.status_code
                     )
 
         except (httpx.ConnectError, httpx.TimeoutException) as e:
