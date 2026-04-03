@@ -12,8 +12,8 @@
         MAX_MIC_GAIN_DB: 25,                 // 麦克风增益上限 (dB ≈ 18x)
         MIN_MIC_GAIN_DB: -5,                 // 麦克风增益下限 (dB ≈ 0.56x)
         DEFAULT_SPEAKER_VOLUME: 100,         // 扬声器默认音量
-        DEFAULT_PROACTIVE_CHAT_INTERVAL: 30, // 默认搭话间隔 (秒)
-        DEFAULT_PROACTIVE_VISION_INTERVAL: 15, // 默认视觉间隔 (秒)
+        DEFAULT_PROACTIVE_CHAT_INTERVAL: 15, // 默认搭话间隔 (秒)
+        DEFAULT_PROACTIVE_VISION_INTERVAL: 10, // 默认视觉间隔 (秒)
         MAX_SCREENSHOT_WIDTH: 1280,
         MAX_SCREENSHOT_HEIGHT: 720,
         VOICE_TRANSCRIPT_MERGE_WINDOW: 3000, // 语音转录合并时间窗 (ms)
@@ -63,6 +63,7 @@
         micVolumeAnimationId: null,
         silenceDetectionTimer: null,
         hasSoundDetected: false,
+        isMicMuted: false,
 
         // --- 会话 / WebSocket ---
         socket: null,
@@ -89,16 +90,20 @@
         proactiveVisionEnabled: false,
         proactiveVisionChatEnabled: true,
         proactiveNewsChatEnabled: false,
-        proactiveVideoChatEnabled: false,
+        proactiveVideoChatEnabled: true,
         proactivePersonalChatEnabled: false,
-        proactiveMusicEnabled: false,
+        proactiveMusicEnabled: true,
+        proactiveMemeEnabled: true,
         mergeMessagesEnabled: false,
         proactiveChatTimer: null,
         proactiveChatBackoffLevel: 0,
+        _voiceProactiveNoResponseCount: 0,
         isProactiveChatRunning: false,
-        proactiveChatInterval: 30,
+        _proactiveSchedulerInitialized: false,
+        proactiveChatInterval: 15,
         proactiveVisionFrameTimer: null,
-        proactiveVisionInterval: 15,
+        proactiveVisionInterval: 10,
+        _lastProactiveChatScreenTime: 0,
 
         // --- 角色切换 ---
         isSwitchingCatgirl: false,
@@ -146,7 +151,7 @@
     const proactiveKeys = [
         'proactiveChatEnabled', 'proactiveVisionEnabled', 'proactiveVisionChatEnabled',
         'proactiveNewsChatEnabled', 'proactiveVideoChatEnabled', 'proactivePersonalChatEnabled',
-        'proactiveMusicEnabled', 'mergeMessagesEnabled', 'focusModeEnabled',
+        'proactiveMusicEnabled', 'proactiveMemeEnabled', 'mergeMessagesEnabled', 'focusModeEnabled',
         'proactiveChatInterval', 'proactiveVisionInterval',
         'renderQuality', 'targetFrameRate', 'isRecording',
     ];

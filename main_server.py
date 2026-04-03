@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Windows multiprocessing 支持：确保子进程不会重复执行模块级初始化
 from multiprocessing import freeze_support
 import multiprocessing
+from utils.port_utils import set_port_probe_reuse
 freeze_support()
 
 # 设置 multiprocessing 启动方法（确保跨进程共享结构的一致性）
@@ -240,6 +241,49 @@ catgirl_names = []
 agent_event_bridge: MainServerAgentBridge | None = None
 
 
+def _is_websocket_connected(ws) -> bool:
+    """Check if a WebSocket is in CONNECTED state."""
+    if not ws:
+        return False
+    if not hasattr(ws, "client_state"):
+        return False
+    try:
+        return ws.client_state == ws.client_state.CONNECTED
+    except Exception:
+        return False
+
+
+def _select_fallback_session_manager():
+    """Return a single connected session manager as a safe fallback, if unambiguous."""
+    connected = []
+    for name, mgr in session_manager.items():
+        if not mgr:
+            continue
+        ws = getattr(mgr, "websocket", None)
+        if _is_websocket_connected(ws):
+            connected.append((name, mgr))
+    if len(connected) == 1:
+        return connected[0]
+    return None, None
+
+
+async def _broadcast_to_all_connected(event_payload: dict) -> int:
+    """Broadcast an event to all connected WebSocket sessions asynchronously."""
+    delivered_count = 0
+    # Take a snapshot to avoid RuntimeError from concurrent dict mutation
+    for name, mgr in list(session_manager.items()):
+        if not mgr:
+            continue
+        ws = getattr(mgr, "websocket", None)
+        if _is_websocket_connected(ws) and hasattr(ws, "send_json"):
+            try:
+                await ws.send_json(event_payload)
+                delivered_count += 1
+            except Exception as e:
+                logger.debug("[EventBus] broadcast to %s failed: %s", name, e)
+    return delivered_count
+
+
 async def _handle_agent_event(event: dict):
     """通过 ZeroMQ 接收 agent_server 事件，并分发到 core/websocket。"""
     try:
@@ -263,18 +307,14 @@ async def _handle_agent_event(event: dict):
             }
             if lanlan and lanlan in session_manager:
                 mgr = session_manager.get(lanlan)
-                if mgr and mgr.websocket and hasattr(mgr.websocket, "send_json"):
+                ws = getattr(mgr, "websocket", None) if mgr else None
+                if _is_websocket_connected(ws):
                     try:
-                        await mgr.websocket.send_json(payload)
-                    except Exception:
-                        pass
+                        await ws.send_json(payload)
+                    except Exception as e:
+                        logger.debug("[EventBus] agent_status_update send failed: %s", e)
             else:
-                for mgr in session_manager.values():
-                    if mgr and mgr.websocket and hasattr(mgr.websocket, "send_json"):
-                        try:
-                            await mgr.websocket.send_json(payload)
-                        except Exception:
-                            pass
+                await _broadcast_to_all_connected(payload)
             return
 
         # Resolve target session manager; fallback to broadcast if lanlan is unknown
@@ -282,24 +322,88 @@ async def _handle_agent_event(event: dict):
         if not mgr and event_type == "task_update":
             # Broadcast task_update to all connected sessions when lanlan is unresolvable
             task_payload = {"type": "agent_task_update", "task": event.get("task", {})}
-            for _mgr in session_manager.values():
-                if _mgr and _mgr.websocket and hasattr(_mgr.websocket, "send_json"):
+            delivered = await _broadcast_to_all_connected(task_payload)
+            if delivered == 0:
+                logger.warning("[EventBus] task_update broadcast: no connected WebSocket sessions")
+            return
+
+        # --- Music Global Broadcasts (Must come before early 'if not mgr' returns) ---
+        elif event_type == "music_allowlist_add":
+            # Music allowlist is a global UI state, broadcast to all active sessions
+            targets = [mgr] if mgr else list(session_manager.values())
+            for target_mgr in targets:
+                if target_mgr and target_mgr.websocket and hasattr(target_mgr.websocket, "send_json"):
                     try:
-                        await _mgr.websocket.send_json(task_payload)
-                    except Exception:
-                        pass
+                        await target_mgr.websocket.send_json({
+                            "type": "music_allowlist_add",
+                            "domains": event.get("domains") or event.get("metadata", {}).get("domains", [])
+                        })
+                    except Exception as e:
+                        logger.debug("[EventBus] music_allowlist_add broadcast failed: %s", e)
+            if targets:
+                logger.info("[EventBus] music_allowlist_add broadcasted to %d sessions", len(targets))
+            return
+
+        elif event_type == "music_play_url":
+            # Music playback is a global UI action, broadcast to all active sessions
+            targets = [mgr] if mgr else list(session_manager.values())
+            for target_mgr in targets:
+                if target_mgr and target_mgr.websocket and hasattr(target_mgr.websocket, "send_json"):
+                    try:
+                        await target_mgr.websocket.send_json({
+                            "type": "music_play_url",
+                            "url": event.get("url"),
+                            "name": event.get("name") or "Plugin Music",
+                            "artist": event.get("artist") or "External"
+                        })
+                    except Exception as e:
+                        logger.debug("[EventBus] music_play_url broadcast failed: %s", e)
+            if targets:
+                logger.info("[EventBus] music_play_url broadcasted to %d sessions", len(targets))
             return
         if not mgr and event_type in ("proactive_message", "task_result"):
-            # No target session found — drop the event entirely.
-            # Do NOT broadcast text to other sessions to prevent cross-session leaks.
-            logger.info("[EventBus] %s dropped: no target session for lanlan=%s", event_type, lanlan)
-            return
+            fallback_name, fallback_mgr = _select_fallback_session_manager()
+            if fallback_mgr is not None:
+                mgr = fallback_mgr
+                logger.warning(
+                    "[EventBus] %s rerouted: lanlan=%s missing, fallback_session=%s",
+                    event_type,
+                    lanlan,
+                    fallback_name,
+                )
+            else:
+                # No target session found — drop the event entirely.
+                # Do NOT broadcast text to other sessions to prevent cross-session leaks.
+                logger.info(
+                    "[EventBus] %s dropped: no target session for lanlan=%s, active_sessions=%s",
+                    event_type,
+                    lanlan,
+                    list(session_manager.keys()),
+                )
+                return
         if not mgr:
             logger.info("[EventBus] %s dropped: no session_manager for lanlan=%s", event_type, lanlan)
             return
         if event_type in ("task_result", "proactive_message"):
             text = (event.get("text") or "").strip()
             if text:
+                if event.get("direct_reply"):
+                    detail_text = (event.get("detail") or text).strip()
+                    delivered = False
+                    if detail_text and hasattr(mgr, "send_lanlan_response"):
+                        try:
+                            delivered = bool(await mgr.send_lanlan_response(detail_text, True))
+                        except Exception as e:
+                            logger.warning("[EventBus] direct task_result reply failed: %s", e)
+                    if delivered and hasattr(mgr, "handle_proactive_complete"):
+                        try:
+                            await mgr.handle_proactive_complete()
+                        except Exception as e:
+                            logger.warning("[EventBus] direct task_result turn_end failed: %s", e)
+                    if delivered:
+                        logger.info("[EventBus] direct task_result reply delivered: %.60s", detail_text[:60])
+                        return
+
                 # Build structured callback and enqueue for LLM injection
                 cb_status = event.get("status") or ("completed" if event.get("success", True) else "failed")
                 callback = {
@@ -315,8 +419,16 @@ async def _handle_agent_event(event: dict):
                 }
                 mgr.enqueue_agent_callback(callback)
                 logger.info("[EventBus] %s enqueued callback, scheduling trigger_agent_callbacks", event_type)
-                mgr._pending_agent_callback_task = asyncio.create_task(mgr.trigger_agent_callbacks())
-                if mgr.websocket and hasattr(mgr.websocket, "send_json"):
+
+                # Create task with exception logging
+                async def _run_trigger_with_logging():
+                    try:
+                        await mgr.trigger_agent_callbacks()
+                    except Exception as e:
+                        logger.error("[EventBus] trigger_agent_callbacks task failed: %s", e)
+                mgr._pending_agent_callback_task = asyncio.create_task(_run_trigger_with_logging())
+                ws = getattr(mgr, "websocket", None)
+                if _is_websocket_connected(ws):
                     try:
                         notif = {
                             "type": "agent_notification",
@@ -327,14 +439,15 @@ async def _handle_agent_event(event: dict):
                         err_msg = event.get("error_message") or ""
                         if err_msg:
                             notif["error_message"] = err_msg[:500]
-                        await mgr.websocket.send_json(notif)
+                        await ws.send_json(notif)
                         logger.info("[EventBus] agent_notification sent to frontend: %.60s", text[:60])
                     except Exception as e:
                         logger.warning("[EventBus] agent_notification WS send failed: %s", e)
                 else:
-                    logger.warning("[EventBus] agent_notification: no websocket available")
+                    logger.warning("[EventBus] agent_notification: WebSocket not connected for lanlan=%s", lanlan)
         elif event_type == "agent_notification":
-            if mgr.websocket and hasattr(mgr.websocket, "send_json"):
+            ws = getattr(mgr, "websocket", None)
+            if _is_websocket_connected(ws):
                 try:
                     notif = {
                         "type": "agent_notification",
@@ -345,15 +458,21 @@ async def _handle_agent_event(event: dict):
                     err_msg = event.get("error_message") or ""
                     if err_msg:
                         notif["error_message"] = err_msg[:500]
-                    await mgr.websocket.send_json(notif)
+                    await ws.send_json(notif)
                 except Exception as e:
                     logger.debug("[EventBus] agent_notification send failed: %s", e)
+            else:
+                logger.debug("[EventBus] agent_notification: WebSocket not connected for lanlan=%s", lanlan)
         elif event_type == "task_update":
-            if mgr.websocket and hasattr(mgr.websocket, "send_json"):
+            task_payload = {"type": "agent_task_update", "task": event.get("task", {})}
+            ws = getattr(mgr, "websocket", None)
+            if _is_websocket_connected(ws):
                 try:
-                    await mgr.websocket.send_json({"type": "agent_task_update", "task": event.get("task", {})})
-                except Exception:
-                    pass
+                    await ws.send_json(task_payload)
+                except Exception as e:
+                    logger.warning("[EventBus] task_update send failed for lanlan=%s: %s", lanlan, e)
+            else:
+                logger.warning("[EventBus] task_update dropped: WebSocket not connected for lanlan=%s", lanlan)
     except Exception as e:
         logger.debug(f"handle_agent_event error: {e}")
 
@@ -368,12 +487,7 @@ async def initialize_character_data():
     # 清理无效的voice_id引用；如果发现旧版 CosyVoice 音色，推入通知缓冲池等前端连接后弹出
     _cleaned, _legacy_names = _config_manager.cleanup_invalid_voice_ids()
     if _legacy_names:
-        core.enqueue_prominent_notice({
-            "code": "notice.voiceMigration.legacyRemoved",
-            "message": "CosyVoice 现已升级至 3.5，您的旧语音已失效，请重新克隆语音。",
-            "message_en": "CosyVoice has been upgraded to 3.5. Your old voices are no longer valid — please re-clone your voices.",
-            "details": {"voices": _legacy_names},
-        })
+        core.enqueue_voice_migration_notice(_legacy_names)
     
     # 加载最新的角色数据
     master_name, her_name, master_basic_config, lanlan_basic_config, name_mapping, lanlan_prompt, time_store, setting_store, recent_log = _config_manager.get_character_data()
@@ -597,6 +711,7 @@ app.mount("/static", CustomStaticFiles(directory=static_dir), name="static")
 if _IS_MAIN_PROCESS:
     _config_manager.ensure_live2d_directory()
     _config_manager.ensure_vrm_directory()
+    _config_manager.ensure_mmd_directory()
     _config_manager.ensure_chara_directory()
 
     # CFA (反勒索防护) 感知挂载：
@@ -633,6 +748,22 @@ if _IS_MAIN_PROCESS:
     if os.path.exists(project_vrm_path) and os.path.isdir(project_vrm_path):
         logger.info(f"项目VRM目录存在: {project_vrm_path} (可通过 /static/vrm/ 访问)")
     
+    # 挂载MMD动画目录（必须在MMD模型目录之前挂载）
+    mmd_animation_path = str(_config_manager.mmd_animation_dir)
+    if os.path.exists(mmd_animation_path):
+        app.mount("/user_mmd/animation", CustomStaticFiles(directory=mmd_animation_path), name="user_mmd_animation")
+        logger.info(f"已挂载MMD动画目录: {mmd_animation_path}")
+
+    # 挂载MMD模型目录（用户文档目录）
+    user_mmd_path = str(_config_manager.mmd_dir)
+    if os.path.exists(user_mmd_path):
+        app.mount("/user_mmd", CustomStaticFiles(directory=user_mmd_path), name="user_mmd")
+        logger.info(f"已挂载MMD目录: {user_mmd_path}")
+    
+    # 挂载项目目录下的static/mmd（作为备用）
+    project_mmd_path = os.path.join(static_dir, 'mmd')
+    if os.path.exists(project_mmd_path) and os.path.isdir(project_mmd_path):
+        logger.info(f"项目MMD目录存在: {project_mmd_path} (可通过 /static/mmd/ 访问)")
 
     # 挂载用户mod路径
     user_mod_path = _config_manager.get_workshop_path()
@@ -647,6 +778,7 @@ from main_routers import ( # noqa
     characters_router,
     live2d_router,
     vrm_router,
+    mmd_router,
     workshop_router,
     memory_router,
     pages_router,
@@ -847,6 +979,7 @@ app.include_router(config_router)
 app.include_router(characters_router)
 app.include_router(live2d_router)
 app.include_router(vrm_router)
+app.include_router(mmd_router)
 app.include_router(workshop_router)
 app.include_router(memory_router)
 # 注意：pages_router 含 /{lanlan_name} 兜底路由，应最后挂载
@@ -1061,6 +1194,7 @@ async def on_startup():
             from utils.token_tracker import TokenTracker, install_hooks
             install_hooks()
             TokenTracker.get_instance().start_periodic_save()
+            TokenTracker.get_instance().record_app_start()
             logger.info("Token usage tracker initialized")
         except Exception as e:
             logger.warning(f"Token tracker initialization failed (non-critical): {e}")
@@ -1112,6 +1246,17 @@ async def on_shutdown():
                     mgr.audio_resampler = None
         except Exception as e:
             logger.debug(f"soxr resampler cleanup failed: {e}")
+
+        # 关闭翻译服务
+        try:
+            from utils import language_utils
+            close_fn = getattr(language_utils, "aclose_translation_service", None)
+            if callable(close_fn):
+                await close_fn()
+            else:
+                logger.debug("Translation service cleanup skipped: function not implemented")
+        except Exception as e:
+            logger.debug(f"Translation service cleanup failed: {e}")
 
         # 保存 Token 用量数据
         try:
@@ -1330,6 +1475,7 @@ def _is_port_available(port: int) -> bool:
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
+        set_port_probe_reuse(sock)
         sock.bind(("127.0.0.1", port))
         return True
     except OSError:
@@ -1387,6 +1533,9 @@ if __name__ == "__main__":
         reload=False,
         proxy_headers=_behind_proxy,
         forwarded_allow_ips="*" if _behind_proxy else None,
+        # WebSocket keep-alive: send server-initiated pings every 20s, close if no pong within 60s
+        ws_ping_interval=20.0,
+        ws_ping_timeout=60.0,
     )
     server = uvicorn.Server(config)
     
@@ -1411,11 +1560,16 @@ if __name__ == "__main__":
     print(f"启动配置: {get_start_config()}")
 
     # 2) 信号处理：Ctrl+C 时快速关闭
+    _shutdown_state = {"signal_count": 0}
+
     def _signal_handler(signum, frame):
+        _shutdown_state["signal_count"] += 1
+        if _shutdown_state["signal_count"] > 1:
+            logger.warning("收到第二次关闭信号，立即强制退出。")
+            os._exit(130)
         logger.info("正在关闭服务器...")
         cleanup()
         server.should_exit = True
-        threading.Timer(3.0, lambda: os._exit(0)).start()
     
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)

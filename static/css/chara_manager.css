@@ -203,7 +203,7 @@ body .container-header {
 }
 
 #add-catgirl-btn {
-    margin-top: 12px;
+    margin-top: 0;
 }
 
 #hidden-catgirl-area {
@@ -694,6 +694,57 @@ body .container-header {
     background: #40C5F1;
 }
 
+.btn.sm.export {
+    background: #40C5F1;
+    padding: 6px 12px;
+}
+
+.btn.sm.export:hover:not(:disabled) {
+    background: #17A7FF;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(64, 197, 241, 0.3);
+}
+
+.btn.sm.export:active:not(:disabled) {
+    background: #0D8FDB;
+    transform: translateY(1px) scale(0.98);
+    box-shadow: 0 1px 3px rgba(64, 197, 241, 0.2);
+    opacity: 0.95;
+}
+
+.btn.sm.import {
+    background: #4CAF50;
+    padding: 6px 12px;
+}
+
+.btn.sm.import:hover:not(:disabled) {
+    background: #45a049;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.btn.sm.import:active:not(:disabled) {
+    background: #3d8b40;
+    transform: translateY(1px) scale(0.98);
+    box-shadow: 0 1px 3px rgba(76, 175, 80, 0.2);
+    opacity: 0.95;
+}
+
+/* 猫娘操作行（新增猫娘和导入角色卡按钮） */
+.catgirl-actions-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.catgirl-actions-row .btn {
+    margin: 0;
+    vertical-align: middle;
+}
+
 /* 胶囊行内的按钮 */
 .field-row .btn {
     margin-right: 0;
@@ -866,11 +917,27 @@ body .container-header {
     background: #f0f8ff;
     overflow: hidden;
     transition: transform 0.4s ease, box-shadow 0.4s ease;
+    position: relative;
+    z-index: 1;
 }
 
 .catgirl-block:hover {
     transform: translateY(-6px);
     box-shadow: 0 8px 20px rgba(64, 197, 241, 0.3);
+}
+
+/* 当前猫娘卡片 - 青绿色背景区分 */
+.catgirl-block.current {
+    border-color: #00CED1;
+    background: #E0FFFF;
+}
+
+.catgirl-block.current .catgirl-header {
+    background: #E0FFFF;
+}
+
+.catgirl-block.current .catgirl-details {
+    background: #E0FFFF;
 }
 
 .catgirl-header {
@@ -1018,5 +1085,41 @@ body .container-header {
     .field-row .btn {
         margin-top: 4px;
         align-self: flex-end;
+    }
+}
+
+/* 自动保存提示样式 */
+.auto-save-toast {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: #e8f5e9;
+    border: 2px solid #4caf50;
+    border-radius: 999px;
+    padding: 8px 20px;
+    color: #2e7d32;
+    font-size: 0.9rem;
+    font-weight: 500;
+    z-index: 1000;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
+}
+
+.auto-save-toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auto-save-toast {
+        transition: none;
+        transform: none;
+    }
+    .auto-save-toast.visible {
+        opacity: 1;
+        transform: none;
     }
 }

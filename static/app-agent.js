@@ -30,6 +30,16 @@
     // const S = window.appState;
     // const C = window.appConst;
 
+    /**
+     * Helper: find agent checkbox across Live2D / VRM / MMD prefixes.
+     * Only one model type is active at a time, so the first found wins.
+     */
+    function getAgentEl(suffix) {
+        return document.getElementById('live2d-agent-' + suffix)
+            || document.getElementById('vrm-agent-' + suffix)
+            || document.getElementById('mmd-agent-' + suffix);
+    }
+
     // ====================================================================
     // Agent Popup State enum
     // ====================================================================
@@ -81,7 +91,7 @@
 
         closePopup() {
             this._popupOpen = false;
-            const masterCheckbox = document.getElementById('live2d-agent-master');
+            const masterCheckbox = getAgentEl('master');
             if (this._state !== AgentPopupState.PROCESSING && (!masterCheckbox || !masterCheckbox.checked)) {
                 this.transition(AgentPopupState.IDLE, 'popup closed');
                 window.stopAgentAvailabilityCheck();
@@ -126,16 +136,16 @@
             const f = this._cachedFlags;
             if (!f) return false;
             const master = !!f.agent_enabled;
-            const child = !!(f.computer_use_enabled || f.browser_use_enabled || f.user_plugin_enabled);
+            const child = !!(f.computer_use_enabled || f.browser_use_enabled || f.user_plugin_enabled || f.openclaw_enabled || f.openfang_enabled);
             return master && child;
         },
 
         _updateUI() {
-            const master = document.getElementById('live2d-agent-master');
-            const keyboard = document.getElementById('live2d-agent-keyboard');
-            const browser = document.getElementById('live2d-agent-browser');
-            const userPlugin = document.getElementById('live2d-agent-user-plugin');
-            const status = document.getElementById('live2d-agent-status');
+            const master = getAgentEl('master');
+            const keyboard = getAgentEl('keyboard');
+            const browser = getAgentEl('browser');
+            const userPlugin = getAgentEl('user-plugin');
+            const status = getAgentEl('status');
 
             const syncUI = (cb) => {
                 if (cb && typeof cb._updateStyle === 'function') cb._updateStyle();
@@ -221,10 +231,12 @@
     // Floating agent status helper
     // ====================================================================
     function setFloatingAgentStatus(msg, taskStatus) {
-        ['live2d-agent-status', 'vrm-agent-status'].forEach(id => {
+        ['live2d-agent-status', 'vrm-agent-status', 'mmd-agent-status'].forEach(id => {
             const statusEl = document.getElementById(id);
             if (statusEl) {
                 statusEl.textContent = msg || '';
+                // 移除 data-i18n 防止语言刷新覆盖动态状态文本
+                statusEl.removeAttribute('data-i18n');
                 const colorMap = {
                     completed: '#52c41a',
                     partial: '#faad14',
@@ -353,10 +365,10 @@
         const apis = {
             computer_use: { url: '/api/agent/computer_use/availability', nameKey: 'keyboardControl' },
             browser_use: { url: '/api/agent/browser_use/availability', nameKey: 'browserUse' },
-            user_plugin: { url: '/api/agent/user_plugin/availability', nameKey: 'userPlugin' }
+            user_plugin: { url: '/api/agent/user_plugin/availability', nameKey: 'userPlugin' },
+            openclaw: { url: '/api/agent/openclaw/availability', nameKey: 'openclawConnect' },
         };
         const config = apis[kind];
-        if (!config) return false;
 
         try {
             const r = await fetch(config.url);
@@ -380,10 +392,11 @@
     // checkAgentCapabilities — polling loop body
     // ====================================================================
     const checkAgentCapabilities = async () => {
-        const agentMasterCheckbox = document.getElementById('live2d-agent-master');
-        const agentKeyboardCheckbox = document.getElementById('live2d-agent-keyboard');
-        const agentBrowserCheckbox = document.getElementById('live2d-agent-browser');
-        const agentUserPluginCheckbox = document.getElementById('live2d-agent-user-plugin');
+        const agentMasterCheckbox = getAgentEl('master');
+        const agentKeyboardCheckbox = getAgentEl('keyboard');
+        const agentBrowserCheckbox = getAgentEl('browser');
+        const agentUserPluginCheckbox = getAgentEl('user-plugin');
+        const agentOpenClawCheckbox = getAgentEl('openclaw');
 
         if (agentStateMachine.getState() === AgentPopupState.PROCESSING) {
             console.log('[App] \u72b6\u6001\u673a\u5904\u4e8ePROCESSING\u72b6\u6001\uff0c\u8df3\u8fc7\u8f6e\u8be2');
@@ -443,12 +456,13 @@
         let capabilityCheckFailed = false;
 
         const checks = [
-            { id: 'live2d-agent-keyboard', capability: 'computer_use', flagKey: 'computer_use_enabled', nameKey: 'keyboardControl' },
-            { id: 'live2d-agent-browser', capability: 'browser_use', flagKey: 'browser_use_enabled', nameKey: 'browserUse' },
-            { id: 'live2d-agent-user-plugin', capability: 'user_plugin', flagKey: 'user_plugin_enabled', nameKey: 'userPlugin' }
+            { suffix: 'keyboard', capability: 'computer_use', flagKey: 'computer_use_enabled', nameKey: 'keyboardControl' },
+            { suffix: 'browser', capability: 'browser_use', flagKey: 'browser_use_enabled', nameKey: 'browserUse' },
+            { suffix: 'user-plugin', capability: 'user_plugin', flagKey: 'user_plugin_enabled', disableFlagKey: 'user_plugin_enabled', nameKey: 'userPlugin' },
+            { suffix: 'openclaw', capability: 'openclaw', flagKey: 'openclaw_enabled', disableFlagKey: null, nameKey: 'openclawConnect' },
         ];
-        for (const { id, capability, flagKey, nameKey } of checks) {
-            const cb = document.getElementById(id);
+        for (const { suffix, capability, flagKey, disableFlagKey, nameKey } of checks) {
+            const cb = getAgentEl(suffix);
             if (!cb) continue;
 
             const name = window.t ? window.t(`settings.toggles.${nameKey}`) : nameKey;
@@ -481,17 +495,19 @@
                     cb._autoDisabled = true;
                     cb.dispatchEvent(new Event('change', { bubbles: true }));
                     cb._autoDisabled = false;
-                    try {
-                        await fetch('/api/agent/flags', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                lanlan_name: window.lanlan_config.lanlan_name,
-                                flags: { [flagKey]: false }
-                            })
-                        });
-                    } catch (e) {
-                        console.warn(`[App] \u901a\u77e5\u540e\u7aef\u5173\u95ed${name}\u5931\u8d25:`, e);
+                    if (disableFlagKey) {
+                        try {
+                            await fetch('/api/agent/flags', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    lanlan_name: window.lanlan_config.lanlan_name,
+                                    flags: { [disableFlagKey]: false }
+                                })
+                            });
+                        } catch (e) {
+                            console.warn(`[App] \u901a\u77e5\u540e\u7aef\u5173\u95ed${name}\u5931\u8d25:`, e);
+                        }
                     }
                     setFloatingAgentStatus(`${name}\u5df2\u65ad\u5f00`);
                 }
@@ -552,7 +568,7 @@
                             agentMasterCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
                             agentMasterCheckbox._autoDisabled = false;
                             if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
-                            [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox].forEach(cb => {
+                            [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox, agentOpenClawCheckbox].forEach(cb => {
                                 if (cb) {
                                     cb.checked = false;
                                     cb.disabled = true;
@@ -642,6 +658,30 @@
                                 }
                             }
                         }
+
+                        if (agentOpenClawCheckbox && !agentOpenClawCheckbox._processing) {
+                            const flagEnabled = flags.openclaw_enabled || false;
+                            const isAvailable = capabilityCheckFailed
+                                ? agentOpenClawCheckbox.checked
+                                : (capabilityResults['openclaw_enabled'] !== false);
+                            const shouldBeChecked = flagEnabled && isAvailable;
+
+                            if (agentOpenClawCheckbox.checked !== shouldBeChecked) {
+                                if (shouldBeChecked) {
+                                    agentOpenClawCheckbox.checked = true;
+                                    agentOpenClawCheckbox._autoDisabled = true;
+                                    agentOpenClawCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                                    agentOpenClawCheckbox._autoDisabled = false;
+                                    if (typeof agentOpenClawCheckbox._updateStyle === 'function') agentOpenClawCheckbox._updateStyle();
+                                } else if (!flagEnabled || !isAvailable) {
+                                    agentOpenClawCheckbox.checked = false;
+                                    agentOpenClawCheckbox._autoDisabled = true;
+                                    agentOpenClawCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                                    agentOpenClawCheckbox._autoDisabled = false;
+                                    if (typeof agentOpenClawCheckbox._updateStyle === 'function') agentOpenClawCheckbox._updateStyle();
+                                }
+                            }
+                        }
                     }
                 } else {
                     throw new Error(`Status ${resp.status}`);
@@ -662,7 +702,7 @@
                 agentMasterCheckbox._autoDisabled = false;
                 if (typeof agentMasterCheckbox._updateStyle === 'function') agentMasterCheckbox._updateStyle();
 
-                [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox].forEach(cb => {
+                [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox, agentOpenClawCheckbox].forEach(cb => {
                     if (cb) {
                         cb.checked = false;
                         cb.disabled = true;
@@ -715,10 +755,11 @@
             }
         }
 
-        const agentMasterCheckbox = document.getElementById('live2d-agent-master');
-        const agentKeyboardCheckbox = document.getElementById('live2d-agent-keyboard');
-        const agentBrowserCheckbox = document.getElementById('live2d-agent-browser');
-        const agentUserPluginCheckbox = document.getElementById('live2d-agent-user-plugin');
+        const agentMasterCheckbox = getAgentEl('master');
+        const agentKeyboardCheckbox = getAgentEl('keyboard');
+        const agentBrowserCheckbox = getAgentEl('browser');
+        const agentUserPluginCheckbox = getAgentEl('user-plugin');
+        const agentOpenClawCheckbox = getAgentEl('openclaw');
 
         if (!agentMasterCheckbox) {
             console.warn('[App] Agent\u5f00\u5173\u5143\u7d20\u672a\u627e\u5230\uff0c\u8df3\u8fc7\u7ed1\u5b9a');
@@ -730,11 +771,13 @@
         let keyboardOperationSeq = 0;
         let browserOperationSeq = 0;
         let userPluginOperationSeq = 0;
+        let openclawOperationSeq = 0;
 
         agentMasterCheckbox._hasExternalHandler = true;
         if (agentKeyboardCheckbox) agentKeyboardCheckbox._hasExternalHandler = true;
         if (agentBrowserCheckbox) agentBrowserCheckbox._hasExternalHandler = true;
         if (agentUserPluginCheckbox) agentUserPluginCheckbox._hasExternalHandler = true;
+        if (agentOpenClawCheckbox) agentOpenClawCheckbox._hasExternalHandler = true;
 
         const syncCheckboxUI = (checkbox) => {
             if (checkbox && typeof checkbox._updateStyle === 'function') {
@@ -814,6 +857,14 @@
                 caps.user_plugin_ready,
                 window.t ? window.t('settings.toggles.userPlugin') : '\u7528\u6237\u63d2\u4ef6'
             );
+
+            const agentOpenClawCheckbox = getAgentEl('openclaw');
+            applySub(
+                agentOpenClawCheckbox,
+                flags.openclaw_enabled,
+                caps.openclaw_ready,
+                window.t ? window.t('settings.toggles.openclawConnect') : 'OpenClaw'
+            );
             setFloatingAgentStatus(window.t ? window.t('agent.status.enabled') : 'Agent\u6a21\u5f0f\u5df2\u5f00\u542f');
         };
         window.applyAgentStatusSnapshotToUI = applyAgentStatusSnapshotToUI;
@@ -823,15 +874,17 @@
         // ----------------------------------------------------------------
         const resetSubCheckboxes = () => {
             const names = {
-                'live2d-agent-keyboard': window.t ? window.t('settings.toggles.keyboardControl') : '\u952e\u9f20\u63a7\u5236',
-                'live2d-agent-browser': window.t ? window.t('settings.toggles.browserUse') : 'Browser Control',
-                'live2d-agent-user-plugin': window.t ? window.t('settings.toggles.userPlugin') : '\u7528\u6237\u63d2\u4ef6'
+                'keyboard': window.t ? window.t('settings.toggles.keyboardControl') : '\u952e\u9f20\u63a7\u5236',
+                'browser': window.t ? window.t('settings.toggles.browserUse') : 'Browser Control',
+                'user-plugin': window.t ? window.t('settings.toggles.userPlugin') : '\u7528\u6237\u63d2\u4ef6',
+                'openclaw': window.t ? window.t('settings.toggles.openclawConnect') : 'OpenClaw',
             };
-            [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox].forEach(cb => {
+            [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox, agentOpenClawCheckbox].forEach(cb => {
                 if (cb) {
                     cb.disabled = true;
                     cb.checked = false;
-                    const name = names[cb.id] || '';
+                    const suffix = cb.id.replace(/^(live2d|vrm|mmd)-agent-/, '');
+                    const name = names[suffix] || '';
                     cb.title = window.t ? window.t('settings.toggles.masterRequired', { name: name }) : '\u8bf7\u5148\u5f00\u542fAgent\u603b\u5f00\u5173';
                     syncCheckboxUI(cb);
                 }
@@ -951,6 +1004,20 @@
                             agentUserPluginCheckbox.disabled = !available;
                             agentUserPluginCheckbox.title = available ? (window.t ? window.t('settings.toggles.userPlugin') : '\u7528\u6237\u63d2\u4ef6') : (window.t ? window.t('settings.toggles.unavailable', { name: window.t('settings.toggles.userPlugin') }) : '\u7528\u6237\u63d2\u4ef6\u4e0d\u53ef\u7528');
                             syncCheckboxUI(agentUserPluginCheckbox);
+                        })(),
+
+                        (async () => {
+                            if (!agentOpenClawCheckbox) return;
+                            const available = await checkCapability('openclaw', false);
+                            if (isExpired() || !agentMasterCheckbox.checked) {
+                                agentOpenClawCheckbox.disabled = true;
+                                agentOpenClawCheckbox.checked = false;
+                                syncCheckboxUI(agentOpenClawCheckbox);
+                                return;
+                            }
+                            agentOpenClawCheckbox.disabled = !available;
+                            agentOpenClawCheckbox.title = available ? (window.t ? window.t('settings.toggles.openclawConnect') : 'OpenClaw') : (window.t ? window.t('settings.toggles.unavailable', { name: window.t('settings.toggles.openclawConnect') }) : 'OpenClaw\u4e0d\u53ef\u7528');
+                            syncCheckboxUI(agentOpenClawCheckbox);
                         })()
                     ]);
 
@@ -962,7 +1029,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 lanlan_name: window.lanlan_config.lanlan_name,
-                                flags: { agent_enabled: true, computer_use_enabled: false, browser_use_enabled: false, user_plugin_enabled: false }
+                                flags: { agent_enabled: true, computer_use_enabled: false, browser_use_enabled: false, user_plugin_enabled: false, openclaw_enabled: false }
                             })
                         });
                         if (!r.ok) throw new Error('main_server rejected');
@@ -1024,7 +1091,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 lanlan_name: window.lanlan_config.lanlan_name,
-                                flags: { agent_enabled: false, computer_use_enabled: false, browser_use_enabled: false, user_plugin_enabled: false }
+                                flags: { agent_enabled: false, computer_use_enabled: false, browser_use_enabled: false, user_plugin_enabled: false, openclaw_enabled: false }
                             })
                         });
 
@@ -1173,18 +1240,30 @@
             () => ++userPluginOperationSeq
         );
 
+        setupSubCheckbox(
+            agentOpenClawCheckbox,
+            'openclaw',
+            'openclaw_enabled',
+            'openclawConnect',
+            () => openclawOperationSeq,
+            () => ++openclawOperationSeq
+        );
+
         // ----------------------------------------------------------------
         // openAgentStatusPopupWhenEnabled
         // ----------------------------------------------------------------
         function openAgentStatusPopupWhenEnabled() {
             if (agentStateMachine._popupOpen) return;
-            const master = document.getElementById('live2d-agent-master');
+            const master = getAgentEl('master');
             if (!master || !master.checked) return;
-            const popup = master.closest('[id="live2d-popup-agent"], [id="vrm-popup-agent"]');
+            const popup = master.closest('[id="live2d-popup-agent"], [id="vrm-popup-agent"], [id="mmd-popup-agent"]');
             if (!popup) return;
             const isVisible = popup.style.display === 'flex' && popup.style.opacity === '1';
             if (isVisible) return;
-            const manager = popup.id === 'live2d-popup-agent' ? window.live2dManager : window.vrmManager;
+            let manager;
+            if (popup.id === 'mmd-popup-agent') manager = window.mmdManager;
+            else if (popup.id === 'vrm-popup-agent') manager = window.vrmManager;
+            else manager = window.live2dManager;
             if (!manager || typeof manager.showPopup !== 'function') return;
             manager.showPopup('agent', popup);
         }
@@ -1313,7 +1392,7 @@
                 agentMasterCheckbox.title = window.t ? window.t('settings.toggles.checking') : '\u67e5\u8be2\u4e2d...';
                 syncCheckboxUI(agentMasterCheckbox);
             }
-            [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox].forEach(cb => {
+            [agentKeyboardCheckbox, agentBrowserCheckbox, agentUserPluginCheckbox, agentOpenClawCheckbox].forEach(cb => {
                 if (cb) {
                     cb.disabled = true;
                     cb.title = window.t ? window.t('settings.toggles.checking') : '\u67e5\u8be2\u4e2d...';
@@ -1396,14 +1475,14 @@
 
                         window.stopAgentTaskPolling();
 
-                        if (flags.computer_use_enabled || flags.browser_use_enabled || flags.user_plugin_enabled) {
+                        if (flags.computer_use_enabled || flags.browser_use_enabled || flags.user_plugin_enabled || flags.openclaw_enabled || flags.openfang_enabled) {
                             console.log('[App] \u603b\u5f00\u5173\u5173\u95ed\u4f46\u68c0\u6d4b\u5230\u5b50flag\u5f00\u542f\uff0c\u5f3a\u5236\u540c\u6b65\u5173\u95ed');
                             fetch('/api/agent/flags', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     lanlan_name: window.lanlan_config.lanlan_name,
-                                    flags: { agent_enabled: false, computer_use_enabled: false, browser_use_enabled: false, user_plugin_enabled: false }
+                                    flags: { agent_enabled: false, computer_use_enabled: false, browser_use_enabled: false, user_plugin_enabled: false, openclaw_enabled: false }
                                 })
                             }).catch(e => console.warn('[App] \u5f3a\u5236\u5173\u95edflags\u5931\u8d25:', e));
                         }
@@ -1556,11 +1635,15 @@
         const keyboardCheckbox = getEl(['live2d-agent-keyboard', 'vrm-agent-keyboard']);
         const browserCheckbox = getEl(['live2d-agent-browser', 'vrm-agent-browser']);
         const userPlugin = getEl(['live2d-agent-user-plugin', 'vrm-agent-user-plugin']);
+        const openclawCheckbox = getEl(['live2d-agent-openclaw', 'vrm-agent-openclaw']);
+        const openfangCheckbox = getEl(['live2d-agent-openfang', 'vrm-agent-openfang']);
 
         const domMaster = masterCheckbox ? masterCheckbox.checked : false;
         const domChild = (keyboardCheckbox && keyboardCheckbox.checked)
             || (browserCheckbox && browserCheckbox.checked)
-            || (userPlugin && userPlugin.checked);
+            || (userPlugin && userPlugin.checked)
+            || (openclawCheckbox && openclawCheckbox.checked)
+            || (openfangCheckbox && openfangCheckbox.checked);
 
         const snap = window._agentStatusSnapshot;
         const machineFlags = window.agentStateMachine ? window.agentStateMachine._cachedFlags : null;
@@ -1572,8 +1655,8 @@
         if (window.agent_ui_v2_state && window.agent_ui_v2_state.optimistic) {
             const opt = window.agent_ui_v2_state.optimistic;
             if ('agent_enabled' in opt) optMaster = !!opt.agent_enabled;
-            if ('computer_use_enabled' in opt || 'browser_use_enabled' in opt || 'user_plugin_enabled' in opt) {
-                optChild = !!opt.computer_use_enabled || !!opt.browser_use_enabled || !!opt.user_plugin_enabled;
+            if ('computer_use_enabled' in opt || 'browser_use_enabled' in opt || 'user_plugin_enabled' in opt || 'openclaw_enabled' in opt || 'openfang_enabled' in opt) {
+                optChild = !!opt.computer_use_enabled || !!opt.browser_use_enabled || !!opt.user_plugin_enabled || !!opt.openclaw_enabled || !!opt.openfang_enabled;
             }
         }
 
@@ -1584,7 +1667,7 @@
 
         if (!isUiInteractive) {
             isMasterOn = optMaster !== undefined ? optMaster : (flags && !!flags.agent_enabled);
-            isChildOn = optChild !== undefined ? optChild : (flags && !!(flags.computer_use_enabled || flags.browser_use_enabled || flags.user_plugin_enabled));
+            isChildOn = optChild !== undefined ? optChild : (flags && !!(flags.computer_use_enabled || flags.browser_use_enabled || flags.user_plugin_enabled || flags.openclaw_enabled || flags.openfang_enabled));
         } else {
             isMasterOn = optMaster !== undefined ? optMaster : domMaster;
             isChildOn = optChild !== undefined ? optChild : domChild;
@@ -1631,6 +1714,8 @@
             const keyboardCheckbox = getEl(['live2d-agent-keyboard', 'vrm-agent-keyboard']);
             const browserCheckbox = getEl(['live2d-agent-browser', 'vrm-agent-browser']);
             const userPluginCheckbox = getEl(['live2d-agent-user-plugin', 'vrm-agent-user-plugin']);
+            const openclawCheckbox = getEl(['live2d-agent-openclaw', 'vrm-agent-openclaw']);
+            const openfangCheckbox = getEl(['live2d-agent-openfang', 'vrm-agent-openfang']);
 
             if (!keyboardCheckbox || !browserCheckbox) {
                 setTimeout(bindHUD, 500);
@@ -1644,6 +1729,14 @@
             if (userPluginCheckbox) {
                 userPluginCheckbox.removeEventListener('change', checkAndToggleTaskHUD);
                 userPluginCheckbox.addEventListener('change', checkAndToggleTaskHUD);
+            }
+            if (openclawCheckbox) {
+                openclawCheckbox.removeEventListener('change', checkAndToggleTaskHUD);
+                openclawCheckbox.addEventListener('change', checkAndToggleTaskHUD);
+            }
+            if (openfangCheckbox) {
+                openfangCheckbox.removeEventListener('change', checkAndToggleTaskHUD);
+                openfangCheckbox.addEventListener('change', checkAndToggleTaskHUD);
             }
 
             checkAndToggleTaskHUD();

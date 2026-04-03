@@ -15,6 +15,32 @@
         _sidePanels.delete(panel);
     }
 
+    function isOverlayVisible(element) {
+        if (!element) return false;
+        const style = window.getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    function hasVisiblePopup(ownerPrefix = '') {
+        const selector = ownerPrefix
+            ? `[id^="${ownerPrefix}-popup-"]`
+            : '[id*="-popup-"]';
+        return Array.from(document.querySelectorAll(selector)).some(isOverlayVisible);
+    }
+
+    function hasVisibleSidePanel(ownerPrefix = '') {
+        const selector = ownerPrefix
+            ? `[data-neko-sidepanel-owner^="${ownerPrefix}-popup-"]`
+            : '[data-neko-sidepanel-owner]';
+        return Array.from(document.querySelectorAll(selector)).some(isOverlayVisible);
+    }
+
+    function hasVisibleOverlay(ownerPrefix = '') {
+        return hasVisiblePopup(ownerPrefix) || hasVisibleSidePanel(ownerPrefix);
+    }
+
     /**
      * 立即隐藏除 current 以外的所有侧面板（跳过动画）。
      * 必须在计算新面板位置之前调用，确保旧面板不影响空间判断。
@@ -169,7 +195,7 @@
         // 按系统前缀过滤按钮选择器
         const selector = ownerPrefix
             ? `[id^="${ownerPrefix}-btn-"]`
-            : '[id^="vrm-btn-"], [id^="live2d-btn-"]';
+            : '[id^="vrm-btn-"], [id^="live2d-btn-"], [id^="mmd-btn-"]';
 
         // 第一优先级：扫描所有单个按钮
         const allBtns = document.querySelectorAll(selector);
@@ -258,7 +284,8 @@
         // 从 popup ID 推断系统前缀，用于过滤 getButtonZone
         const popupId = popup ? popup.id : '';
         const ownerPrefix = popupId.startsWith('vrm-') ? 'vrm'
-                          : popupId.startsWith('live2d-') ? 'live2d' : '';
+                          : popupId.startsWith('live2d-') ? 'live2d'
+                          : popupId.startsWith('mmd-') ? 'mmd' : '';
 
         if (goDown) {
             // 手机端：向下展开到 popup 下方
@@ -382,6 +409,9 @@
         registerSidePanel,
         unregisterSidePanel,
         collapseOtherSidePanels,
-        positionSidePanel
+        positionSidePanel,
+        hasVisiblePopup,
+        hasVisibleSidePanel,
+        hasVisibleOverlay
     };
 })();

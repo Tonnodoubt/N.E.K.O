@@ -92,6 +92,7 @@ function init_app() {
     S.dom.textInputArea = document.getElementById('text-input-area');
     S.dom.textSendButton = document.getElementById('textSendButton');
     S.dom.screenshotButton = document.getElementById('screenshotButton');
+    S.dom.avatarPreviewButton = document.getElementById('avatarPreviewButton');
     S.dom.screenshotThumbnailContainer = document.getElementById('screenshot-thumbnail-container');
     S.dom.screenshotsList = document.getElementById('screenshots-list');
     S.dom.screenshotCount = document.getElementById('screenshot-count');
@@ -107,6 +108,16 @@ function init_app() {
         }
     }
 
+    // --- 初始化点歌台模块 ---
+    if (typeof window.Jukebox !== 'undefined') {
+        try {
+            window.Jukebox.init();
+            console.log('[Jukebox] 模块已初始化');
+        } catch (e) {
+            console.error('[Jukebox] 初始化失败:', e);
+        }
+    }
+
     // --- 初始化各模块 ---
 
     // UI 模块
@@ -119,6 +130,9 @@ function init_app() {
         window.appButtons.init();
     }
 
+    if (window.appChatAvatar && window.appChatAvatar.init) {
+        window.appChatAvatar.init();
+    }
     // WebSocket 连接
     if (window.appWebSocket && window.appWebSocket.connectWebSocket) {
         window.appWebSocket.connectWebSocket();
@@ -208,22 +222,49 @@ window.addEventListener('load', () => {
         }
     }, 1000);
 
-    // 拉取待弹重要通知
+    // 拉取待弹重要通知 + 版本更新日志
     setTimeout(async () => {
+        if (typeof window.showProminentNotice !== 'function') return;
         try {
+            // 1) 常规 prominent notices
             const r = await fetch('/api/pending-notices');
             const data = await r.json();
             const notices = Array.isArray(data) ? data : (data.notices || []);
             const cursor = (data && typeof data.cursor === 'number') ? data.cursor : 0;
-            if (notices.length > 0 && typeof window.showProminentNotice === 'function') {
-                for (const n of notices) {
-                    if (n) await window.showProminentNotice(n);
-                }
+            if (notices.length > 0) {
+                // 先全部入队（不 await），让 UI 能感知队列长度以显示"下一个"按钮
+                const promises = notices.filter(Boolean).map(n => window.showProminentNotice(n));
+                await Promise.all(promises);
                 await fetch('/api/pending-notices/ack', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ cursor }),
                 }).catch(() => { });
+            }
+        } catch (_) { }
+
+        // 2) 版本更新日志
+        try {
+            const lastVer = localStorage.getItem('neko_last_notified_version') || '';
+            const cr = await fetch(`/api/changelog?since=${encodeURIComponent(lastVer)}`);
+            const cdata = await cr.json();
+            let entries = cdata.entries || [];
+            // 全新用户（无历史记录）只展示最新一条，避免堆积过多
+            if (!lastVer && entries.length > 1) {
+                entries = [entries[entries.length - 1]];
+            }
+            if (entries.length > 0) {
+                const changelogPromises = entries.map(entry => {
+                    const title = `v${entry.version} ${window.safeT ? window.safeT('notice.changelog.title', '更新内容') : '更新内容'}`;
+                    return window.showProminentNotice({
+                        message: `**${title}**\n\n${(entry.content || '').trim()}`,
+                        message_en: `**${title}**\n\n${(entry.content || '').trim()}`,
+                    });
+                });
+                await Promise.all(changelogPromises);
+                if (cdata.current_version) {
+                    localStorage.setItem('neko_last_notified_version', cdata.current_version);
+                }
             }
         } catch (_) { }
     }, 2000);
@@ -265,6 +306,36 @@ window.addEventListener('message', function (event) {
                 type: 'vrm-expressions-response',
                 expressions: expressions
             }, window.location.origin);
+        }
+    }
+
+    if (event.data.type === 'mmd-get-morphs') {
+        console.log('[MMD] 收到 Morph 列表请求');
+        let morphs = [];
+        if (window.mmdManager && window.mmdManager.expression) {
+            morphs = window.mmdManager.expression.getMorphNames();
+        }
+        if (event.source) {
+            event.source.postMessage({
+                type: 'mmd-morphs-response',
+                morphs: morphs
+            }, window.location.origin);
+        }
+    }
+
+    if (event.data.type === 'mmd-preview-morph') {
+        if (typeof event.data.morph === 'undefined') return;
+        console.log('[MMD] 收到 Morph 预览请求:', event.data.morph);
+        if (window.mmdManager && window.mmdManager.expression) {
+            clearTimeout(window._mmdMorphPreviewTimer);
+            window.mmdManager.expression._clearEmotionMorphs();
+            window.mmdManager.expression.setMorphWeight(event.data.morph, 1.0);
+            var morphToReset = event.data.morph;
+            window._mmdMorphPreviewTimer = setTimeout(() => {
+                if (window.mmdManager && window.mmdManager.expression) {
+                    window.mmdManager.expression.setMorphWeight(morphToReset, 0);
+                }
+            }, 3000);
         }
     }
 });

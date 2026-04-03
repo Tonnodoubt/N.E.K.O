@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Type
 from loguru import logger
 
 from plugin._types.events import EVENT_META_ATTR
-from plugin.sdk.decorators import PERSIST_ATTR
+from plugin.sdk import PERSIST_ATTR
 from plugin.core.state import state
 from plugin.core.context import PluginContext
 from plugin.core.communication import PluginCommunicationResourceManager
@@ -34,8 +34,9 @@ from plugin.settings import (
     PROCESS_SHUTDOWN_TIMEOUT,
     PROCESS_TERMINATE_TIMEOUT,
 )
-from plugin.sdk.router import PluginRouter
-from plugin.sdk.bus.types import dispatch_bus_change
+from plugin.sdk.shared.core.entry_runtime import resolve_entry_timeout
+from plugin.sdk.shared.core.router import PluginRouter
+from plugin.core.bus.types import dispatch_bus_change
 from plugin.core.zmq_transport import (
     HostTransport, ChildTransport, CH_CMD, CH_RES, CH_STS, CH_MSG, CH_COMM, CH_RESP,
 )
@@ -51,6 +52,9 @@ def _sanitize_plugin_id(raw: Any, max_len: int = 64) -> str:
         digest = hashlib.sha256(s.encode("utf-8", errors="ignore")).hexdigest()[:12]
         safe = f"{safe[:max_len - 13]}_{digest}"
     return safe
+
+
+_TIMEOUT_UNSET = object()
 
 
 def _inject_extensions(
@@ -645,11 +649,36 @@ def _plugin_process_runner(
             logger.debug("[Plugin Process] Freezable attributes: {}, mode: {}", freezable_keys, persist_mode)
             # 如果有保存的状态，尝试恢复
             state_persistence = getattr(instance, "_state_persistence", None) or getattr(instance, "_freeze_checkpoint", None)
-            if state_persistence and state_persistence.has_saved_state():
-                logger.debug("[Plugin Process] Restoring saved state...")
-                state_persistence.load(instance)
-                state_persistence.clear()  # 恢复后清除
-                ctx._restored_from_freeze = True  # 标记为从冻结恢复
+            if state_persistence:
+                try:
+                    def _unwrap_state_result(op_name: str, result_obj: object) -> object:
+                        is_ok = getattr(result_obj, "is_ok", None)
+                        if callable(is_ok):
+                            if is_ok():
+                                return getattr(result_obj, "value", None)
+                            error_obj = getattr(result_obj, "error", None)
+                            logger.warning(
+                                "[Plugin Process] State persistence {} failed: {}",
+                                op_name,
+                                error_obj,
+                            )
+                            raise RuntimeError(f"state persistence {op_name} failed: {error_obj}")
+                        return result_obj
+
+                    has_saved_state_result = asyncio.run(state_persistence.has_saved_state())
+                    has_saved_state = _unwrap_state_result("has_saved_state", has_saved_state_result)
+                    if bool(has_saved_state):
+                        logger.debug("[Plugin Process] Restoring saved state...")
+                        load_result_obj = asyncio.run(state_persistence.load(instance))
+                        load_result = _unwrap_state_result("load", load_result_obj)
+                        if bool(load_result):
+                            clear_result_obj = asyncio.run(state_persistence.clear())  # 恢复后清除
+                            clear_result = _unwrap_state_result("clear", clear_result_obj)
+                            if not bool(clear_result):
+                                raise RuntimeError("state persistence clear returned falsy result")
+                            ctx._restored_from_freeze = True  # 标记为从冻结恢复
+                except Exception as e:
+                    logger.warning("[Plugin Process] Failed to restore saved state: {}", e)
         
         def _should_persist(method) -> bool:
             """判断是否应该保存状态"""
@@ -891,14 +920,50 @@ def _plugin_process_runner(
             finally:
                 wd.cancel()
 
-        def _resolve_timeout(entry_id: str):
-            entry_meta = entry_meta_map.get(entry_id)
-            if entry_meta:
-                extra = getattr(entry_meta, "extra", None) or {}
-                ct = extra.get("timeout")
-                if ct is not None:
-                    return None if ct <= 0 else ct
+        def _resolve_timeout(entry_id: str, requested_timeout: Any = _TIMEOUT_UNSET):
+            # _TIMEOUT_UNSET 做 default → 区分 "entry 没配 timeout" 和 "entry 显式 timeout<=0 → None"
+            entry_timeout = resolve_entry_timeout(entry_meta_map.get(entry_id), _TIMEOUT_UNSET)
+            entry_has_timeout = entry_timeout is not _TIMEOUT_UNSET
+
+            if requested_timeout is not _TIMEOUT_UNSET:
+                if requested_timeout is None:
+                    # 调用者传 None → 交给 entry 决定
+                    return entry_timeout if entry_has_timeout else None
+                try:
+                    explicit_timeout = float(requested_timeout)
+                except (TypeError, ValueError):
+                    pass
+                else:
+                    if explicit_timeout <= 0:
+                        return entry_timeout if entry_has_timeout else None
+                    # entry 显式禁用 timeout (None) → 尊重，不限时
+                    if entry_has_timeout and entry_timeout is None:
+                        return None
+                    # entry 配了正数 timeout → 取较小值
+                    if entry_has_timeout:
+                        return min(explicit_timeout, entry_timeout)
+                    return explicit_timeout
+
+            if entry_has_timeout:
+                return entry_timeout
             return PLUGIN_TRIGGER_TIMEOUT
+
+        async def _save_plugin_state(reason: str) -> None:
+            sp = getattr(instance, "_state_persistence", None) or getattr(instance, "_freeze_checkpoint", None)
+            if not sp:
+                return
+
+            save_method = getattr(sp, "save", None)
+            if not callable(save_method):
+                return
+
+            try:
+                save_result = save_method(instance)
+            except TypeError:
+                save_result = save_method(instance, freezable_keys, reason=reason)
+
+            if inspect.isawaitable(save_result):
+                await save_result
 
         # run_id → asyncio.Task – used by CANCEL_RUN to propagate cancellation
         _run_tasks: Dict[str, asyncio.Task] = {}
@@ -923,6 +988,27 @@ def _plugin_process_runner(
                 or getattr(instance, entry_id, None)
                 or getattr(instance, f"entry_{entry_id}", None)
             )
+            if method is None and hasattr(instance, "collect_entries") and callable(instance.collect_entries):
+                try:
+                    _rebuild_entry_map()
+                    method = (
+                        entry_map.get(entry_id)
+                        or getattr(instance, entry_id, None)
+                        or getattr(instance, f"entry_{entry_id}", None)
+                    )
+                    if method is not None:
+                        logger.info(
+                            "[Plugin Process] Rebuilt dynamic entry map and resolved entry='{}' req_id={}",
+                            entry_id,
+                            req_id,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to rebuild entry map while resolving '{}' req_id={}: {}",
+                        entry_id,
+                        req_id,
+                        e,
+                    )
             ret = {"req_id": req_id, "success": False, "data": None, "error": None}
 
             run_id = None
@@ -944,29 +1030,39 @@ def _plugin_process_runner(
                     ret["error"] = f"Entry '{entry_id}' must be 'async def'. Sync entries are not supported."
                     return
 
-                timeout_seconds = _resolve_timeout(entry_id)
+                requested_timeout = msg["timeout"] if "timeout" in msg else _TIMEOUT_UNSET
+                timeout_seconds = _resolve_timeout(entry_id, requested_timeout)
 
                 with ctx._handler_scope(f"plugin_entry.{entry_id}"), ctx._run_scope(run_id):
                     result = await _run_with_watchdog(
                         method(**args), entry_id, timeout_seconds,
                     )
 
-                ret["success"] = True
-                ret["data"] = result
+                if hasattr(result, "is_ok") and callable(result.is_ok):
+                    if result.is_ok():
+                        ret["success"] = True
+                        ret["data"] = result.value
+                    else:
+                        ret["success"] = False
+                        err = result.error
+                        ret["error"] = str(err) if err is not None else "Unknown error"
+                else:
+                    ret["success"] = True
+                    ret["data"] = result
 
                 if _should_persist(method):
                     try:
-                        sp = getattr(instance, "_state_persistence", None) or getattr(instance, "_freeze_checkpoint", None)
-                        if sp:
-                            sp.save(instance, freezable_keys, reason="auto")
+                        await _save_plugin_state("auto")
                     except Exception:
                         pass
 
             except asyncio.CancelledError:
                 ret["error"] = "Execution cancelled"
             except asyncio.TimeoutError:
-                logger.error("Entry '{}' timed out after {}s", entry_id, _resolve_timeout(entry_id))
-                ret["error"] = f"Execution timed out after {_resolve_timeout(entry_id)}s"
+                requested_timeout = msg["timeout"] if "timeout" in msg else _TIMEOUT_UNSET
+                resolved_timeout = _resolve_timeout(entry_id, requested_timeout)
+                logger.error("Entry '{}' timed out after {}s", entry_id, resolved_timeout)
+                ret["error"] = f"Execution timed out after {resolved_timeout}s"
             except PluginError as e:
                 logger.warning("Plugin error executing '{}': {}", entry_id, e)
                 ret["error"] = str(e)
@@ -1018,8 +1114,17 @@ def _plugin_process_runner(
                         PLUGIN_TRIGGER_TIMEOUT,
                     )
 
-                ret["success"] = True
-                ret["data"] = result
+                if hasattr(result, "is_ok") and callable(result.is_ok):
+                    if result.is_ok():
+                        ret["success"] = True
+                        ret["data"] = result.value
+                    else:
+                        ret["success"] = False
+                        err = result.error
+                        ret["error"] = str(err) if err is not None else "Unknown error"
+                else:
+                    ret["success"] = True
+                    ret["data"] = result
 
             except asyncio.CancelledError:
                 ret["error"] = "Execution cancelled"
@@ -1092,9 +1197,7 @@ def _plugin_process_runner(
                             with ctx._handler_scope("lifecycle.freeze"):
                                 await freeze_fn()
                         if freezable_keys:
-                            sp = getattr(instance, "_state_persistence", None) or getattr(instance, "_freeze_checkpoint", None)
-                            if sp:
-                                sp.save(instance, freezable_keys, reason="freeze")
+                            await _save_plugin_state("freeze")
                         ret["success"] = True
                         ret["data"] = {"frozen": True, "freezable_keys": freezable_keys}
                     except Exception as e:
@@ -1457,7 +1560,7 @@ class PluginHost:
 
         self._shutdown_process(timeout=timeout)
     
-    async def trigger(self, entry_id: str, args: dict, timeout: float = PLUGIN_TRIGGER_TIMEOUT) -> Any:
+    async def trigger(self, entry_id: str, args: dict, timeout: float | None = PLUGIN_TRIGGER_TIMEOUT) -> Any:
         """
         触发插件入口点执行
         
@@ -1495,10 +1598,10 @@ class PluginHost:
         await self.comm_manager.send_cancel_run(run_id)
     
     async def trigger_custom_event(
-        self, 
-        event_type: str, 
-        event_id: str, 
-        args: dict, 
+        self,
+        event_type: str,
+        event_id: str,
+        args: dict,
         timeout: float = PLUGIN_TRIGGER_TIMEOUT
     ) -> Any:
         """
