@@ -828,7 +828,7 @@ class OmniRealtimeClient:
                     await self.on_status_message(json.dumps({"code": "IMAGE_BLOCKED"}))
             return "图片识别发生严重错误！"
     
-    async def stream_image(self, image_b64: str) -> None:
+    async def stream_image(self, image_b64: str, image_source: Optional[str] = None) -> None:
         """Stream raw image data to the API."""
         # Cache latest frame for proactive injection
         self._latest_image_b64 = image_b64
@@ -845,7 +845,10 @@ class OmniRealtimeClient:
                 current_time = time.time()
                 elapsed = current_time - self._last_native_image_time
                 min_interval = NATIVE_IMAGE_MIN_INTERVAL
-                if not self._client_vad_active:
+                # Mobile camera streaming should stay responsive even when the
+                # user is not speaking. Keep the conservative idle multiplier
+                # for other visual sources (for example desktop screen sharing).
+                if image_source != "camera" and not self._client_vad_active:
                     min_interval *= IMAGE_IDLE_RATE_MULTIPLIER
                 if elapsed < min_interval:
                     # Skip this image frame due to rate limiting

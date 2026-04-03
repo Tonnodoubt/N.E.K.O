@@ -10,6 +10,7 @@ for different model providers (qwen, glm, gpt), including:
 """
 import pytest
 import json
+import time
 from unittest.mock import AsyncMock
 
 import sys
@@ -17,10 +18,17 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from main_logic.omni_realtime_client import OmniRealtimeClient, TurnDetectionMode
+from config import NATIVE_IMAGE_MIN_INTERVAL
 
 
 # Dummy 1x1 pixel JPEG image in base64
 DUMMY_IMAGE_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAFBABAAAAAAAAAAAAAAAAAAAACf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AE0A/9k="
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_memory_server():
+    """Video session tests do not need the global mock memory server fixture."""
+    yield None
 
 
 def _make_client(model: str, supports_native_image: bool = True, base_url: str = "wss://test.example.com") -> OmniRealtimeClient:
@@ -127,6 +135,32 @@ async def test_image_rate_limiting():
     second_call_count = client.ws.send.call_count
     assert second_call_count == first_call_count, "Second image should be rate-limited (sent too quickly)"
     
+    await client.close()
+
+
+@pytest.mark.unit
+async def test_camera_stream_uses_fast_interval_even_when_idle():
+    """Camera frames should keep the active 1.5s cadence even without speech."""
+    client = _make_client("qwen-omni-turbo")
+    client._client_vad_active = False
+    client._last_native_image_time = time.time() - (NATIVE_IMAGE_MIN_INTERVAL + 0.1)
+
+    await client.stream_image(DUMMY_IMAGE_B64, image_source="camera")
+
+    assert client.ws.send.called, "Camera frame should not be delayed by idle image multiplier"
+    await client.close()
+
+
+@pytest.mark.unit
+async def test_screen_stream_still_uses_idle_multiplier_without_speech():
+    """Non-camera visual sources should keep the conservative idle throttle."""
+    client = _make_client("qwen-omni-turbo")
+    client._client_vad_active = False
+    client._last_native_image_time = time.time() - (NATIVE_IMAGE_MIN_INTERVAL + 0.1)
+
+    await client.stream_image(DUMMY_IMAGE_B64, image_source="screen")
+
+    assert not client.ws.send.called, "Screen frames should still be throttled when no speech is detected"
     await client.close()
 
 

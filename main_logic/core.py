@@ -2712,7 +2712,7 @@ class LLMSessionManager:
                         # 如果是文本模式（OmniOfflineClient），只存储图片，不立即发送
                         if isinstance(self.session, OmniOfflineClient):
                             # 只添加到待发送队列，等待与文本一起发送
-                            await self.session.stream_image(image_b64)
+                            await self.session.stream_image(image_b64, image_source=input_type)
                         
                         # 如果是语音模式（OmniRealtimeClient），检查是否支持视觉并直接发送
                         elif isinstance(self.session, OmniRealtimeClient):
@@ -2722,7 +2722,7 @@ class LLMSessionManager:
                                 return
                             
                             # 语音模式直接发送图片
-                            await self.session.stream_image(image_b64)
+                            await self.session.stream_image(image_b64, image_source=input_type)
                     else:
                         logger.error("💥 Stream: 屏幕数据验证失败")
                         return
