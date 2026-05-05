@@ -1,0 +1,18 @@
+{
+  "schema_version": "mahjong-button-localization-label-v1",
+  "image": {
+    "path": "frame.png"
+  },
+  "scene": "in_match",
+  "buttons": [
+    {
+      "button_type": "chi",
+      "bbox": [
+        895,
+        785,
+        1165,
+        875
+      ]
+    }
+  ]
+}

@@ -272,6 +272,7 @@ numpy==1.26.4
     #   matplotlib
     #   n-e-k-o
     #   onnxruntime
+    #   opencv-python-headless
     #   pyrnnoise
     #   soundfile
     #   soxr
@@ -285,6 +286,8 @@ openai==2.8.1
     # via
     #   browser-use
     #   n-e-k-o
+opencv-python-headless==4.11.0.86
+    # via n-e-k-o
 orjson==3.11.8
     # via n-e-k-o
 ormsgpack==1.12.2

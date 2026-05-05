@@ -1,0 +1,25 @@
+{
+  "case_id": "decision-isolated-honor",
+  "scene": "in_match",
+  "confidence": 0.9,
+  "is_user_turn": true,
+  "hand_tiles": [
+    "1m",
+    "2m",
+    "3m",
+    "4p",
+    "5p",
+    "6p",
+    "7s",
+    "8s",
+    "9s",
+    "1z",
+    "1z",
+    "9m",
+    "5z"
+  ],
+  "analysis_hints": {
+    "analysis_confidence": 0.9
+  },
+  "expected_top1": "5z"
+}

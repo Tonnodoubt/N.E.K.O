@@ -1,0 +1,27 @@
+{
+  "schema_version": "mahjong-button-localization-label-v1",
+  "image": {
+    "path": "frame-shifted.png"
+  },
+  "scene": "in_match",
+  "buttons": [
+    {
+      "button_type": "kan",
+      "bbox": [
+        780,
+        748,
+        1075,
+        878
+      ]
+    },
+    {
+      "button_type": "skip",
+      "bbox": [
+        1090,
+        770,
+        1465,
+        900
+      ]
+    }
+  ]
+}

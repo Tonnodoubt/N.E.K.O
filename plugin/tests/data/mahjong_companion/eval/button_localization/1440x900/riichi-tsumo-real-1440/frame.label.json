@@ -1,0 +1,27 @@
+{
+  "schema_version": "mahjong-button-localization-label-v1",
+  "image": {
+    "path": "frame.png"
+  },
+  "scene": "in_match",
+  "buttons": [
+    {
+      "button_type": "riichi",
+      "bbox": [
+        450,
+        605,
+        640,
+        705
+      ]
+    },
+    {
+      "button_type": "tsumo",
+      "bbox": [
+        655,
+        600,
+        850,
+        705
+      ]
+    }
+  ]
+}

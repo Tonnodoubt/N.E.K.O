@@ -1,0 +1,24 @@
+{
+  "case_id": "hand-recognition-screenshot-11-1080p-13tile",
+  "scene": "in_match",
+  "image_path": "../../../../../plugins/mahjong_companion/data/calibration/raw/manual/屏幕截图(33)/屏幕截图(11).png",
+  "calibration_dir": "../../../../../plugins/mahjong_companion/data/calibration",
+  "expected_hand_tiles": [
+    "1m",
+    "5m",
+    "4p",
+    "5p",
+    "5p",
+    "6p",
+    "8p",
+    "9p",
+    "1s",
+    "1s",
+    "7z",
+    "7z",
+    "7z"
+  ],
+  "metrics": {
+    "resolution": "1920x1080"
+  }
+}

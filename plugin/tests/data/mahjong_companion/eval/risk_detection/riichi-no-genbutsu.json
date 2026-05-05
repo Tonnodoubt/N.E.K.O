@@ -1,0 +1,30 @@
+{
+  "case_id": "risk-riichi-no-genbutsu",
+  "scene": "in_match",
+  "confidence": 0.9,
+  "is_user_turn": true,
+  "riichi_players": [
+    "right_opponent"
+  ],
+  "hand_tiles": [
+    "2m",
+    "3m",
+    "4m",
+    "5m",
+    "6m",
+    "7m",
+    "3p",
+    "4p",
+    "5p",
+    "6s",
+    "7s",
+    "8s",
+    "1z",
+    "9s"
+  ],
+  "analysis_hints": {
+    "analysis_confidence": 0.9
+  },
+  "expected_genbutsu": false,
+  "expected_genbutsu_tiles": []
+}

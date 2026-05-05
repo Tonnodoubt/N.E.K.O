@@ -1,0 +1,25 @@
+[plugin]
+id = "mahjong_companion"
+name = "雀魂陪伴"
+description = "雀魂陪伴、讲解与复盘插件"
+short_description = "Screen-driven Mahjong Soul companion plugin for guidance and review."
+version = "1.0.1"
+entry = "plugin.plugins.mahjong_companion:MahjongCompanionPlugin"
+
+[plugin.author]
+name = "N.E.K.O Team"
+
+[plugin.sdk]
+recommended = ">=0.1.0,<0.2.0"
+supported = ">=0.1.0,<0.3.0"
+
+[plugin_runtime]
+enabled = true
+auto_start = true
+
+[plugin.store]
+enabled = true
+
+[mahjong_companion]
+default_mode = "teaching"
+sample_interval_ms = 500

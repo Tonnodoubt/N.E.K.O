@@ -1,0 +1,18 @@
+{
+  "case_id": "screenshot-92-seed",
+  "label_scope": "partial",
+  "image": {
+    "path": "frame.png"
+  },
+  "scene": "in_match",
+  "discard_piles": {
+    "self": [
+      {
+        "tile": "5z",
+        "turn_index": 5,
+        "bbox": [1018, 542, 1076, 612],
+        "orientation": "bottom"
+      }
+    ]
+  }
+}

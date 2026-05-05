@@ -1,0 +1,26 @@
+{
+  "case_id": "decision-red-five-normalization",
+  "scene": "in_match",
+  "confidence": 0.9,
+  "is_user_turn": true,
+  "hand_tiles": [
+    "R5m",
+    "6m",
+    "7m",
+    "2p",
+    "3p",
+    "4p",
+    "5s",
+    "6s",
+    "7s",
+    "1z",
+    "2z",
+    "3z",
+    "9m",
+    "9p"
+  ],
+  "analysis_hints": {
+    "analysis_confidence": 0.9
+  },
+  "expected_top1": "1z"
+}

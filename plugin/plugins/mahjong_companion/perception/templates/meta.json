@@ -1,0 +1,69 @@
+{
+  "schema_version": "mahjong-button-templates-v1",
+  "default_match_threshold": 0.86,
+  "templates": {
+    "pon": {
+      "button_type": "pon",
+      "file": "1920x1080/pon.png",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "match_threshold": 0.9
+    },
+    "kan": {
+      "button_type": "kan",
+      "file": "1920x1080/kan.png",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "match_threshold": 0.9
+    },
+    "skip": {
+      "button_type": "skip",
+      "file": "1920x1080/skip.png",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "match_threshold": 0.9
+    },
+    "chi": {
+      "button_type": "chi",
+      "file": "1920x1080/chi.png",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "match_threshold": 0.9
+    },
+    "ron": {
+      "button_type": "ron",
+      "file": "1920x1080/ron.png",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "match_threshold": 0.9
+    },
+    "tsumo": {
+      "button_type": "tsumo",
+      "file": "1440x900/tsumo.png",
+      "resolution": [
+        1440,
+        900
+      ],
+      "match_threshold": 0.9
+    },
+    "riichi": {
+      "button_type": "riichi",
+      "file": "1440x900/riichi.png",
+      "resolution": [
+        1440,
+        900
+      ],
+      "match_threshold": 0.9
+    }
+  }
+}

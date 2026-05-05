@@ -1,0 +1,38 @@
+{
+  "case_id": "review-structured-and-repeated-tile-efficiency",
+  "session_id": "mahjong-eval-review",
+  "candidates": [
+    {
+      "captured_at": "2026-05-01T00:00:00+00:00",
+      "scene": "in_match",
+      "decision_type": "tile_efficiency_hint",
+      "priority": 72,
+      "risk_level": "medium",
+      "summary": "这一巡更适合先走稳一点的牌效率路线。",
+      "recommended_focus": "tile_efficiency",
+      "review_tags": [
+        "tile_efficiency",
+        "mid_round_choice"
+      ]
+    }
+  ],
+  "review_summaries": [
+    {
+      "session_id": "mahjong-eval-a",
+      "generated_at": "2026-05-01T00:00:00+00:00",
+      "training_points": [
+        "中盘牌效率弃牌优先级"
+      ]
+    },
+    {
+      "session_id": "mahjong-eval-b",
+      "generated_at": "2026-05-02T00:00:00+00:00",
+      "training_points": [
+        "中盘牌效率弃牌优先级"
+      ]
+    }
+  ],
+  "expected_repeated_patterns": [
+    "tile_efficiency"
+  ]
+}

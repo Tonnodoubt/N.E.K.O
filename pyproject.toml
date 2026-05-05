@@ -18,6 +18,7 @@ dependencies = [
   "dashscope==1.25.4",
   "python-multipart",
   "pillow",
+  "opencv-python-headless>=4.10.0",
   "regex",
   "pyautogui",
   "backoff",
@@ -174,4 +175,3 @@ select = [
   "ASYNC222",  # Popen.wait / Popen.communicate
   "ASYNC251",  # time.sleep in async function
 ]
-

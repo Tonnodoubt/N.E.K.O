@@ -1,0 +1,86 @@
+{
+  "ok": true,
+  "schema_version": "mahjong-companion-release-checklist-v1",
+  "repo_root": "/Users/tongqianqiu/N.E.K.O.TONG",
+  "plugin_dir": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion",
+  "plugin_version": "1.0.0",
+  "release_gate_report": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion/plans/artifacts/eval-report-v1.0-release-gate.json",
+  "checks": [
+    {
+      "check_id": "plugin_version",
+      "ok": true,
+      "message": "plugin.toml version is '1.0.0'"
+    },
+    {
+      "check_id": "readme_version",
+      "ok": true,
+      "message": "README current version matches v1.0.0"
+    },
+    {
+      "check_id": "changelog_version",
+      "ok": true,
+      "message": "CHANGELOG has v1.0.0 section"
+    },
+    {
+      "check_id": "closeout_docs",
+      "ok": true,
+      "message": "closeout, v1.0 plan, and release checklist docs exist",
+      "details": {
+        "closeout_path": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion/plans/blueprint-v1.0-closeout.md",
+        "next_plan_path": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion/plans/blueprint-v1.0-execution-plan.md",
+        "release_checklist_path": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion/plans/blueprint-v1.0-release-checklist.md"
+      }
+    },
+    {
+      "check_id": "data_lifecycle_doc",
+      "ok": true,
+      "message": "data lifecycle doc covers local storage, export, deletion, and upload boundary",
+      "details": {
+        "path": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion/DATA_LIFECYCLE.md",
+        "missing_terms": []
+      }
+    },
+    {
+      "check_id": "data_lifecycle_entries",
+      "ok": true,
+      "message": "data lifecycle plugin entries and implementation exist",
+      "details": {
+        "missing_entries": [],
+        "missing_functions": [],
+        "missing_orchestrator_methods": []
+      }
+    },
+    {
+      "check_id": "runtime_diagnostics_entry",
+      "ok": true,
+      "message": "runtime diagnostics entry exists",
+      "details": {
+        "missing": []
+      }
+    },
+    {
+      "check_id": "raw_calibration_ignored",
+      "ok": true,
+      "message": "raw calibration screenshots are ignored by git"
+    },
+    {
+      "check_id": "release_gate_report",
+      "ok": true,
+      "message": "release gate report exists and is ok=true",
+      "details": {
+        "path": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion/plans/artifacts/eval-report-v1.0-release-gate.json",
+        "schema_version": "mahjong-companion-release-gate-v1"
+      }
+    },
+    {
+      "check_id": "advice_only_action_registry",
+      "ok": true,
+      "message": "in-match UI button actions remain unregistered",
+      "details": {
+        "registered_ui_ids": [],
+        "accepted_ui_ids": []
+      }
+    }
+  ],
+  "failures": []
+}

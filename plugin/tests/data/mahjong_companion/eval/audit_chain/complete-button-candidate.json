@@ -1,0 +1,73 @@
+{
+  "entries": [
+    {
+      "action_id": "dialog_confirm",
+      "executed_at": "2026-05-01T00:00:00+00:00",
+      "ok": true,
+      "blocked_reason": "",
+      "guard_aborted": false,
+      "window_title": "Mahjong Soul",
+      "trigger_source": "manual",
+      "allow_reason": "allowed",
+      "locator_source": "button_candidate",
+      "button_region": {
+        "button_type": "confirm",
+        "bbox": [300, 240, 420, 300],
+        "confidence": 0.94,
+        "template_id": "confirm"
+      },
+      "target_x": 360,
+      "target_y": 270,
+      "risk_level": "dangerous",
+      "confirmation_chain": [
+        {
+          "step": "user_explicit",
+          "at": "2026-05-01T00:00:00+00:00",
+          "value": true
+        },
+        {
+          "step": "registry_validate",
+          "at": "2026-05-01T00:00:00+00:00",
+          "value": "passed"
+        },
+        {
+          "step": "guard_arm",
+          "at": "2026-05-01T00:00:00+00:00",
+          "value": "armed"
+        }
+      ]
+    },
+    {
+      "action_id": "menu_back",
+      "executed_at": "2026-05-01T00:00:01+00:00",
+      "ok": true,
+      "blocked_reason": "dry_run",
+      "guard_aborted": false,
+      "window_title": "Mahjong Soul",
+      "trigger_source": "manual",
+      "allow_reason": "dry_run",
+      "locator_source": "",
+      "button_region": null,
+      "target_x": null,
+      "target_y": null,
+      "risk_level": "safe",
+      "confirmation_chain": [
+        {
+          "step": "user_explicit",
+          "at": "2026-05-01T00:00:01+00:00",
+          "value": false
+        },
+        {
+          "step": "registry_validate",
+          "at": "2026-05-01T00:00:01+00:00",
+          "value": "passed"
+        },
+        {
+          "step": "dry_run",
+          "at": "2026-05-01T00:00:01+00:00",
+          "value": true
+        }
+      ]
+    }
+  ]
+}

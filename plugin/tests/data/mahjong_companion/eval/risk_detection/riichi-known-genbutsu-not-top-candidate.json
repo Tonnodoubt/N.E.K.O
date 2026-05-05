@@ -1,0 +1,35 @@
+{
+  "case_id": "risk-riichi-known-genbutsu-not-top-candidate",
+  "scene": "in_match",
+  "confidence": 0.9,
+  "is_user_turn": true,
+  "riichi_players": [
+    "left_opponent"
+  ],
+  "hand_tiles": [
+    "2m",
+    "3m",
+    "4m",
+    "4p",
+    "5p",
+    "6p",
+    "2s",
+    "3s",
+    "4s",
+    "5s",
+    "6s",
+    "7s",
+    "1m",
+    "9p"
+  ],
+  "analysis_hints": {
+    "analysis_confidence": 0.9,
+    "known_genbutsu_tiles": [
+      "1m"
+    ]
+  },
+  "expected_genbutsu": true,
+  "expected_genbutsu_tiles": [
+    "1m"
+  ]
+}

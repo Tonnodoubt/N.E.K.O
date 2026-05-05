@@ -1,0 +1,5 @@
+{
+  "schema_version": "mahjong-button-localization-manifest-v1",
+  "case_count": 6,
+  "note": "v0.4 fixture covers all advice-relevant in-match button templates: chi/pon/kan/riichi/ron/tsumo/skip."
+}

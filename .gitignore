@@ -52,6 +52,7 @@ __pycache__/
 .idea/
 .cursor/
 .pytest_cache/
+pytest-cache-files-*/
 .DS_Store
 .codex
 .venv
@@ -74,7 +75,10 @@ data/embedding_models/
 *.code-workspace
 .claude
 .trae/
-plans/
+/plans/
+!/plans/
+/plans/*
+!/plans/blueprint-v1.2-orchestrator-split.md
 CLAUDE.md
 /.workbuddy/
 
@@ -178,6 +182,25 @@ plugin/plugins/qq_auto_reply/data/
 # bilibili_danmaku 插件运行时数据（凭据、用户画像），不入库
 plugin/plugins/bilibili_danmaku/data/bili_credential.*
 plugin/plugins/bilibili_danmaku/data/user_profiles/
+
+# mahjong_companion 插件运行时缓存和调试截图，不入库；保留少量测试 fixture
+plugin/plugins/mahjong_companion/data/session_cache/*
+!plugin/plugins/mahjong_companion/data/session_cache/.gitkeep
+plugin/plugins/mahjong_companion/data/debug_samples/*
+!plugin/plugins/mahjong_companion/data/debug_samples/.gitkeep
+!plugin/plugins/mahjong_companion/data/debug_samples/20260415-050905-263947-frame.png
+!plugin/plugins/mahjong_companion/data/debug_samples/20260415-071312-089224-frame.png
+!plugin/plugins/mahjong_companion/data/debug_samples/20260415-071314-863534-frame.png
+plugin/plugins/mahjong_companion/data/calibration/raw/
+plugin/plugins/mahjong_companion/data/calibration/profiles/.*.json.lock
+plugin/plugins/mahjong_companion/plans/artifacts/**/.*.lock
+plugin/plugins/mahjong_companion/plans/artifacts/**/*.png
+plugin/plugins/mahjong_companion/plans/artifacts/**/*.json
+plugin/plugins/mahjong_companion/plans/artifacts/**/*.jsonl
+plugin/plugins/mahjong_companion/plans/artifacts/**/*.md
+plugin/tests/data/mahjong_companion/eval/**/*.png
+plugin/tests/data/mahjong_companion/eval/**/*.jpg
+plugin/tests/data/mahjong_companion/eval/**/*.jpeg
 !plugin/plugins/qq_auto_reply/NapCat.Shell/.gitkeep
 # Ignore local temporary Steam/launcher environment dumps
 .tmp_env_*
@@ -197,3 +220,8 @@ tests/testbench/docs/dev_note.txt
 
 # yui-origin Live2D 模型源码打包在 assets/yui-origin.tar.gz；build_frontend 解压到此
 /static/yui-origin/
+
+# Local smoke baselines (mahjong_companion v0.2 dev)
+/baseline-smoke.json
+/readme-smoke.json
+/step*-smoke.json

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mahjong Companion</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Mahjong Companion</p>
+        <h1>雀魂陪伴</h1>
+      </div>
+      <span class="status-pill" id="header-status">状态加载中</span>
+    </header>
+
+    <section class="panel operations-panel">
+      <div class="panel-heading">
+        <h2>主操作</h2>
+        <label class="toggle">
+          <input id="auto-refresh-toggle" type="checkbox" />
+          <span>自动刷新</span>
+        </label>
+      </div>
+
+      <div class="workflow-grid">
+        <div class="field-block window-field">
+          <label class="field-label" for="window-select">窗口</label>
+          <div class="window-row">
+            <select id="window-select">
+              <option value="">自动匹配雀魂窗口</option>
+            </select>
+            <button id="refresh-windows-btn" class="secondary" type="button">刷新窗口</button>
+          </div>
+        </div>
+
+        <div class="main-actions primary-actions">
+          <button id="bind-btn" class="primary" type="button">绑定窗口</button>
+          <button id="unbind-btn" type="button">解除绑定</button>
+        </div>
+      </div>
+
+      <div class="main-actions cta-row">
+        <button id="pipeline-btn" class="primary cta-btn" type="button">刷新屏幕并给建议</button>
+      </div>
+
+      <div class="actions inline-row">
+        <label class="inline-select" for="unified-mode-select">看牌状态</label>
+        <select id="unified-mode-select">
+          <option value="teaching">自动看牌并给建议</option>
+          <option value="silent">只显示建议，不主动说话</option>
+          <option value="standby">暂停看牌</option>
+          <option value="off">停止插件</option>
+        </select>
+        <button id="apply-unified-mode-btn" type="button">应用</button>
+
+        <label class="inline-select" for="voice-mode-select">语音播报</label>
+        <select id="voice-mode-select">
+          <option value="off">不播报</option>
+          <option value="key_events_only">只播重要提醒</option>
+          <option value="companion">多讲一点</option>
+        </select>
+        <button id="apply-voice-mode-btn" type="button">应用</button>
+      </div>
+
+      <details class="detail-section dev-only">
+        <summary>模式与调试</summary>
+        <div class="actions">
+          <button id="refresh-btn" type="button">刷新状态</button>
+          <button id="start-btn" type="button">启动会话</button>
+          <button id="stop-btn" type="button">停止会话</button>
+          <label class="inline-select" for="mode-select">底层 mode</label>
+          <select id="mode-select">
+            <option value="teaching">teaching</option>
+            <option value="spectate">spectate</option>
+            <option value="replay">replay</option>
+            <option value="silent">silent</option>
+          </select>
+          <button id="set-mode-btn" type="button">应用 mode</button>
+          <label class="inline-select" for="runtime-mode-select">runtime</label>
+          <select id="runtime-mode-select">
+            <option value="active">active</option>
+            <option value="standby">standby</option>
+            <option value="off">off</option>
+          </select>
+          <button id="set-runtime-mode-btn" type="button">应用 runtime</button>
+          <button id="capture-btn" type="button">抓取调试帧</button>
+          <button id="analyze-btn" type="button">分析最近截图</button>
+          <button id="decision-btn" type="button">生成决策</button>
+          <button id="narration-btn" type="button">生成讲解</button>
+          <button id="preview-btn" type="button">刷新陪伴视图</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel status-panel">
+      <div class="panel-heading">
+        <h2>当前建议</h2>
+      </div>
+
+      <div class="advice-box">
+        <div class="advice-main" id="quick-suggestion">-</div>
+        <div class="advice-meta">
+          <span id="quick-scene">-</span>
+          <span id="quick-hand">-</span>
+        </div>
+      </div>
+
+      <div class="quick-status-grid">
+        <div><strong>窗口</strong><span id="quick-window">-</span></div>
+        <div><strong>会话</strong><span id="quick-session">-</span></div>
+        <div><strong>抓图</strong><span id="quick-capture">-</span></div>
+        <div><strong>语音播报</strong><span id="quick-voice">-</span></div>
+        <div><strong>错误</strong><span id="quick-error">无</span></div>
+      </div>
+
+      <details class="detail-section">
+        <summary>详细状态</summary>
+        <div class="status-grid">
+          <div><strong>宿主状态</strong><span id="host-status">-</span></div>
+          <div><strong>运行态</strong><span id="runtime-status">-</span></div>
+          <div><strong>当前模式</strong><span id="current-mode">-</span></div>
+          <div><strong>运行时模式</strong><span id="runtime-mode">-</span></div>
+          <div><strong>运行时状态</strong><span id="game-runtime-status">-</span></div>
+          <div><strong>最近运行时动作</strong><span id="runtime-last-action">-</span></div>
+          <div><strong>最近打断原因</strong><span id="runtime-last-interrupt-reason">-</span></div>
+          <div><strong>窗口绑定</strong><span id="window-bound">-</span></div>
+          <div><strong>窗口标题</strong><span id="window-title">-</span></div>
+          <div><strong>最近抓图</strong><span id="capture-ok">-</span></div>
+          <div><strong>截图来源</strong><span id="capture-source">-</span></div>
+          <div><strong>截图路径</strong><span id="frame-path">-</span></div>
+          <div><strong>当前场景</strong><span id="scene">-</span></div>
+          <div><strong>场景置信度</strong><span id="scene-confidence">-</span></div>
+          <div><strong>轮到用户</strong><span id="user-turn">-</span></div>
+          <div><strong>按钮候选</strong><span id="buttons">-</span></div>
+          <div><strong>牌河识别数</strong><span id="discard-count">-</span></div>
+          <div><strong>四家牌河</strong><span id="discard-pile-summary">-</span></div>
+          <div><strong>可见牌</strong><span id="visible-tiles">-</span></div>
+          <div><strong>现物提示</strong><span id="known-genbutsu">-</span></div>
+          <div><strong>感知成功</strong><span id="perception-ok">-</span></div>
+          <div><strong>感知时间</strong><span id="perception-at">-</span></div>
+          <div><strong>决策类型</strong><span id="decision-type">-</span></div>
+          <div><strong>风险等级</strong><span id="decision-risk">-</span></div>
+          <div><strong>建议焦点</strong><span id="decision-focus">-</span></div>
+          <div><strong>决策标签</strong><span id="decision-tags">-</span></div>
+          <div><strong>决策时间</strong><span id="decision-at">-</span></div>
+          <div><strong>牌级分析</strong><span id="tile-analysis-available">-</span></div>
+          <div><strong>向听估计</strong><span id="shanten-estimate">-</span></div>
+          <div><strong>进张估计</strong><span id="ukeire-estimate">-</span></div>
+          <div><strong>讲解类型</strong><span id="narration-type">-</span></div>
+          <div><strong>输出通道</strong><span id="narration-channel">-</span></div>
+          <div><strong>输出方式</strong><span id="narration-delivery">-</span></div>
+          <div><strong>陪伴情绪</strong><span id="companion-mood">-</span></div>
+          <div><strong>建议强度</strong><span id="suggestion-level">-</span></div>
+          <div><strong>当前建议</strong><span id="decision-suggestion">-</span></div>
+          <div><strong>讲解文本</strong><span id="narration-text">-</span></div>
+          <div><strong>语音播报</strong><span id="voice-mode">-</span></div>
+          <div><strong>最近通知</strong><span id="notification-at">-</span></div>
+          <div><strong>最近已播报</strong><span id="spoken-at">-</span></div>
+          <div><strong>最近错误</strong><span id="last-error">-</span></div>
+        </div>
+      </details>
+
+      <details class="debug-json">
+        <summary>完整状态 JSON</summary>
+        <pre id="status">状态加载中...</pre>
+      </details>
+    </section>
+
+    <section class="panel response-panel">
+      <h2>最近响应</h2>
+      <details class="debug-json">
+        <summary>响应 JSON</summary>
+        <pre id="output">暂无输出</pre>
+      </details>
+    </section>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>

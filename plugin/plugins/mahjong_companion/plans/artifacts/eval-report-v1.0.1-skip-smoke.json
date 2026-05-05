@@ -1,0 +1,448 @@
+{
+  "ok": false,
+  "schema_version": "mahjong-companion-release-gate-v1",
+  "eval_dir": "plugin/tests/data/mahjong_companion/eval",
+  "calibration_dir": "plugin/plugins/mahjong_companion/data/calibration",
+  "template_dir": "plugin/plugins/mahjong_companion/perception/templates",
+  "include_smoke": false,
+  "summary": {
+    "v03": {
+      "ok": true,
+      "decision_top1_match_rate": 0.6667,
+      "risk_genbutsu_recall": 1.0,
+      "review_structured_summary_pass_rate": 1.0,
+      "review_repeated_pattern_match_rate": 1.0,
+      "decision_latency_p95_ms": 247.806
+    },
+    "v04": {
+      "ok": true,
+      "template_coverage": 1.0,
+      "button_iou_pass_rate": 1.0,
+      "button_precision": 1.0,
+      "button_recall": 1.0,
+      "assist_false_abort_rate": 0.0,
+      "audit_completeness": 1.0
+    },
+    "v05": {
+      "ok": false,
+      "discard_expected_count": 111,
+      "discard_tile_accuracy": 1.0,
+      "discard_recall": 0.945946,
+      "top_opponent_tile_accuracy": 1.0,
+      "left_opponent_tile_accuracy": 1.0,
+      "right_opponent_tile_accuracy": 1.0,
+      "decision_latency_p95_ms": 767.225
+    },
+    "smoke": {
+      "ok": true,
+      "skipped": true,
+      "result_count": 0,
+      "message_count": null,
+      "status_count": null
+    }
+  },
+  "reports": {
+    "v03": {
+      "ok": true,
+      "strict": false,
+      "strict_json": true,
+      "strict_hand": true,
+      "eval_dir": "plugin/tests/data/mahjong_companion/eval",
+      "calibration_dir": "plugin/plugins/mahjong_companion/data/calibration",
+      "hand_holdout_dir": "",
+      "allow_fixture_sidecars": false,
+      "thresholds": {
+        "hand_recognition.tile_accuracy": 0.85,
+        "hand_recognition.full_hand_accuracy": 0.2,
+        "decision_top1.match_rate": 0.55,
+        "decision_top1.top3_match_rate": 0.8,
+        "risk_detection.genbutsu_recall": 0.95,
+        "decision_latency_p95_ms": 800.0
+      },
+      "metrics": {
+        "hand_recognition": {
+          "case_count": 21,
+          "tile_accuracy": 0.8824,
+          "full_hand_accuracy": 0.2381,
+          "correct_tiles": 255,
+          "total_tiles": 289,
+          "red5_normalized_tile_accuracy": 0.8858,
+          "red5_normalized_full_hand_accuracy": 0.2381,
+          "red5_normalized_correct_tiles": 256,
+          "red5_normalized_total_tiles": 289,
+          "red5_normalized_mismatch_case_count": 16,
+          "red5_only_mismatch_count": 1,
+          "mismatch_case_count": 16,
+          "missing_prediction_tiles": 0,
+          "extra_prediction_tiles": 0,
+          "confusion_top": [
+            {
+              "expected": "5p",
+              "predicted": "6p",
+              "count": 12
+            },
+            {
+              "expected": "6p",
+              "predicted": "7p",
+              "count": 11
+            },
+            {
+              "expected": "7s",
+              "predicted": "9s",
+              "count": 5
+            },
+            {
+              "expected": "9s",
+              "predicted": "6s",
+              "count": 3
+            },
+            {
+              "expected": "4p",
+              "predicted": "5p",
+              "count": 2
+            },
+            {
+              "expected": "R5p",
+              "predicted": "5p",
+              "count": 1
+            }
+          ]
+        },
+        "decision_top1": {
+          "case_count": 6,
+          "match_rate": 0.6667,
+          "top3_match_rate": 1.0,
+          "matches": 4,
+          "top3_matches": 6
+        },
+        "risk_detection": {
+          "case_count": 4,
+          "expected_genbutsu_cases": 3,
+          "detected_genbutsu_cases": 3,
+          "genbutsu_recall": 1.0
+        },
+        "review_patterns": {
+          "case_count": 2,
+          "structured_summary_pass_rate": 1.0,
+          "repeated_pattern_match_rate": 1.0,
+          "structured_summary_passes": 2,
+          "expected_pattern_cases": 1,
+          "repeated_pattern_matches": 1
+        },
+        "decision_latency_p95_ms": 247.806
+      },
+      "failures": []
+    },
+    "v04": {
+      "ok": true,
+      "strict": true,
+      "strict_templates": true,
+      "eval_dir": "plugin/tests/data/mahjong_companion/eval",
+      "calibration_dir": "plugin/plugins/mahjong_companion/data/calibration",
+      "template_dir": "plugin/plugins/mahjong_companion/perception/templates",
+      "thresholds": {
+        "button_localization.iou_pass_rate": 0.95,
+        "button_localization.precision": 0.95,
+        "button_localization.recall": 0.85,
+        "assist_action.false_abort_rate": 0.05,
+        "audit_chain.completeness": 0.99,
+        "template_inventory.coverage": 1.0
+      },
+      "metrics": {
+        "template_inventory": {
+          "required_button_types": [
+            "chi",
+            "pon",
+            "kan",
+            "riichi",
+            "ron",
+            "tsumo",
+            "skip"
+          ],
+          "available_button_types": [
+            "chi",
+            "kan",
+            "pon",
+            "riichi",
+            "ron",
+            "skip",
+            "tsumo"
+          ],
+          "missing_button_types": [],
+          "required_count": 7,
+          "available_required_count": 7,
+          "coverage": 1.0,
+          "complete": true
+        },
+        "button_localization": {
+          "case_count": 6,
+          "expected_count": 11,
+          "detected_count": 11,
+          "matched_count": 11,
+          "iou_pass_count": 11,
+          "false_positive_count": 0,
+          "iou_pass_rate": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "per_button_type": [
+            {
+              "button_type": "chi",
+              "expected_count": 1,
+              "detected_count": 1,
+              "matched_count": 1,
+              "iou_pass_count": 1,
+              "false_positive_count": 0,
+              "iou_pass_rate": 1.0,
+              "precision": 1.0,
+              "recall": 1.0
+            },
+            {
+              "button_type": "kan",
+              "expected_count": 2,
+              "detected_count": 2,
+              "matched_count": 2,
+              "iou_pass_count": 2,
+              "false_positive_count": 0,
+              "iou_pass_rate": 1.0,
+              "precision": 1.0,
+              "recall": 1.0
+            },
+            {
+              "button_type": "pon",
+              "expected_count": 1,
+              "detected_count": 1,
+              "matched_count": 1,
+              "iou_pass_count": 1,
+              "false_positive_count": 0,
+              "iou_pass_rate": 1.0,
+              "precision": 1.0,
+              "recall": 1.0
+            },
+            {
+              "button_type": "riichi",
+              "expected_count": 1,
+              "detected_count": 1,
+              "matched_count": 1,
+              "iou_pass_count": 1,
+              "false_positive_count": 0,
+              "iou_pass_rate": 1.0,
+              "precision": 1.0,
+              "recall": 1.0
+            },
+            {
+              "button_type": "ron",
+              "expected_count": 1,
+              "detected_count": 1,
+              "matched_count": 1,
+              "iou_pass_count": 1,
+              "false_positive_count": 0,
+              "iou_pass_rate": 1.0,
+              "precision": 1.0,
+              "recall": 1.0
+            },
+            {
+              "button_type": "skip",
+              "expected_count": 4,
+              "detected_count": 4,
+              "matched_count": 4,
+              "iou_pass_count": 4,
+              "false_positive_count": 0,
+              "iou_pass_rate": 1.0,
+              "precision": 1.0,
+              "recall": 1.0
+            },
+            {
+              "button_type": "tsumo",
+              "expected_count": 1,
+              "detected_count": 1,
+              "matched_count": 1,
+              "iou_pass_count": 1,
+              "false_positive_count": 0,
+              "iou_pass_rate": 1.0,
+              "precision": 1.0,
+              "recall": 1.0
+            }
+          ]
+        },
+        "assist_action": {
+          "trial_count": 100,
+          "false_abort_count": 0,
+          "false_abort_rate": 0.0
+        },
+        "audit_chain": {
+          "case_count": 2,
+          "complete_count": 2,
+          "completeness": 1.0
+        }
+      },
+      "failures": []
+    },
+    "v05": {
+      "ok": false,
+      "strict": true,
+      "strict_json": false,
+      "eval_dir": "plugin/tests/data/mahjong_companion/eval",
+      "calibration_dir": "plugin/plugins/mahjong_companion/data/calibration",
+      "thresholds": {
+        "discard_recognition.tile_accuracy": 0.7,
+        "discard_recognition.recall": 0.75,
+        "discard_recognition.false_positive_rate": 0.1,
+        "genbutsu_hint.recall": 0.95,
+        "decision_latency_p95_ms": 900.0
+      },
+      "metrics": {
+        "discard_recognition": {
+          "case_count": 40,
+          "full_case_count": 0,
+          "partial_case_count": 40,
+          "expected_count": 111,
+          "predicted_count": 1320,
+          "evaluated_prediction_count": 105,
+          "matched_slot_count": 105,
+          "correct_tile_count": 105,
+          "false_positive_count": 0,
+          "ignored_unlabeled_prediction_count": 1215,
+          "evaluable_empty_slot_count": 0,
+          "tile_accuracy": 1.0,
+          "recall": 0.945946,
+          "false_positive_rate": null,
+          "by_player": {
+            "self": {
+              "expected_count": 12,
+              "predicted_count": 512,
+              "matched_slot_count": 12,
+              "correct_tile_count": 12,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 500,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 12,
+              "tile_accuracy": 1.0,
+              "recall": 1.0,
+              "false_positive_rate": null
+            },
+            "left_opponent": {
+              "expected_count": 7,
+              "predicted_count": 209,
+              "matched_slot_count": 7,
+              "correct_tile_count": 7,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 202,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 7,
+              "tile_accuracy": 1.0,
+              "recall": 1.0,
+              "false_positive_rate": null
+            },
+            "top_opponent": {
+              "expected_count": 39,
+              "predicted_count": 375,
+              "matched_slot_count": 39,
+              "correct_tile_count": 39,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 336,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 39,
+              "tile_accuracy": 1.0,
+              "recall": 1.0,
+              "false_positive_rate": null
+            },
+            "right_opponent": {
+              "expected_count": 53,
+              "predicted_count": 224,
+              "matched_slot_count": 47,
+              "correct_tile_count": 47,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 177,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 47,
+              "tile_accuracy": 1.0,
+              "recall": 0.886792,
+              "false_positive_rate": null
+            }
+          },
+          "by_orientation": {
+            "bottom": {
+              "expected_count": 12,
+              "predicted_count": 512,
+              "matched_slot_count": 12,
+              "correct_tile_count": 12,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 500,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 12,
+              "tile_accuracy": 1.0,
+              "recall": 1.0,
+              "false_positive_rate": null
+            },
+            "left": {
+              "expected_count": 7,
+              "predicted_count": 209,
+              "matched_slot_count": 7,
+              "correct_tile_count": 7,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 202,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 7,
+              "tile_accuracy": 1.0,
+              "recall": 1.0,
+              "false_positive_rate": null
+            },
+            "top": {
+              "expected_count": 39,
+              "predicted_count": 375,
+              "matched_slot_count": 39,
+              "correct_tile_count": 39,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 336,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 39,
+              "tile_accuracy": 1.0,
+              "recall": 1.0,
+              "false_positive_rate": null
+            },
+            "right": {
+              "expected_count": 53,
+              "predicted_count": 224,
+              "matched_slot_count": 47,
+              "correct_tile_count": 47,
+              "false_positive_count": 0,
+              "ignored_unlabeled_prediction_count": 177,
+              "evaluable_empty_slot_count": 0,
+              "evaluated_prediction_count": 47,
+              "tile_accuracy": 1.0,
+              "recall": 0.886792,
+              "false_positive_rate": null
+            }
+          },
+          "coverage_warnings": [
+            {
+              "scope": "discard_recognition",
+              "kind": "partial_only_labels",
+              "message": "discard recognition currently has only partial labels; unlabelled predictions are not false-positive claims.",
+              "partial_case_count": 40,
+              "full_case_count": 0
+            }
+          ]
+        },
+        "genbutsu_hint": {
+          "case_count": 1,
+          "expected_genbutsu_cases": 1,
+          "detected_genbutsu_cases": 0,
+          "recall": 0.0
+        },
+        "decision_latency_p95_ms": 767.225
+      },
+      "failures": [
+        "genbutsu_hint.recall 0.000 < 0.950"
+      ]
+    },
+    "smoke": {
+      "ok": true,
+      "skipped": true
+    }
+  },
+  "failures": [
+    "v05 gate failed",
+    "v05: genbutsu_hint.recall 0.000 < 0.950"
+  ]
+}

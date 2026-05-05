@@ -1,0 +1,2788 @@
+{
+  "schema_version": "mahjong-discard-recognition-label-v1",
+  "case_id": "屏幕截图-103-opponent-reviewed",
+  "label_scope": "partial",
+  "image": {
+    "path": "frame.png",
+    "width": 1920,
+    "height": 1080,
+    "resolution": "1920x1080"
+  },
+  "scene": "in_match",
+  "riichi_players": [],
+  "discard_piles": {
+    "top_opponent": [
+      {
+        "tile": "2m",
+        "turn_index": 11,
+        "bbox": [
+          1065,
+          196,
+          1120,
+          241
+        ],
+        "quad": [
+          [
+            1065,
+            196
+          ],
+          [
+            1066,
+            241
+          ],
+          [
+            1120,
+            241
+          ],
+          [
+            1117,
+            196
+          ]
+        ],
+        "orientation": "top",
+        "quad_source": "refined_tile_surface",
+        "quad_confidence": 0.884
+      }
+    ]
+  },
+  "layout": {
+    "discard_slots": [
+      {
+        "slot_id": "discard_self_01",
+        "player": "self",
+        "turn_index": 1,
+        "orientation": "bottom",
+        "bbox": [
+          762,
+          542,
+          820,
+          612
+        ],
+        "quad": [
+          [
+            762,
+            542
+          ],
+          [
+            762,
+            612
+          ],
+          [
+            820,
+            612
+          ],
+          [
+            820,
+            542
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_01",
+          "left": 762,
+          "top": 542,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_02",
+        "player": "self",
+        "turn_index": 2,
+        "orientation": "bottom",
+        "bbox": [
+          826,
+          542,
+          884,
+          612
+        ],
+        "quad": [
+          [
+            826,
+            542
+          ],
+          [
+            826,
+            612
+          ],
+          [
+            884,
+            612
+          ],
+          [
+            884,
+            542
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_02",
+          "left": 826,
+          "top": 542,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_03",
+        "player": "self",
+        "turn_index": 3,
+        "orientation": "bottom",
+        "bbox": [
+          890,
+          542,
+          948,
+          612
+        ],
+        "quad": [
+          [
+            890,
+            542
+          ],
+          [
+            890,
+            612
+          ],
+          [
+            948,
+            612
+          ],
+          [
+            948,
+            542
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_03",
+          "left": 890,
+          "top": 542,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_04",
+        "player": "self",
+        "turn_index": 4,
+        "orientation": "bottom",
+        "bbox": [
+          954,
+          542,
+          1012,
+          612
+        ],
+        "quad": [
+          [
+            954,
+            542
+          ],
+          [
+            954,
+            612
+          ],
+          [
+            1012,
+            612
+          ],
+          [
+            1012,
+            542
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_04",
+          "left": 954,
+          "top": 542,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_05",
+        "player": "self",
+        "turn_index": 5,
+        "orientation": "bottom",
+        "bbox": [
+          1018,
+          542,
+          1076,
+          612
+        ],
+        "quad": [
+          [
+            1018,
+            542
+          ],
+          [
+            1018,
+            612
+          ],
+          [
+            1076,
+            612
+          ],
+          [
+            1076,
+            542
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_05",
+          "left": 1018,
+          "top": 542,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_06",
+        "player": "self",
+        "turn_index": 6,
+        "orientation": "bottom",
+        "bbox": [
+          1082,
+          542,
+          1140,
+          612
+        ],
+        "quad": [
+          [
+            1082,
+            542
+          ],
+          [
+            1082,
+            612
+          ],
+          [
+            1140,
+            612
+          ],
+          [
+            1140,
+            542
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_06",
+          "left": 1082,
+          "top": 542,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_07",
+        "player": "self",
+        "turn_index": 7,
+        "orientation": "bottom",
+        "bbox": [
+          762,
+          612,
+          820,
+          682
+        ],
+        "quad": [
+          [
+            762,
+            612
+          ],
+          [
+            762,
+            682
+          ],
+          [
+            820,
+            682
+          ],
+          [
+            820,
+            612
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_07",
+          "left": 762,
+          "top": 612,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_08",
+        "player": "self",
+        "turn_index": 8,
+        "orientation": "bottom",
+        "bbox": [
+          826,
+          612,
+          884,
+          682
+        ],
+        "quad": [
+          [
+            826,
+            612
+          ],
+          [
+            826,
+            682
+          ],
+          [
+            884,
+            682
+          ],
+          [
+            884,
+            612
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_08",
+          "left": 826,
+          "top": 612,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_09",
+        "player": "self",
+        "turn_index": 9,
+        "orientation": "bottom",
+        "bbox": [
+          890,
+          612,
+          948,
+          682
+        ],
+        "quad": [
+          [
+            890,
+            612
+          ],
+          [
+            890,
+            682
+          ],
+          [
+            948,
+            682
+          ],
+          [
+            948,
+            612
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_09",
+          "left": 890,
+          "top": 612,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_10",
+        "player": "self",
+        "turn_index": 10,
+        "orientation": "bottom",
+        "bbox": [
+          954,
+          612,
+          1012,
+          682
+        ],
+        "quad": [
+          [
+            954,
+            612
+          ],
+          [
+            954,
+            682
+          ],
+          [
+            1012,
+            682
+          ],
+          [
+            1012,
+            612
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_10",
+          "left": 954,
+          "top": 612,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_11",
+        "player": "self",
+        "turn_index": 11,
+        "orientation": "bottom",
+        "bbox": [
+          1018,
+          612,
+          1076,
+          682
+        ],
+        "quad": [
+          [
+            1018,
+            612
+          ],
+          [
+            1018,
+            682
+          ],
+          [
+            1076,
+            682
+          ],
+          [
+            1076,
+            612
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_11",
+          "left": 1018,
+          "top": 612,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_12",
+        "player": "self",
+        "turn_index": 12,
+        "orientation": "bottom",
+        "bbox": [
+          1082,
+          612,
+          1140,
+          682
+        ],
+        "quad": [
+          [
+            1082,
+            612
+          ],
+          [
+            1082,
+            682
+          ],
+          [
+            1140,
+            682
+          ],
+          [
+            1140,
+            612
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_12",
+          "left": 1082,
+          "top": 612,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_13",
+        "player": "self",
+        "turn_index": 13,
+        "orientation": "bottom",
+        "bbox": [
+          762,
+          682,
+          820,
+          752
+        ],
+        "quad": [
+          [
+            762,
+            682
+          ],
+          [
+            762,
+            752
+          ],
+          [
+            820,
+            752
+          ],
+          [
+            820,
+            682
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_13",
+          "left": 762,
+          "top": 682,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_14",
+        "player": "self",
+        "turn_index": 14,
+        "orientation": "bottom",
+        "bbox": [
+          826,
+          682,
+          884,
+          752
+        ],
+        "quad": [
+          [
+            826,
+            682
+          ],
+          [
+            826,
+            752
+          ],
+          [
+            884,
+            752
+          ],
+          [
+            884,
+            682
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_14",
+          "left": 826,
+          "top": 682,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_15",
+        "player": "self",
+        "turn_index": 15,
+        "orientation": "bottom",
+        "bbox": [
+          890,
+          682,
+          948,
+          752
+        ],
+        "quad": [
+          [
+            890,
+            682
+          ],
+          [
+            890,
+            752
+          ],
+          [
+            948,
+            752
+          ],
+          [
+            948,
+            682
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_15",
+          "left": 890,
+          "top": 682,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_16",
+        "player": "self",
+        "turn_index": 16,
+        "orientation": "bottom",
+        "bbox": [
+          954,
+          682,
+          1012,
+          752
+        ],
+        "quad": [
+          [
+            954,
+            682
+          ],
+          [
+            954,
+            752
+          ],
+          [
+            1012,
+            752
+          ],
+          [
+            1012,
+            682
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_16",
+          "left": 954,
+          "top": 682,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_17",
+        "player": "self",
+        "turn_index": 17,
+        "orientation": "bottom",
+        "bbox": [
+          1018,
+          682,
+          1076,
+          752
+        ],
+        "quad": [
+          [
+            1018,
+            682
+          ],
+          [
+            1018,
+            752
+          ],
+          [
+            1076,
+            752
+          ],
+          [
+            1076,
+            682
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_17",
+          "left": 1018,
+          "top": 682,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_self_18",
+        "player": "self",
+        "turn_index": 18,
+        "orientation": "bottom",
+        "bbox": [
+          1082,
+          682,
+          1140,
+          752
+        ],
+        "quad": [
+          [
+            1082,
+            682
+          ],
+          [
+            1082,
+            752
+          ],
+          [
+            1140,
+            752
+          ],
+          [
+            1140,
+            682
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_self_18",
+          "left": 1082,
+          "top": 682,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_01",
+        "player": "left_opponent",
+        "turn_index": 1,
+        "orientation": "left",
+        "bbox": [
+          624,
+          290,
+          708,
+          348
+        ],
+        "quad": [
+          [
+            624,
+            290
+          ],
+          [
+            624,
+            348
+          ],
+          [
+            708,
+            348
+          ],
+          [
+            708,
+            290
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_01",
+          "left": 624,
+          "top": 290,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_02",
+        "player": "left_opponent",
+        "turn_index": 2,
+        "orientation": "left",
+        "bbox": [
+          624,
+          352,
+          708,
+          410
+        ],
+        "quad": [
+          [
+            624,
+            352
+          ],
+          [
+            624,
+            410
+          ],
+          [
+            708,
+            410
+          ],
+          [
+            708,
+            352
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_02",
+          "left": 624,
+          "top": 352,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_03",
+        "player": "left_opponent",
+        "turn_index": 3,
+        "orientation": "left",
+        "bbox": [
+          624,
+          414,
+          708,
+          472
+        ],
+        "quad": [
+          [
+            624,
+            414
+          ],
+          [
+            624,
+            472
+          ],
+          [
+            708,
+            472
+          ],
+          [
+            708,
+            414
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_03",
+          "left": 624,
+          "top": 414,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_04",
+        "player": "left_opponent",
+        "turn_index": 4,
+        "orientation": "left",
+        "bbox": [
+          624,
+          476,
+          708,
+          534
+        ],
+        "quad": [
+          [
+            624,
+            476
+          ],
+          [
+            624,
+            534
+          ],
+          [
+            708,
+            534
+          ],
+          [
+            708,
+            476
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_04",
+          "left": 624,
+          "top": 476,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_05",
+        "player": "left_opponent",
+        "turn_index": 5,
+        "orientation": "left",
+        "bbox": [
+          624,
+          538,
+          708,
+          596
+        ],
+        "quad": [
+          [
+            624,
+            538
+          ],
+          [
+            624,
+            596
+          ],
+          [
+            708,
+            596
+          ],
+          [
+            708,
+            538
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_05",
+          "left": 624,
+          "top": 538,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_06",
+        "player": "left_opponent",
+        "turn_index": 6,
+        "orientation": "left",
+        "bbox": [
+          624,
+          600,
+          708,
+          658
+        ],
+        "quad": [
+          [
+            624,
+            600
+          ],
+          [
+            624,
+            658
+          ],
+          [
+            708,
+            658
+          ],
+          [
+            708,
+            600
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_06",
+          "left": 624,
+          "top": 600,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_07",
+        "player": "left_opponent",
+        "turn_index": 7,
+        "orientation": "left",
+        "bbox": [
+          706,
+          290,
+          790,
+          348
+        ],
+        "quad": [
+          [
+            706,
+            290
+          ],
+          [
+            706,
+            348
+          ],
+          [
+            790,
+            348
+          ],
+          [
+            790,
+            290
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_07",
+          "left": 706,
+          "top": 290,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_08",
+        "player": "left_opponent",
+        "turn_index": 8,
+        "orientation": "left",
+        "bbox": [
+          706,
+          352,
+          790,
+          410
+        ],
+        "quad": [
+          [
+            706,
+            352
+          ],
+          [
+            706,
+            410
+          ],
+          [
+            790,
+            410
+          ],
+          [
+            790,
+            352
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_08",
+          "left": 706,
+          "top": 352,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_09",
+        "player": "left_opponent",
+        "turn_index": 9,
+        "orientation": "left",
+        "bbox": [
+          706,
+          414,
+          790,
+          472
+        ],
+        "quad": [
+          [
+            706,
+            414
+          ],
+          [
+            706,
+            472
+          ],
+          [
+            790,
+            472
+          ],
+          [
+            790,
+            414
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_09",
+          "left": 706,
+          "top": 414,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_10",
+        "player": "left_opponent",
+        "turn_index": 10,
+        "orientation": "left",
+        "bbox": [
+          706,
+          476,
+          790,
+          534
+        ],
+        "quad": [
+          [
+            706,
+            476
+          ],
+          [
+            706,
+            534
+          ],
+          [
+            790,
+            534
+          ],
+          [
+            790,
+            476
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_10",
+          "left": 706,
+          "top": 476,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_11",
+        "player": "left_opponent",
+        "turn_index": 11,
+        "orientation": "left",
+        "bbox": [
+          706,
+          538,
+          790,
+          596
+        ],
+        "quad": [
+          [
+            706,
+            538
+          ],
+          [
+            706,
+            596
+          ],
+          [
+            790,
+            596
+          ],
+          [
+            790,
+            538
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_11",
+          "left": 706,
+          "top": 538,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_12",
+        "player": "left_opponent",
+        "turn_index": 12,
+        "orientation": "left",
+        "bbox": [
+          706,
+          600,
+          790,
+          658
+        ],
+        "quad": [
+          [
+            706,
+            600
+          ],
+          [
+            706,
+            658
+          ],
+          [
+            790,
+            658
+          ],
+          [
+            790,
+            600
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_12",
+          "left": 706,
+          "top": 600,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_13",
+        "player": "left_opponent",
+        "turn_index": 13,
+        "orientation": "left",
+        "bbox": [
+          788,
+          290,
+          872,
+          348
+        ],
+        "quad": [
+          [
+            788,
+            290
+          ],
+          [
+            788,
+            348
+          ],
+          [
+            872,
+            348
+          ],
+          [
+            872,
+            290
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_13",
+          "left": 788,
+          "top": 290,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_14",
+        "player": "left_opponent",
+        "turn_index": 14,
+        "orientation": "left",
+        "bbox": [
+          788,
+          352,
+          872,
+          410
+        ],
+        "quad": [
+          [
+            788,
+            352
+          ],
+          [
+            788,
+            410
+          ],
+          [
+            872,
+            410
+          ],
+          [
+            872,
+            352
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_14",
+          "left": 788,
+          "top": 352,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_15",
+        "player": "left_opponent",
+        "turn_index": 15,
+        "orientation": "left",
+        "bbox": [
+          788,
+          414,
+          872,
+          472
+        ],
+        "quad": [
+          [
+            788,
+            414
+          ],
+          [
+            788,
+            472
+          ],
+          [
+            872,
+            472
+          ],
+          [
+            872,
+            414
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_15",
+          "left": 788,
+          "top": 414,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_16",
+        "player": "left_opponent",
+        "turn_index": 16,
+        "orientation": "left",
+        "bbox": [
+          788,
+          476,
+          872,
+          534
+        ],
+        "quad": [
+          [
+            788,
+            476
+          ],
+          [
+            788,
+            534
+          ],
+          [
+            872,
+            534
+          ],
+          [
+            872,
+            476
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_16",
+          "left": 788,
+          "top": 476,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_17",
+        "player": "left_opponent",
+        "turn_index": 17,
+        "orientation": "left",
+        "bbox": [
+          788,
+          538,
+          872,
+          596
+        ],
+        "quad": [
+          [
+            788,
+            538
+          ],
+          [
+            788,
+            596
+          ],
+          [
+            872,
+            596
+          ],
+          [
+            872,
+            538
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_17",
+          "left": 788,
+          "top": 538,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_left_opponent_18",
+        "player": "left_opponent",
+        "turn_index": 18,
+        "orientation": "left",
+        "bbox": [
+          788,
+          600,
+          872,
+          658
+        ],
+        "quad": [
+          [
+            788,
+            600
+          ],
+          [
+            788,
+            658
+          ],
+          [
+            872,
+            658
+          ],
+          [
+            872,
+            600
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_left_opponent_18",
+          "left": 788,
+          "top": 600,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_01",
+        "player": "top_opponent",
+        "turn_index": 1,
+        "orientation": "top",
+        "bbox": [
+          802,
+          242,
+          860,
+          312
+        ],
+        "quad": [
+          [
+            802,
+            242
+          ],
+          [
+            802,
+            312
+          ],
+          [
+            860,
+            312
+          ],
+          [
+            860,
+            242
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_01",
+          "left": 802,
+          "top": 242,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_02",
+        "player": "top_opponent",
+        "turn_index": 2,
+        "orientation": "top",
+        "bbox": [
+          866,
+          242,
+          924,
+          312
+        ],
+        "quad": [
+          [
+            866,
+            242
+          ],
+          [
+            866,
+            312
+          ],
+          [
+            924,
+            312
+          ],
+          [
+            924,
+            242
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_02",
+          "left": 866,
+          "top": 242,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_03",
+        "player": "top_opponent",
+        "turn_index": 3,
+        "orientation": "top",
+        "bbox": [
+          930,
+          242,
+          988,
+          312
+        ],
+        "quad": [
+          [
+            930,
+            242
+          ],
+          [
+            930,
+            312
+          ],
+          [
+            988,
+            312
+          ],
+          [
+            988,
+            242
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_03",
+          "left": 930,
+          "top": 242,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_04",
+        "player": "top_opponent",
+        "turn_index": 4,
+        "orientation": "top",
+        "bbox": [
+          994,
+          242,
+          1052,
+          312
+        ],
+        "quad": [
+          [
+            994,
+            242
+          ],
+          [
+            994,
+            312
+          ],
+          [
+            1052,
+            312
+          ],
+          [
+            1052,
+            242
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_04",
+          "left": 994,
+          "top": 242,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_05",
+        "player": "top_opponent",
+        "turn_index": 5,
+        "orientation": "top",
+        "bbox": [
+          1058,
+          242,
+          1116,
+          312
+        ],
+        "quad": [
+          [
+            1058,
+            242
+          ],
+          [
+            1058,
+            312
+          ],
+          [
+            1116,
+            312
+          ],
+          [
+            1116,
+            242
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_05",
+          "left": 1058,
+          "top": 242,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_06",
+        "player": "top_opponent",
+        "turn_index": 6,
+        "orientation": "top",
+        "bbox": [
+          1122,
+          242,
+          1180,
+          312
+        ],
+        "quad": [
+          [
+            1122,
+            242
+          ],
+          [
+            1122,
+            312
+          ],
+          [
+            1180,
+            312
+          ],
+          [
+            1180,
+            242
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_06",
+          "left": 1122,
+          "top": 242,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_07",
+        "player": "top_opponent",
+        "turn_index": 7,
+        "orientation": "top",
+        "bbox": [
+          802,
+          172,
+          860,
+          242
+        ],
+        "quad": [
+          [
+            802,
+            172
+          ],
+          [
+            802,
+            242
+          ],
+          [
+            860,
+            242
+          ],
+          [
+            860,
+            172
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_07",
+          "left": 802,
+          "top": 172,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_08",
+        "player": "top_opponent",
+        "turn_index": 8,
+        "orientation": "top",
+        "bbox": [
+          866,
+          172,
+          924,
+          242
+        ],
+        "quad": [
+          [
+            866,
+            172
+          ],
+          [
+            866,
+            242
+          ],
+          [
+            924,
+            242
+          ],
+          [
+            924,
+            172
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_08",
+          "left": 866,
+          "top": 172,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_09",
+        "player": "top_opponent",
+        "turn_index": 9,
+        "orientation": "top",
+        "bbox": [
+          930,
+          172,
+          988,
+          242
+        ],
+        "quad": [
+          [
+            930,
+            172
+          ],
+          [
+            930,
+            242
+          ],
+          [
+            988,
+            242
+          ],
+          [
+            988,
+            172
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_09",
+          "left": 930,
+          "top": 172,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_10",
+        "player": "top_opponent",
+        "turn_index": 10,
+        "orientation": "top",
+        "bbox": [
+          994,
+          172,
+          1052,
+          242
+        ],
+        "quad": [
+          [
+            994,
+            172
+          ],
+          [
+            994,
+            242
+          ],
+          [
+            1052,
+            242
+          ],
+          [
+            1052,
+            172
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_10",
+          "left": 994,
+          "top": 172,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_11",
+        "player": "top_opponent",
+        "turn_index": 11,
+        "orientation": "top",
+        "bbox": [
+          1058,
+          172,
+          1116,
+          242
+        ],
+        "quad": [
+          [
+            1058,
+            172
+          ],
+          [
+            1058,
+            242
+          ],
+          [
+            1116,
+            242
+          ],
+          [
+            1116,
+            172
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_11",
+          "left": 1058,
+          "top": 172,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_12",
+        "player": "top_opponent",
+        "turn_index": 12,
+        "orientation": "top",
+        "bbox": [
+          1122,
+          172,
+          1180,
+          242
+        ],
+        "quad": [
+          [
+            1122,
+            172
+          ],
+          [
+            1122,
+            242
+          ],
+          [
+            1180,
+            242
+          ],
+          [
+            1180,
+            172
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_12",
+          "left": 1122,
+          "top": 172,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_13",
+        "player": "top_opponent",
+        "turn_index": 13,
+        "orientation": "top",
+        "bbox": [
+          802,
+          102,
+          860,
+          172
+        ],
+        "quad": [
+          [
+            802,
+            102
+          ],
+          [
+            802,
+            172
+          ],
+          [
+            860,
+            172
+          ],
+          [
+            860,
+            102
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_13",
+          "left": 802,
+          "top": 102,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_14",
+        "player": "top_opponent",
+        "turn_index": 14,
+        "orientation": "top",
+        "bbox": [
+          866,
+          102,
+          924,
+          172
+        ],
+        "quad": [
+          [
+            866,
+            102
+          ],
+          [
+            866,
+            172
+          ],
+          [
+            924,
+            172
+          ],
+          [
+            924,
+            102
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_14",
+          "left": 866,
+          "top": 102,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_15",
+        "player": "top_opponent",
+        "turn_index": 15,
+        "orientation": "top",
+        "bbox": [
+          930,
+          102,
+          988,
+          172
+        ],
+        "quad": [
+          [
+            930,
+            102
+          ],
+          [
+            930,
+            172
+          ],
+          [
+            988,
+            172
+          ],
+          [
+            988,
+            102
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_15",
+          "left": 930,
+          "top": 102,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_16",
+        "player": "top_opponent",
+        "turn_index": 16,
+        "orientation": "top",
+        "bbox": [
+          994,
+          102,
+          1052,
+          172
+        ],
+        "quad": [
+          [
+            994,
+            102
+          ],
+          [
+            994,
+            172
+          ],
+          [
+            1052,
+            172
+          ],
+          [
+            1052,
+            102
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_16",
+          "left": 994,
+          "top": 102,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_17",
+        "player": "top_opponent",
+        "turn_index": 17,
+        "orientation": "top",
+        "bbox": [
+          1058,
+          102,
+          1116,
+          172
+        ],
+        "quad": [
+          [
+            1058,
+            102
+          ],
+          [
+            1058,
+            172
+          ],
+          [
+            1116,
+            172
+          ],
+          [
+            1116,
+            102
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_17",
+          "left": 1058,
+          "top": 102,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_top_opponent_18",
+        "player": "top_opponent",
+        "turn_index": 18,
+        "orientation": "top",
+        "bbox": [
+          1122,
+          102,
+          1180,
+          172
+        ],
+        "quad": [
+          [
+            1122,
+            102
+          ],
+          [
+            1122,
+            172
+          ],
+          [
+            1180,
+            172
+          ],
+          [
+            1180,
+            102
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_top_opponent_18",
+          "left": 1122,
+          "top": 102,
+          "width": 58,
+          "height": 70
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_01",
+        "player": "right_opponent",
+        "turn_index": 1,
+        "orientation": "right",
+        "bbox": [
+          1148,
+          290,
+          1232,
+          348
+        ],
+        "quad": [
+          [
+            1148,
+            290
+          ],
+          [
+            1148,
+            348
+          ],
+          [
+            1232,
+            348
+          ],
+          [
+            1232,
+            290
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_01",
+          "left": 1148,
+          "top": 290,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_02",
+        "player": "right_opponent",
+        "turn_index": 2,
+        "orientation": "right",
+        "bbox": [
+          1148,
+          352,
+          1232,
+          410
+        ],
+        "quad": [
+          [
+            1148,
+            352
+          ],
+          [
+            1148,
+            410
+          ],
+          [
+            1232,
+            410
+          ],
+          [
+            1232,
+            352
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_02",
+          "left": 1148,
+          "top": 352,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_03",
+        "player": "right_opponent",
+        "turn_index": 3,
+        "orientation": "right",
+        "bbox": [
+          1148,
+          414,
+          1232,
+          472
+        ],
+        "quad": [
+          [
+            1148,
+            414
+          ],
+          [
+            1148,
+            472
+          ],
+          [
+            1232,
+            472
+          ],
+          [
+            1232,
+            414
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_03",
+          "left": 1148,
+          "top": 414,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_04",
+        "player": "right_opponent",
+        "turn_index": 4,
+        "orientation": "right",
+        "bbox": [
+          1148,
+          476,
+          1232,
+          534
+        ],
+        "quad": [
+          [
+            1148,
+            476
+          ],
+          [
+            1148,
+            534
+          ],
+          [
+            1232,
+            534
+          ],
+          [
+            1232,
+            476
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_04",
+          "left": 1148,
+          "top": 476,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_05",
+        "player": "right_opponent",
+        "turn_index": 5,
+        "orientation": "right",
+        "bbox": [
+          1148,
+          538,
+          1232,
+          596
+        ],
+        "quad": [
+          [
+            1148,
+            538
+          ],
+          [
+            1148,
+            596
+          ],
+          [
+            1232,
+            596
+          ],
+          [
+            1232,
+            538
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_05",
+          "left": 1148,
+          "top": 538,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_06",
+        "player": "right_opponent",
+        "turn_index": 6,
+        "orientation": "right",
+        "bbox": [
+          1148,
+          600,
+          1232,
+          658
+        ],
+        "quad": [
+          [
+            1148,
+            600
+          ],
+          [
+            1148,
+            658
+          ],
+          [
+            1232,
+            658
+          ],
+          [
+            1232,
+            600
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_06",
+          "left": 1148,
+          "top": 600,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_07",
+        "player": "right_opponent",
+        "turn_index": 7,
+        "orientation": "right",
+        "bbox": [
+          1230,
+          290,
+          1314,
+          348
+        ],
+        "quad": [
+          [
+            1230,
+            290
+          ],
+          [
+            1230,
+            348
+          ],
+          [
+            1314,
+            348
+          ],
+          [
+            1314,
+            290
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_07",
+          "left": 1230,
+          "top": 290,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_08",
+        "player": "right_opponent",
+        "turn_index": 8,
+        "orientation": "right",
+        "bbox": [
+          1230,
+          352,
+          1314,
+          410
+        ],
+        "quad": [
+          [
+            1230,
+            352
+          ],
+          [
+            1230,
+            410
+          ],
+          [
+            1314,
+            410
+          ],
+          [
+            1314,
+            352
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_08",
+          "left": 1230,
+          "top": 352,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_09",
+        "player": "right_opponent",
+        "turn_index": 9,
+        "orientation": "right",
+        "bbox": [
+          1230,
+          414,
+          1314,
+          472
+        ],
+        "quad": [
+          [
+            1230,
+            414
+          ],
+          [
+            1230,
+            472
+          ],
+          [
+            1314,
+            472
+          ],
+          [
+            1314,
+            414
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_09",
+          "left": 1230,
+          "top": 414,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_10",
+        "player": "right_opponent",
+        "turn_index": 10,
+        "orientation": "right",
+        "bbox": [
+          1230,
+          476,
+          1314,
+          534
+        ],
+        "quad": [
+          [
+            1230,
+            476
+          ],
+          [
+            1230,
+            534
+          ],
+          [
+            1314,
+            534
+          ],
+          [
+            1314,
+            476
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_10",
+          "left": 1230,
+          "top": 476,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_11",
+        "player": "right_opponent",
+        "turn_index": 11,
+        "orientation": "right",
+        "bbox": [
+          1230,
+          538,
+          1314,
+          596
+        ],
+        "quad": [
+          [
+            1230,
+            538
+          ],
+          [
+            1230,
+            596
+          ],
+          [
+            1314,
+            596
+          ],
+          [
+            1314,
+            538
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_11",
+          "left": 1230,
+          "top": 538,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_12",
+        "player": "right_opponent",
+        "turn_index": 12,
+        "orientation": "right",
+        "bbox": [
+          1230,
+          600,
+          1314,
+          658
+        ],
+        "quad": [
+          [
+            1230,
+            600
+          ],
+          [
+            1230,
+            658
+          ],
+          [
+            1314,
+            658
+          ],
+          [
+            1314,
+            600
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_12",
+          "left": 1230,
+          "top": 600,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_13",
+        "player": "right_opponent",
+        "turn_index": 13,
+        "orientation": "right",
+        "bbox": [
+          1312,
+          290,
+          1396,
+          348
+        ],
+        "quad": [
+          [
+            1312,
+            290
+          ],
+          [
+            1312,
+            348
+          ],
+          [
+            1396,
+            348
+          ],
+          [
+            1396,
+            290
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_13",
+          "left": 1312,
+          "top": 290,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_14",
+        "player": "right_opponent",
+        "turn_index": 14,
+        "orientation": "right",
+        "bbox": [
+          1312,
+          352,
+          1396,
+          410
+        ],
+        "quad": [
+          [
+            1312,
+            352
+          ],
+          [
+            1312,
+            410
+          ],
+          [
+            1396,
+            410
+          ],
+          [
+            1396,
+            352
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_14",
+          "left": 1312,
+          "top": 352,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_15",
+        "player": "right_opponent",
+        "turn_index": 15,
+        "orientation": "right",
+        "bbox": [
+          1312,
+          414,
+          1396,
+          472
+        ],
+        "quad": [
+          [
+            1312,
+            414
+          ],
+          [
+            1312,
+            472
+          ],
+          [
+            1396,
+            472
+          ],
+          [
+            1396,
+            414
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_15",
+          "left": 1312,
+          "top": 414,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_16",
+        "player": "right_opponent",
+        "turn_index": 16,
+        "orientation": "right",
+        "bbox": [
+          1312,
+          476,
+          1396,
+          534
+        ],
+        "quad": [
+          [
+            1312,
+            476
+          ],
+          [
+            1312,
+            534
+          ],
+          [
+            1396,
+            534
+          ],
+          [
+            1396,
+            476
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_16",
+          "left": 1312,
+          "top": 476,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_17",
+        "player": "right_opponent",
+        "turn_index": 17,
+        "orientation": "right",
+        "bbox": [
+          1312,
+          538,
+          1396,
+          596
+        ],
+        "quad": [
+          [
+            1312,
+            538
+          ],
+          [
+            1312,
+            596
+          ],
+          [
+            1396,
+            596
+          ],
+          [
+            1396,
+            538
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_17",
+          "left": 1312,
+          "top": 538,
+          "width": 84,
+          "height": 58
+        }
+      },
+      {
+        "slot_id": "discard_right_opponent_18",
+        "player": "right_opponent",
+        "turn_index": 18,
+        "orientation": "right",
+        "bbox": [
+          1312,
+          600,
+          1396,
+          658
+        ],
+        "quad": [
+          [
+            1312,
+            600
+          ],
+          [
+            1312,
+            658
+          ],
+          [
+            1396,
+            658
+          ],
+          [
+            1396,
+            600
+          ]
+        ],
+        "quad_order": "upper_left,lower_left,lower_right,upper_right",
+        "box": {
+          "name": "discard_right_opponent_18",
+          "left": 1312,
+          "top": 600,
+          "width": 84,
+          "height": 58
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,1186 @@
+{
+  "schema_version": "mahjong-companion-simulator-baseline-v1",
+  "baseline_version": "v1.1",
+  "plugin_version": "1.0.1",
+  "generated_at": "2026-05-05T07:48:20Z",
+  "config": {
+    "games_per_seed": 500,
+    "seed_count": 5,
+    "max_draws_per_game": 70,
+    "risk_deal_in_weight": 1.5,
+    "worker_count": 10,
+    "hero_policies": [
+      "random",
+      "shanten",
+      "companion",
+      "oracle"
+    ],
+    "opponent_policies": [
+      "random",
+      "shanten",
+      "oracle"
+    ]
+  },
+  "matchups": [
+    {
+      "hero_policy": "random",
+      "opponent_policy": "random",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.002,
+          "draw_rate": 0.998,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.0,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.62,
+          "avg_turn_draws": 69.984,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.002,
+          "draw_rate": 0.998,
+          "deal_in_rate": 0.002,
+          "risk_adjusted_score": -0.003,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.48,
+          "avg_turn_draws": 69.902,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 1.0,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.0,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.59,
+          "avg_turn_draws": 70.0,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 1.0,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.0,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.548,
+          "avg_turn_draws": 70.0,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 1.0,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.0,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.592,
+          "avg_turn_draws": 70.0,
+          "tsumo_count": 0,
+          "ron_count": 0
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.0,
+        "win_rate_min": 0.0,
+        "win_rate_max": 0.0,
+        "win_rate_stdev": 0.0,
+        "win_rate_ci95_low": 0.0,
+        "win_rate_ci95_high": 0.0,
+        "deal_in_rate_mean": 0.0004,
+        "deal_in_rate_min": 0.0,
+        "deal_in_rate_max": 0.002,
+        "deal_in_rate_stdev": 0.0008944271909999159,
+        "deal_in_rate_ci95_low": 0.0,
+        "deal_in_rate_ci95_high": 0.001184,
+        "risk_adjusted_score_mean": -0.0006000000000000001,
+        "risk_adjusted_score_min": -0.003,
+        "risk_adjusted_score_max": 0.0,
+        "risk_adjusted_score_stdev": 0.0013416407864998738,
+        "risk_adjusted_score_ci95_low": -0.001776,
+        "risk_adjusted_score_ci95_high": 0.0005759999999999999
+      }
+    },
+    {
+      "hero_policy": "random",
+      "opponent_policy": "shanten",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.758,
+          "draw_rate": 0.242,
+          "deal_in_rate": 0.176,
+          "risk_adjusted_score": -0.264,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.562,
+          "avg_turn_draws": 53.064,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.77,
+          "draw_rate": 0.23,
+          "deal_in_rate": 0.19,
+          "risk_adjusted_score": -0.28500000000000003,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.51,
+          "avg_turn_draws": 52.842,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.774,
+          "draw_rate": 0.226,
+          "deal_in_rate": 0.236,
+          "risk_adjusted_score": -0.354,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.582,
+          "avg_turn_draws": 52.384,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.812,
+          "draw_rate": 0.188,
+          "deal_in_rate": 0.226,
+          "risk_adjusted_score": -0.339,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.614,
+          "avg_turn_draws": 52.468,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.744,
+          "draw_rate": 0.256,
+          "deal_in_rate": 0.228,
+          "risk_adjusted_score": -0.342,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.58,
+          "avg_turn_draws": 53.468,
+          "tsumo_count": 0,
+          "ron_count": 0
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.0,
+        "win_rate_min": 0.0,
+        "win_rate_max": 0.0,
+        "win_rate_stdev": 0.0,
+        "win_rate_ci95_low": 0.0,
+        "win_rate_ci95_high": 0.0,
+        "deal_in_rate_mean": 0.2112,
+        "deal_in_rate_min": 0.176,
+        "deal_in_rate_max": 0.236,
+        "deal_in_rate_stdev": 0.026480181268261745,
+        "deal_in_rate_ci95_low": 0.18798909773403885,
+        "deal_in_rate_ci95_high": 0.23441090226596115,
+        "risk_adjusted_score_mean": -0.3168,
+        "risk_adjusted_score_min": -0.354,
+        "risk_adjusted_score_max": -0.264,
+        "risk_adjusted_score_stdev": 0.039720271902392607,
+        "risk_adjusted_score_ci95_low": -0.3516163533989417,
+        "risk_adjusted_score_ci95_high": -0.28198364660105835
+      }
+    },
+    {
+      "hero_policy": "random",
+      "opponent_policy": "oracle",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.844,
+          "draw_rate": 0.156,
+          "deal_in_rate": 0.218,
+          "risk_adjusted_score": -0.327,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.608,
+          "avg_turn_draws": 49.61,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.85,
+          "draw_rate": 0.15,
+          "deal_in_rate": 0.214,
+          "risk_adjusted_score": -0.321,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.584,
+          "avg_turn_draws": 50.324,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.848,
+          "draw_rate": 0.152,
+          "deal_in_rate": 0.224,
+          "risk_adjusted_score": -0.336,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.546,
+          "avg_turn_draws": 50.094,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.844,
+          "draw_rate": 0.156,
+          "deal_in_rate": 0.234,
+          "risk_adjusted_score": -0.35100000000000003,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.568,
+          "avg_turn_draws": 49.482,
+          "tsumo_count": 0,
+          "ron_count": 0
+        },
+        {
+          "win_rate": 0.0,
+          "opponent_win_rate": 0.854,
+          "draw_rate": 0.146,
+          "deal_in_rate": 0.25,
+          "risk_adjusted_score": -0.375,
+          "tenpai_or_win_rate": 0.0,
+          "avg_final_shanten": 3.622,
+          "avg_turn_draws": 50.478,
+          "tsumo_count": 0,
+          "ron_count": 0
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.0,
+        "win_rate_min": 0.0,
+        "win_rate_max": 0.0,
+        "win_rate_stdev": 0.0,
+        "win_rate_ci95_low": 0.0,
+        "win_rate_ci95_high": 0.0,
+        "deal_in_rate_mean": 0.22800000000000004,
+        "deal_in_rate_min": 0.214,
+        "deal_in_rate_max": 0.25,
+        "deal_in_rate_stdev": 0.01442220510185596,
+        "deal_in_rate_ci95_low": 0.2153583798506679,
+        "deal_in_rate_ci95_high": 0.24064162014933216,
+        "risk_adjusted_score_mean": -0.34199999999999997,
+        "risk_adjusted_score_min": -0.375,
+        "risk_adjusted_score_max": -0.321,
+        "risk_adjusted_score_stdev": 0.021633307652783935,
+        "risk_adjusted_score_ci95_low": -0.36096243022399815,
+        "risk_adjusted_score_ci95_high": -0.3230375697760018
+      }
+    },
+    {
+      "hero_policy": "shanten",
+      "opponent_policy": "random",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.396,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.604,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.396,
+          "tenpai_or_win_rate": 0.608,
+          "avg_final_shanten": 0.414,
+          "avg_turn_draws": 61.368,
+          "tsumo_count": 37,
+          "ron_count": 161
+        },
+        {
+          "win_rate": 0.438,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.562,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.438,
+          "tenpai_or_win_rate": 0.644,
+          "avg_final_shanten": 0.382,
+          "avg_turn_draws": 62.098,
+          "tsumo_count": 57,
+          "ron_count": 162
+        },
+        {
+          "win_rate": 0.416,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.584,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.416,
+          "tenpai_or_win_rate": 0.644,
+          "avg_final_shanten": 0.382,
+          "avg_turn_draws": 60.836,
+          "tsumo_count": 44,
+          "ron_count": 164
+        },
+        {
+          "win_rate": 0.474,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.526,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.474,
+          "tenpai_or_win_rate": 0.702,
+          "avg_final_shanten": 0.326,
+          "avg_turn_draws": 60.756,
+          "tsumo_count": 53,
+          "ron_count": 184
+        },
+        {
+          "win_rate": 0.442,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.558,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.442,
+          "tenpai_or_win_rate": 0.662,
+          "avg_final_shanten": 0.368,
+          "avg_turn_draws": 61.12,
+          "tsumo_count": 48,
+          "ron_count": 173
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.4332,
+        "win_rate_min": 0.396,
+        "win_rate_max": 0.474,
+        "win_rate_stdev": 0.02934620929523947,
+        "win_rate_ci95_low": 0.40747691340449205,
+        "win_rate_ci95_high": 0.4589230865955079,
+        "deal_in_rate_mean": 0.0,
+        "deal_in_rate_min": 0.0,
+        "deal_in_rate_max": 0.0,
+        "deal_in_rate_stdev": 0.0,
+        "deal_in_rate_ci95_low": 0.0,
+        "deal_in_rate_ci95_high": 0.0,
+        "risk_adjusted_score_mean": 0.4332,
+        "risk_adjusted_score_min": 0.396,
+        "risk_adjusted_score_max": 0.474,
+        "risk_adjusted_score_stdev": 0.02934620929523947,
+        "risk_adjusted_score_ci95_low": 0.40747691340449205,
+        "risk_adjusted_score_ci95_high": 0.4589230865955079
+      }
+    },
+    {
+      "hero_policy": "shanten",
+      "opponent_policy": "shanten",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.232,
+          "opponent_win_rate": 0.632,
+          "draw_rate": 0.136,
+          "deal_in_rate": 0.182,
+          "risk_adjusted_score": -0.04100000000000001,
+          "tenpai_or_win_rate": 0.274,
+          "avg_final_shanten": 0.76,
+          "avg_turn_draws": 49.38,
+          "tsumo_count": 25,
+          "ron_count": 91
+        },
+        {
+          "win_rate": 0.216,
+          "opponent_win_rate": 0.628,
+          "draw_rate": 0.156,
+          "deal_in_rate": 0.158,
+          "risk_adjusted_score": -0.02099999999999999,
+          "tenpai_or_win_rate": 0.288,
+          "avg_final_shanten": 0.73,
+          "avg_turn_draws": 49.862,
+          "tsumo_count": 36,
+          "ron_count": 72
+        },
+        {
+          "win_rate": 0.246,
+          "opponent_win_rate": 0.606,
+          "draw_rate": 0.148,
+          "deal_in_rate": 0.124,
+          "risk_adjusted_score": 0.06,
+          "tenpai_or_win_rate": 0.318,
+          "avg_final_shanten": 0.722,
+          "avg_turn_draws": 49.252,
+          "tsumo_count": 25,
+          "ron_count": 98
+        },
+        {
+          "win_rate": 0.264,
+          "opponent_win_rate": 0.624,
+          "draw_rate": 0.112,
+          "deal_in_rate": 0.164,
+          "risk_adjusted_score": 0.018000000000000016,
+          "tenpai_or_win_rate": 0.318,
+          "avg_final_shanten": 0.686,
+          "avg_turn_draws": 48.176,
+          "tsumo_count": 29,
+          "ron_count": 103
+        },
+        {
+          "win_rate": 0.272,
+          "opponent_win_rate": 0.576,
+          "draw_rate": 0.152,
+          "deal_in_rate": 0.164,
+          "risk_adjusted_score": 0.026000000000000023,
+          "tenpai_or_win_rate": 0.344,
+          "avg_final_shanten": 0.67,
+          "avg_turn_draws": 49.23,
+          "tsumo_count": 33,
+          "ron_count": 103
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.246,
+        "win_rate_min": 0.216,
+        "win_rate_max": 0.272,
+        "win_rate_stdev": 0.0228910462845192,
+        "win_rate_ci95_low": 0.22593511325723464,
+        "win_rate_ci95_high": 0.26606488674276535,
+        "deal_in_rate_mean": 0.1584,
+        "deal_in_rate_min": 0.124,
+        "deal_in_rate_max": 0.182,
+        "deal_in_rate_stdev": 0.021232051243344343,
+        "deal_in_rate_ci95_low": 0.1397892865263043,
+        "deal_in_rate_ci95_high": 0.17701071347369574,
+        "risk_adjusted_score_mean": 0.008400000000000008,
+        "risk_adjusted_score_min": -0.04100000000000001,
+        "risk_adjusted_score_max": 0.06,
+        "risk_adjusted_score_stdev": 0.03990363391973217,
+        "risk_adjusted_score_ci95_low": -0.0265770772935647,
+        "risk_adjusted_score_ci95_high": 0.043377077293564714
+      }
+    },
+    {
+      "hero_policy": "shanten",
+      "opponent_policy": "oracle",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.198,
+          "opponent_win_rate": 0.712,
+          "draw_rate": 0.09,
+          "deal_in_rate": 0.218,
+          "risk_adjusted_score": -0.129,
+          "tenpai_or_win_rate": 0.224,
+          "avg_final_shanten": 0.81,
+          "avg_turn_draws": 47.044,
+          "tsumo_count": 20,
+          "ron_count": 79
+        },
+        {
+          "win_rate": 0.196,
+          "opponent_win_rate": 0.716,
+          "draw_rate": 0.088,
+          "deal_in_rate": 0.206,
+          "risk_adjusted_score": -0.11299999999999999,
+          "tenpai_or_win_rate": 0.23,
+          "avg_final_shanten": 0.814,
+          "avg_turn_draws": 47.302,
+          "tsumo_count": 26,
+          "ron_count": 72
+        },
+        {
+          "win_rate": 0.232,
+          "opponent_win_rate": 0.692,
+          "draw_rate": 0.076,
+          "deal_in_rate": 0.178,
+          "risk_adjusted_score": -0.035,
+          "tenpai_or_win_rate": 0.276,
+          "avg_final_shanten": 0.76,
+          "avg_turn_draws": 46.478,
+          "tsumo_count": 20,
+          "ron_count": 96
+        },
+        {
+          "win_rate": 0.23,
+          "opponent_win_rate": 0.666,
+          "draw_rate": 0.104,
+          "deal_in_rate": 0.188,
+          "risk_adjusted_score": -0.05200000000000002,
+          "tenpai_or_win_rate": 0.28,
+          "avg_final_shanten": 0.738,
+          "avg_turn_draws": 45.89,
+          "tsumo_count": 22,
+          "ron_count": 93
+        },
+        {
+          "win_rate": 0.22,
+          "opponent_win_rate": 0.676,
+          "draw_rate": 0.104,
+          "deal_in_rate": 0.184,
+          "risk_adjusted_score": -0.05600000000000002,
+          "tenpai_or_win_rate": 0.264,
+          "avg_final_shanten": 0.718,
+          "avg_turn_draws": 47.664,
+          "tsumo_count": 35,
+          "ron_count": 75
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.2152,
+        "win_rate_min": 0.196,
+        "win_rate_max": 0.232,
+        "win_rate_stdev": 0.01723948955160796,
+        "win_rate_ci95_low": 0.20008892115036123,
+        "win_rate_ci95_high": 0.23031107884963878,
+        "deal_in_rate_mean": 0.1948,
+        "deal_in_rate_min": 0.178,
+        "deal_in_rate_max": 0.218,
+        "deal_in_rate_stdev": 0.01664932431061393,
+        "deal_in_rate_ci95_low": 0.18020622379231477,
+        "deal_in_rate_ci95_high": 0.20939377620768523,
+        "risk_adjusted_score_mean": -0.077,
+        "risk_adjusted_score_min": -0.129,
+        "risk_adjusted_score_max": -0.035,
+        "risk_adjusted_score_stdev": 0.04132190702278876,
+        "risk_adjusted_score_ci95_low": -0.1132202484806496,
+        "risk_adjusted_score_ci95_high": -0.040779751519350406
+      }
+    },
+    {
+      "hero_policy": "companion",
+      "opponent_policy": "random",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.492,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.508,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.492,
+          "tenpai_or_win_rate": 0.698,
+          "avg_final_shanten": 0.324,
+          "avg_turn_draws": 59.718,
+          "tsumo_count": 57,
+          "ron_count": 189
+        },
+        {
+          "win_rate": 0.534,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.466,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.534,
+          "tenpai_or_win_rate": 0.74,
+          "avg_final_shanten": 0.284,
+          "avg_turn_draws": 59.98,
+          "tsumo_count": 62,
+          "ron_count": 205
+        },
+        {
+          "win_rate": 0.548,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.452,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.548,
+          "tenpai_or_win_rate": 0.718,
+          "avg_final_shanten": 0.296,
+          "avg_turn_draws": 58.534,
+          "tsumo_count": 57,
+          "ron_count": 217
+        },
+        {
+          "win_rate": 0.58,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.42,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.58,
+          "tenpai_or_win_rate": 0.772,
+          "avg_final_shanten": 0.25,
+          "avg_turn_draws": 58.264,
+          "tsumo_count": 63,
+          "ron_count": 227
+        },
+        {
+          "win_rate": 0.576,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.424,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.576,
+          "tenpai_or_win_rate": 0.738,
+          "avg_final_shanten": 0.288,
+          "avg_turn_draws": 58.45,
+          "tsumo_count": 66,
+          "ron_count": 222
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.546,
+        "win_rate_min": 0.492,
+        "win_rate_max": 0.58,
+        "win_rate_stdev": 0.03577708763999662,
+        "win_rate_ci95_low": 0.5146400000000001,
+        "win_rate_ci95_high": 0.57736,
+        "deal_in_rate_mean": 0.0,
+        "deal_in_rate_min": 0.0,
+        "deal_in_rate_max": 0.0,
+        "deal_in_rate_stdev": 0.0,
+        "deal_in_rate_ci95_low": 0.0,
+        "deal_in_rate_ci95_high": 0.0,
+        "risk_adjusted_score_mean": 0.546,
+        "risk_adjusted_score_min": 0.492,
+        "risk_adjusted_score_max": 0.58,
+        "risk_adjusted_score_stdev": 0.03577708763999662,
+        "risk_adjusted_score_ci95_low": 0.5146400000000001,
+        "risk_adjusted_score_ci95_high": 0.57736
+      }
+    },
+    {
+      "hero_policy": "companion",
+      "opponent_policy": "shanten",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.274,
+          "opponent_win_rate": 0.608,
+          "draw_rate": 0.118,
+          "deal_in_rate": 0.118,
+          "risk_adjusted_score": 0.09700000000000003,
+          "tenpai_or_win_rate": 0.318,
+          "avg_final_shanten": 0.678,
+          "avg_turn_draws": 48.88,
+          "tsumo_count": 34,
+          "ron_count": 103
+        },
+        {
+          "win_rate": 0.248,
+          "opponent_win_rate": 0.598,
+          "draw_rate": 0.154,
+          "deal_in_rate": 0.136,
+          "risk_adjusted_score": 0.043999999999999984,
+          "tenpai_or_win_rate": 0.322,
+          "avg_final_shanten": 0.638,
+          "avg_turn_draws": 49.624,
+          "tsumo_count": 35,
+          "ron_count": 89
+        },
+        {
+          "win_rate": 0.304,
+          "opponent_win_rate": 0.566,
+          "draw_rate": 0.13,
+          "deal_in_rate": 0.14,
+          "risk_adjusted_score": 0.09399999999999997,
+          "tenpai_or_win_rate": 0.368,
+          "avg_final_shanten": 0.642,
+          "avg_turn_draws": 48.212,
+          "tsumo_count": 27,
+          "ron_count": 125
+        },
+        {
+          "win_rate": 0.312,
+          "opponent_win_rate": 0.58,
+          "draw_rate": 0.108,
+          "deal_in_rate": 0.144,
+          "risk_adjusted_score": 0.09600000000000003,
+          "tenpai_or_win_rate": 0.376,
+          "avg_final_shanten": 0.618,
+          "avg_turn_draws": 48.412,
+          "tsumo_count": 36,
+          "ron_count": 120
+        },
+        {
+          "win_rate": 0.308,
+          "opponent_win_rate": 0.568,
+          "draw_rate": 0.124,
+          "deal_in_rate": 0.15,
+          "risk_adjusted_score": 0.08300000000000002,
+          "tenpai_or_win_rate": 0.372,
+          "avg_final_shanten": 0.624,
+          "avg_turn_draws": 48.332,
+          "tsumo_count": 34,
+          "ron_count": 120
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.2892,
+        "win_rate_min": 0.248,
+        "win_rate_max": 0.312,
+        "win_rate_stdev": 0.027480902459708266,
+        "win_rate_ci95_low": 0.26511192693468405,
+        "win_rate_ci95_high": 0.313288073065316,
+        "deal_in_rate_mean": 0.1376,
+        "deal_in_rate_min": 0.118,
+        "deal_in_rate_max": 0.15,
+        "deal_in_rate_stdev": 0.012116104984688767,
+        "deal_in_rate_ci95_low": 0.12697976572763106,
+        "deal_in_rate_ci95_high": 0.14822023427236894,
+        "risk_adjusted_score_mean": 0.08280000000000001,
+        "risk_adjusted_score_min": 0.043999999999999984,
+        "risk_adjusted_score_max": 0.09700000000000003,
+        "risk_adjusted_score_stdev": 0.022398660674245695,
+        "risk_adjusted_score_ci95_low": 0.06316670827395468,
+        "risk_adjusted_score_ci95_high": 0.10243329172604534
+      }
+    },
+    {
+      "hero_policy": "companion",
+      "opponent_policy": "oracle",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.248,
+          "opponent_win_rate": 0.67,
+          "draw_rate": 0.082,
+          "deal_in_rate": 0.174,
+          "risk_adjusted_score": -0.013000000000000012,
+          "tenpai_or_win_rate": 0.278,
+          "avg_final_shanten": 0.744,
+          "avg_turn_draws": 46.282,
+          "tsumo_count": 28,
+          "ron_count": 96
+        },
+        {
+          "win_rate": 0.228,
+          "opponent_win_rate": 0.69,
+          "draw_rate": 0.082,
+          "deal_in_rate": 0.188,
+          "risk_adjusted_score": -0.05400000000000002,
+          "tenpai_or_win_rate": 0.262,
+          "avg_final_shanten": 0.708,
+          "avg_turn_draws": 47.186,
+          "tsumo_count": 30,
+          "ron_count": 84
+        },
+        {
+          "win_rate": 0.29,
+          "opponent_win_rate": 0.634,
+          "draw_rate": 0.076,
+          "deal_in_rate": 0.146,
+          "risk_adjusted_score": 0.07100000000000001,
+          "tenpai_or_win_rate": 0.322,
+          "avg_final_shanten": 0.688,
+          "avg_turn_draws": 45.972,
+          "tsumo_count": 34,
+          "ron_count": 111
+        },
+        {
+          "win_rate": 0.278,
+          "opponent_win_rate": 0.648,
+          "draw_rate": 0.074,
+          "deal_in_rate": 0.16,
+          "risk_adjusted_score": 0.038000000000000034,
+          "tenpai_or_win_rate": 0.298,
+          "avg_final_shanten": 0.69,
+          "avg_turn_draws": 45.242,
+          "tsumo_count": 35,
+          "ron_count": 104
+        },
+        {
+          "win_rate": 0.28,
+          "opponent_win_rate": 0.64,
+          "draw_rate": 0.08,
+          "deal_in_rate": 0.168,
+          "risk_adjusted_score": 0.028000000000000025,
+          "tenpai_or_win_rate": 0.324,
+          "avg_final_shanten": 0.662,
+          "avg_turn_draws": 46.39,
+          "tsumo_count": 35,
+          "ron_count": 105
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.26480000000000004,
+        "win_rate_min": 0.228,
+        "win_rate_max": 0.29,
+        "win_rate_stdev": 0.025868900247208036,
+        "win_rate_ci95_low": 0.24212490917328006,
+        "win_rate_ci95_high": 0.28747509082672,
+        "deal_in_rate_mean": 0.1672,
+        "deal_in_rate_min": 0.146,
+        "deal_in_rate_max": 0.188,
+        "deal_in_rate_stdev": 0.01565886330485071,
+        "deal_in_rate_ci95_low": 0.1534744011423909,
+        "deal_in_rate_ci95_high": 0.1809255988576091,
+        "risk_adjusted_score_mean": 0.014000000000000007,
+        "risk_adjusted_score_min": -0.05400000000000002,
+        "risk_adjusted_score_max": 0.07100000000000001,
+        "risk_adjusted_score_stdev": 0.04840970976983855,
+        "risk_adjusted_score_ci95_low": -0.02843298151202671,
+        "risk_adjusted_score_ci95_high": 0.05643298151202672
+      }
+    },
+    {
+      "hero_policy": "oracle",
+      "opponent_policy": "random",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.496,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.504,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.496,
+          "tenpai_or_win_rate": 0.706,
+          "avg_final_shanten": 0.316,
+          "avg_turn_draws": 59.732,
+          "tsumo_count": 55,
+          "ron_count": 193
+        },
+        {
+          "win_rate": 0.53,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.47,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.53,
+          "tenpai_or_win_rate": 0.74,
+          "avg_final_shanten": 0.292,
+          "avg_turn_draws": 60.14,
+          "tsumo_count": 68,
+          "ron_count": 197
+        },
+        {
+          "win_rate": 0.532,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.468,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.532,
+          "tenpai_or_win_rate": 0.704,
+          "avg_final_shanten": 0.318,
+          "avg_turn_draws": 58.668,
+          "tsumo_count": 62,
+          "ron_count": 204
+        },
+        {
+          "win_rate": 0.582,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.418,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.582,
+          "tenpai_or_win_rate": 0.788,
+          "avg_final_shanten": 0.232,
+          "avg_turn_draws": 57.984,
+          "tsumo_count": 62,
+          "ron_count": 229
+        },
+        {
+          "win_rate": 0.576,
+          "opponent_win_rate": 0.0,
+          "draw_rate": 0.424,
+          "deal_in_rate": 0.0,
+          "risk_adjusted_score": 0.576,
+          "tenpai_or_win_rate": 0.744,
+          "avg_final_shanten": 0.28,
+          "avg_turn_draws": 58.458,
+          "tsumo_count": 70,
+          "ron_count": 218
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.5432,
+        "win_rate_min": 0.496,
+        "win_rate_max": 0.582,
+        "win_rate_stdev": 0.03573793502708289,
+        "win_rate_ci95_low": 0.511874318778357,
+        "win_rate_ci95_high": 0.574525681221643,
+        "deal_in_rate_mean": 0.0,
+        "deal_in_rate_min": 0.0,
+        "deal_in_rate_max": 0.0,
+        "deal_in_rate_stdev": 0.0,
+        "deal_in_rate_ci95_low": 0.0,
+        "deal_in_rate_ci95_high": 0.0,
+        "risk_adjusted_score_mean": 0.5432,
+        "risk_adjusted_score_min": 0.496,
+        "risk_adjusted_score_max": 0.582,
+        "risk_adjusted_score_stdev": 0.03573793502708289,
+        "risk_adjusted_score_ci95_low": 0.511874318778357,
+        "risk_adjusted_score_ci95_high": 0.574525681221643
+      }
+    },
+    {
+      "hero_policy": "oracle",
+      "opponent_policy": "shanten",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.282,
+          "opponent_win_rate": 0.598,
+          "draw_rate": 0.12,
+          "deal_in_rate": 0.12,
+          "risk_adjusted_score": 0.10199999999999998,
+          "tenpai_or_win_rate": 0.334,
+          "avg_final_shanten": 0.67,
+          "avg_turn_draws": 49.022,
+          "tsumo_count": 32,
+          "ron_count": 109
+        },
+        {
+          "win_rate": 0.24,
+          "opponent_win_rate": 0.604,
+          "draw_rate": 0.156,
+          "deal_in_rate": 0.15,
+          "risk_adjusted_score": 0.015000000000000013,
+          "tenpai_or_win_rate": 0.324,
+          "avg_final_shanten": 0.646,
+          "avg_turn_draws": 49.516,
+          "tsumo_count": 32,
+          "ron_count": 88
+        },
+        {
+          "win_rate": 0.298,
+          "opponent_win_rate": 0.568,
+          "draw_rate": 0.134,
+          "deal_in_rate": 0.14,
+          "risk_adjusted_score": 0.08799999999999997,
+          "tenpai_or_win_rate": 0.362,
+          "avg_final_shanten": 0.642,
+          "avg_turn_draws": 48.206,
+          "tsumo_count": 30,
+          "ron_count": 119
+        },
+        {
+          "win_rate": 0.316,
+          "opponent_win_rate": 0.588,
+          "draw_rate": 0.096,
+          "deal_in_rate": 0.156,
+          "risk_adjusted_score": 0.08200000000000002,
+          "tenpai_or_win_rate": 0.376,
+          "avg_final_shanten": 0.608,
+          "avg_turn_draws": 47.976,
+          "tsumo_count": 34,
+          "ron_count": 124
+        },
+        {
+          "win_rate": 0.324,
+          "opponent_win_rate": 0.554,
+          "draw_rate": 0.122,
+          "deal_in_rate": 0.148,
+          "risk_adjusted_score": 0.10200000000000004,
+          "tenpai_or_win_rate": 0.386,
+          "avg_final_shanten": 0.618,
+          "avg_turn_draws": 48.32,
+          "tsumo_count": 37,
+          "ron_count": 125
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.292,
+        "win_rate_min": 0.24,
+        "win_rate_max": 0.324,
+        "win_rate_stdev": 0.03331666249791537,
+        "win_rate_ci95_low": 0.26279665772552735,
+        "win_rate_ci95_high": 0.3212033422744726,
+        "deal_in_rate_mean": 0.14279999999999998,
+        "deal_in_rate_min": 0.12,
+        "deal_in_rate_max": 0.156,
+        "deal_in_rate_stdev": 0.013971399357258385,
+        "deal_in_rate_ci95_low": 0.13055352850817836,
+        "deal_in_rate_ci95_high": 0.1550464714918216,
+        "risk_adjusted_score_mean": 0.07780000000000001,
+        "risk_adjusted_score_min": 0.015000000000000013,
+        "risk_adjusted_score_max": 0.10200000000000004,
+        "risk_adjusted_score_stdev": 0.036182868874648395,
+        "risk_adjusted_score_ci95_low": 0.04608431706552736,
+        "risk_adjusted_score_ci95_high": 0.10951568293447266
+      }
+    },
+    {
+      "hero_policy": "oracle",
+      "opponent_policy": "oracle",
+      "games_per_seed": 500,
+      "seeds": [
+        100001,
+        107920,
+        115839,
+        123758,
+        131677
+      ],
+      "samples": [
+        {
+          "win_rate": 0.254,
+          "opponent_win_rate": 0.666,
+          "draw_rate": 0.08,
+          "deal_in_rate": 0.168,
+          "risk_adjusted_score": 0.0020000000000000018,
+          "tenpai_or_win_rate": 0.284,
+          "avg_final_shanten": 0.728,
+          "avg_turn_draws": 46.138,
+          "tsumo_count": 22,
+          "ron_count": 105
+        },
+        {
+          "win_rate": 0.232,
+          "opponent_win_rate": 0.694,
+          "draw_rate": 0.074,
+          "deal_in_rate": 0.178,
+          "risk_adjusted_score": -0.035,
+          "tenpai_or_win_rate": 0.264,
+          "avg_final_shanten": 0.716,
+          "avg_turn_draws": 47.01,
+          "tsumo_count": 29,
+          "ron_count": 87
+        },
+        {
+          "win_rate": 0.286,
+          "opponent_win_rate": 0.64,
+          "draw_rate": 0.074,
+          "deal_in_rate": 0.15,
+          "risk_adjusted_score": 0.061,
+          "tenpai_or_win_rate": 0.32,
+          "avg_final_shanten": 0.698,
+          "avg_turn_draws": 45.68,
+          "tsumo_count": 32,
+          "ron_count": 111
+        },
+        {
+          "win_rate": 0.276,
+          "opponent_win_rate": 0.644,
+          "draw_rate": 0.08,
+          "deal_in_rate": 0.168,
+          "risk_adjusted_score": 0.02400000000000002,
+          "tenpai_or_win_rate": 0.302,
+          "avg_final_shanten": 0.68,
+          "avg_turn_draws": 45.36,
+          "tsumo_count": 31,
+          "ron_count": 107
+        },
+        {
+          "win_rate": 0.28,
+          "opponent_win_rate": 0.644,
+          "draw_rate": 0.076,
+          "deal_in_rate": 0.162,
+          "risk_adjusted_score": 0.03700000000000003,
+          "tenpai_or_win_rate": 0.32,
+          "avg_final_shanten": 0.658,
+          "avg_turn_draws": 46.484,
+          "tsumo_count": 34,
+          "ron_count": 106
+        }
+      ],
+      "summary": {
+        "sample_count": 5,
+        "win_rate_mean": 0.2656,
+        "win_rate_min": 0.232,
+        "win_rate_max": 0.286,
+        "win_rate_stdev": 0.0223338308402298,
+        "win_rate_ci95_low": 0.24602353412895986,
+        "win_rate_ci95_high": 0.2851764658710402,
+        "deal_in_rate_mean": 0.1652,
+        "deal_in_rate_min": 0.15,
+        "deal_in_rate_max": 0.178,
+        "deal_in_rate_stdev": 0.010256705123966469,
+        "deal_in_rate_ci95_low": 0.15620960156611513,
+        "deal_in_rate_ci95_high": 0.1741903984338849,
+        "risk_adjusted_score_mean": 0.01780000000000001,
+        "risk_adjusted_score_min": -0.035,
+        "risk_adjusted_score_max": 0.061,
+        "risk_adjusted_score_stdev": 0.03643761792433749,
+        "risk_adjusted_score_ci95_low": -0.01413898032185748,
+        "risk_adjusted_score_ci95_high": 0.0497389803218575
+      }
+    }
+  ],
+  "duration_seconds": 3260.618,
+  "refresh_notes": [
+    {
+      "reason": "Refreshed companion hero matchups after no-pressure discard sorting changed to ukeire-first within equal shanten.",
+      "replaced_matchups": [
+        {
+          "hero_policy": "companion",
+          "opponent_policy": "random"
+        },
+        {
+          "hero_policy": "companion",
+          "opponent_policy": "shanten"
+        },
+        {
+          "hero_policy": "companion",
+          "opponent_policy": "oracle"
+        }
+      ]
+    }
+  ]
+}

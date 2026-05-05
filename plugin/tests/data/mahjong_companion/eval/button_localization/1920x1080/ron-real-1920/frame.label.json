@@ -1,0 +1,27 @@
+{
+  "schema_version": "mahjong-button-localization-label-v1",
+  "image": {
+    "path": "frame.png"
+  },
+  "scene": "in_match",
+  "buttons": [
+    {
+      "button_type": "ron",
+      "bbox": [
+        895,
+        785,
+        1165,
+        895
+      ]
+    },
+    {
+      "button_type": "skip",
+      "bbox": [
+        1130,
+        760,
+        1505,
+        890
+      ]
+    }
+  ]
+}

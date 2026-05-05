@@ -1,0 +1,19 @@
+{
+  "case_id": "review-structured-riichi-window",
+  "session_id": "mahjong-eval-riichi",
+  "candidates": [
+    {
+      "captured_at": "2026-05-01T00:00:00+00:00",
+      "scene": "in_match",
+      "decision_type": "danger_action",
+      "priority": 88,
+      "risk_level": "high",
+      "summary": "当前出现了立直决策点。",
+      "recommended_focus": "riichi_decision",
+      "review_tags": [
+        "riichi_window",
+        "decision_point"
+      ]
+    }
+  ]
+}
