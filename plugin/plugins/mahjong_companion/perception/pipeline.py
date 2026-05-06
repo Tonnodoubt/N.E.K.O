@@ -21,7 +21,6 @@ def analyze_image_path(
     calibration_dir: Path | None = None,
     template_dir: Path | None = None,
     fixture_mode: str = "auto",
-    tile_classifier_config: dict[str, Any] | None = None,
 ) -> tuple[PerceivedGameState, dict[str, Any]]:
     if not image_path.exists():
         raise FileNotFoundError("image not found: %s" % image_path)
@@ -76,7 +75,6 @@ def analyze_image_path(
         metrics=metrics,
         calibration_dir=calibration_dir,
         fixture_mode=fixture_mode,
-        tile_classifier_config=tile_classifier_config,
     )
     debug_payload = {
         "image_path": str(image_path),

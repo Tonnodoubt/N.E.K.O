@@ -9,14 +9,6 @@ from .discard_layout import DiscardSlot, build_discard_layout
 from .discard_quad_finder import DiscardQuadRefinement, refine_discard_slot_quad
 from .roi import collect_region_metrics
 from .tile_templates import TileTemplateMatch, classify_tile_from_templates
-from .vit_tile_classifier import (
-    VitTileClassifierUnavailable,
-    classify_tile_crops,
-    vit_classifier_enabled,
-    vit_device_from_config,
-    vit_model_from_config,
-    vit_top_k_from_config,
-)
 
 
 DEFAULT_MIN_DISCARD_CONFIDENCE = 0.55
@@ -44,18 +36,7 @@ def parse_discards_from_image(
     layout: dict[str, list[DiscardSlot]] | None = None,
     min_confidence: float = DEFAULT_MIN_DISCARD_CONFIDENCE,
     include_empty_detections: bool = False,
-    classifier_config: dict[str, Any] | None = None,
 ) -> DiscardParseResult:
-    vit_result = _parse_discards_with_vit(
-        image,
-        layout=layout,
-        min_confidence=_vit_min_discard_confidence(classifier_config, default=min_confidence),
-        include_empty_detections=include_empty_detections,
-        classifier_config=classifier_config,
-    )
-    if vit_result is not None:
-        return vit_result
-
     if not template_payload:
         return DiscardParseResult(
             analysis_hints={
@@ -218,169 +199,6 @@ def normalize_discard_crop(crop: Image.Image, orientation: str) -> Image.Image:
     return crop
 
 
-def _parse_discards_with_vit(
-    image: Image.Image,
-    *,
-    layout: dict[str, list[DiscardSlot]] | None,
-    min_confidence: float,
-    include_empty_detections: bool,
-    classifier_config: dict[str, Any] | None,
-) -> DiscardParseResult | None:
-    if not vit_classifier_enabled(classifier_config, area="discard"):
-        return None
-
-    layout = layout or build_discard_layout(*image.size)
-    raw_detections: list[dict[str, Any]] = []
-    pending: list[dict[str, Any]] = []
-    crops: list[Image.Image] = []
-    occupied_count = 0
-    for player, slots in layout.items():
-        for slot in slots:
-            slot_metrics = _collect_discard_slot_metrics(image, slot)
-            refinement = refine_discard_slot_quad(image, slot)
-            occupied = is_probably_occupied_discard_slot(slot_metrics) or refinement is not None
-            if occupied:
-                occupied_count += 1
-            detection = _base_detection(
-                slot,
-                slot_metrics=slot_metrics,
-                occupied=occupied,
-                refinement=refinement,
-                source="discard_vit_classifier",
-            )
-            raw_detections.append(detection)
-            if not occupied:
-                if not include_empty_detections:
-                    raw_detections.pop()
-                continue
-
-            crop, selected_refinement = _discard_vit_crop(image, slot, refinement=refinement)
-            pending.append(
-                {
-                    "player": player,
-                    "slot": slot,
-                    "detection": detection,
-                    "refinement": selected_refinement,
-                    "crop_index": len(crops),
-                }
-            )
-            crops.append(crop)
-
-    try:
-        predictions = classify_tile_crops(
-            crops,
-            model=vit_model_from_config(classifier_config),
-            device=vit_device_from_config(classifier_config),
-            top_k=vit_top_k_from_config(classifier_config),
-        )
-    except VitTileClassifierUnavailable:
-        return None
-    except Exception:
-        return None
-
-    discard_piles: dict[str, list[dict[str, Any]]] = {}
-    visible_tiles: list[str] = []
-    confidences: list[float] = []
-    accepted_bboxes: list[list[int]] = []
-    slots_by_player = layout
-    for item in pending:
-        slot = item["slot"]
-        detection = item["detection"]
-        crop_index = int(item["crop_index"])
-        if crop_index >= len(predictions):
-            continue
-        prediction = predictions[crop_index]
-        if prediction is None:
-            continue
-
-        selected_refinement = item["refinement"]
-        detection_quad = selected_refinement.quad if selected_refinement is not None else slot.corners
-        detection_bbox = selected_refinement.bbox if selected_refinement is not None else slot.bbox
-        detection.update(prediction.to_detection_fields())
-        detection.update(
-            {
-                "bbox": detection_bbox,
-                "quad": [[x, y] for x, y in detection_quad],
-                "quad_source": "refined_tile_surface" if selected_refinement is not None else "layout_slot",
-                "vit_model": vit_model_from_config(classifier_config),
-            }
-        )
-        if selected_refinement is not None:
-            owner_slot = _better_refinement_owner(
-                selected_refinement.bbox,
-                slot,
-                slots_by_player.get(slot.player, []),
-            )
-            if owner_slot is not None:
-                detection["rejected_refinement_owner_slot_id"] = owner_slot.slot_id
-                continue
-        if _overlaps_existing_detection(detection_bbox, accepted_bboxes):
-            detection["suppressed_duplicate"] = True
-            continue
-        if prediction.confidence < min_confidence:
-            detection["accepted"] = False
-            detection["rejection_reason"] = "low_confidence"
-            continue
-
-        detection["accepted"] = True
-        discard_item = {
-            "tile": prediction.tile,
-            "player": slot.player,
-            "turn_index": slot.turn_index,
-            "bbox": detection_bbox,
-            "quad": [[x, y] for x, y in detection_quad],
-            "confidence": prediction.confidence,
-            "orientation": slot.orientation,
-            "source": "discard_vit_classifier",
-            "slot_id": slot.slot_id,
-            "quad_source": "refined_tile_surface" if selected_refinement is not None else "layout_slot",
-            "vit_label": prediction.label,
-        }
-        if selected_refinement is not None:
-            discard_item["quad_confidence"] = selected_refinement.confidence
-        discard_piles.setdefault(slot.player, []).append(discard_item)
-        visible_tiles.append(prediction.tile)
-        confidences.append(prediction.confidence)
-        accepted_bboxes.append(list(detection_bbox))
-
-    recognized_count = len(visible_tiles)
-    analysis_confidence = round(sum(confidences) / max(1, len(confidences)), 3) if confidences else 0.0
-    return DiscardParseResult(
-        discard_piles=discard_piles,
-        visible_tiles=visible_tiles,
-        raw_detections=raw_detections,
-        analysis_hints={
-            "discard_parser_source": "vit_classifier",
-            "discard_parser_available": True,
-            "discard_slot_count": sum(len(slots) for slots in layout.values()),
-            "occupied_discard_slot_count": occupied_count,
-            "recognized_discard_tile_count": recognized_count,
-            "discard_analysis_confidence": analysis_confidence,
-            "vit_model": vit_model_from_config(classifier_config),
-            "vit_min_discard_confidence": min_confidence,
-        },
-    )
-
-
-def _discard_vit_crop(
-    image: Image.Image,
-    slot: DiscardSlot,
-    *,
-    refinement: DiscardQuadRefinement | None,
-) -> tuple[Image.Image, DiscardQuadRefinement | None]:
-    if refinement is None:
-        return crop_discard_slot(image, slot, refine=False), None
-    return (
-        crop_discard_quad(
-            image,
-            refinement.quad,
-            output_size=refinement.output_size,
-            orientation=slot.orientation,
-        ),
-        refinement,
-    )
-
-
 def _classify_slot_with_best_crop(
     image: Image.Image,
     slot: DiscardSlot,
@@ -468,16 +286,6 @@ def _float_metric(metrics: dict[str, Any], primary: str, fallback: str) -> float
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
-
-
-def _vit_min_discard_confidence(config: dict[str, Any] | None, *, default: float) -> float:
-    if isinstance(config, dict):
-        value = config.get("discard_min_confidence", config.get("min_confidence", default))
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
-    return default
 
 
 def _template_match_rejection_reason(match: TileTemplateMatch, *, min_confidence: float) -> str:

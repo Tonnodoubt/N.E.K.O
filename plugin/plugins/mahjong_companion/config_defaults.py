@@ -35,24 +35,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "perception": {
             "enabled": True,
             "debug_dump": True,
-            "tile_classifier": {
-                "backend": "vit",
-                "enabled": True,
-                "live_enabled": False,
-                "require_accelerator": True,
-                "hand_enabled": False,
-                "discard_enabled": True,
-                "model": "krmin/mahjong_soul_vision",
-                "device": "auto",
-                "top_k": 3,
-                "min_confidence": 0.65,
-                "min_mean_confidence": 0.70,
-            },
         },
         "decision": {
             "enabled": True,
             "debug_dump": True,
             "preturn_planning_enabled": True,
+            "fast_preturn_advice_enabled": False,
         },
         "narration": {
             "enabled": True,
@@ -73,6 +61,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "overlay": {
             "enabled": True,
             "auto_show_on_bind": True,
+            "screen_marker_enabled": False,
+            "discard_marker_enabled": False,
             "discard_marker_max_age_ms": 1500,
             "discard_marker_poll_interval_ms": 100,
             "discard_marker_region_change_threshold": 10,
@@ -81,6 +71,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
         "game_agent_runtime": {
             "mode": "active",
+        },
+        "temporal_tracker": {
+            "enabled": True,
+            "confirmation_threshold": 2,
+            "region_signature_distance_threshold": 8.0,
         },
     }
 }

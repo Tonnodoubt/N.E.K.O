@@ -366,14 +366,13 @@ def _template_payload_for_domain(profile: CalibrationProfile, domain: str) -> di
 def _template_domain_score(profile: CalibrationProfile, *, domain: str) -> tuple[Any, ...]:
     payload = _template_payload_for_domain(profile, domain)
     text = _profile_template_text(profile, payload)
-    source_is_vit = "vit_labeled" in text or "vit_template_training" in text
-    discard_specialized = "vit-discard" in text or "discard_only" in text
+    discard_specialized = "discard_only" in text
     stored_samples = _coerce_template_int(payload.get("stored_sample_count"), default=0)
     source_samples = _coerce_template_int(payload.get("source_sample_count"), default=0)
     if domain == "discard":
         return (
             profile.enabled,
-            source_is_vit or discard_specialized,
+            discard_specialized,
             stored_samples,
             source_samples,
             profile.confidence,
@@ -382,7 +381,6 @@ def _template_domain_score(profile: CalibrationProfile, *, domain: str) -> tuple
     return (
         profile.enabled,
         not discard_specialized,
-        not source_is_vit,
         profile.confidence,
         stored_samples,
         profile.profile_id,

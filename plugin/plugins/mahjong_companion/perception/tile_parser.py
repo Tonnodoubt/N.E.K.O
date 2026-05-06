@@ -18,14 +18,6 @@ from .riichi_detector import detect_riichi_players
 from .roi import collect_region_metrics
 from .tile_templates import classify_tile_from_templates, extract_tile_signature, is_probably_occupied_hand_slot
 from .tile_templates import _decode_signature, _rms_distance
-from .vit_tile_classifier import (
-    VitTileClassifierUnavailable,
-    classify_tile_crops,
-    vit_classifier_enabled,
-    vit_device_from_config,
-    vit_model_from_config,
-    vit_top_k_from_config,
-)
 
 logger = logging.getLogger(__name__)
 OPPONENT_PLAYERS = {"left_opponent", "top_opponent", "right_opponent"}
@@ -71,7 +63,6 @@ def parse_tiles_from_image(
     metrics: dict[str, dict[str, Any]],
     calibration_dir: Path | None = None,
     fixture_mode: str = "auto",
-    tile_classifier_config: dict[str, Any] | None = None,
 ) -> TileParseResult:
     width, height = image.size
     calibration = resolve_calibration_profile(width, height, calibration_dir=calibration_dir)
@@ -93,32 +84,11 @@ def parse_tiles_from_image(
             base_state=base_state,
         )
 
-    vit_result = _from_vit_classifier(
-        image,
-        calibration=calibration,
-        base_state=base_state,
-        classifier_config=tile_classifier_config,
-    )
-    if vit_result is not None:
-        vit_result = _with_visual_riichi_result(vit_result, image=image)
-        return _with_external_discard_result(vit_result, image_path=image_path, image=image)
-
-    vit_discard_result = _from_vit_discard_classifier(
-        image,
-        calibration=calibration,
-        base_state=base_state,
-        classifier_config=tile_classifier_config,
-    )
-    if vit_discard_result is not None:
-        vit_discard_result = _with_visual_riichi_result(vit_discard_result, image=image)
-        return _with_external_discard_result(vit_discard_result, image_path=image_path, image=image)
-
     template_result = _from_template_profile(
         image_path,
         image,
         calibration=calibration,
         base_state=base_state,
-        classifier_config=tile_classifier_config,
     )
     if template_result is not None:
         template_result = _with_visual_riichi_result(template_result, image=image)
@@ -187,7 +157,6 @@ def _from_template_profile(
     *,
     calibration: CalibrationProfile,
     base_state: str,
-    classifier_config: dict[str, Any] | None = None,
 ) -> TileParseResult | None:
     if not calibration.enabled or not calibration.hand_tile_templates:
         return None
@@ -208,7 +177,7 @@ def _from_template_profile(
         hand_payload=calibration.hand_tile_templates,
     )
     _ = image_path
-    discard_result = parse_discards_from_image(image, discard_templates, classifier_config=classifier_config)
+    discard_result = parse_discards_from_image(image, discard_templates)
     raw_detections.extend(discard_result.raw_detections)
     analysis_confidence = round(sum(confidences) / max(1, len(confidences)), 3) if confidences else 0.0
     reliable_tile_count = len(hand_tiles) >= 10 or len(hand_tiles) in DISCARD_TURN_HAND_COUNTS
@@ -249,286 +218,6 @@ def _from_template_profile(
         raw_detections=raw_detections,
         analysis_hints=analysis_hints,
     )
-
-
-def _from_vit_classifier(
-    image: Image.Image,
-    *,
-    calibration: CalibrationProfile,
-    base_state: str,
-    classifier_config: dict[str, Any] | None,
-) -> TileParseResult | None:
-    if not vit_classifier_enabled(classifier_config, area="hand"):
-        return None
-
-    try:
-        hand_result = _best_vit_hand_result(
-            image,
-            calibration=calibration,
-            classifier_config=classifier_config,
-        )
-    except VitTileClassifierUnavailable as exc:
-        logger.info("mahjong ViT tile classifier unavailable; falling back to templates: %s", exc)
-        return None
-    except Exception as exc:
-        logger.warning("mahjong ViT hand classification failed; falling back to templates: %s", exc)
-        return None
-
-    hand_tiles = hand_result["hand_tiles"]
-    raw_detections = hand_result["raw_detections"]
-    confidences = hand_result["confidences"]
-    selected_layout = hand_result["layout"]
-    analysis_confidence = round(sum(confidences) / max(1, len(confidences)), 3) if confidences else 0.0
-    if not _vit_hand_result_reliable(hand_tiles, analysis_confidence, classifier_config=classifier_config):
-        return None
-
-    discard_templates = _combined_discard_template_payload(
-        discard_payload=calibration.discard_tile_templates,
-        hand_payload=calibration.hand_tile_templates,
-    )
-    discard_result = parse_discards_from_image(
-        image,
-        discard_templates,
-        classifier_config=classifier_config,
-    )
-    tile_level_state = "tile_level_reliable" if analysis_confidence >= _vit_min_mean_confidence(classifier_config) else base_state
-    inferred_meld_count = _infer_meld_count_from_hand_count(len(hand_tiles))
-    analysis_hints = {
-        "analysis_version": "mahjong-core-v1",
-        "tile_level_state": tile_level_state,
-        "tile_level_available": bool(hand_tiles),
-        "analysis_confidence": analysis_confidence,
-        "calibration_profile": calibration.profile_id,
-        "calibration_enabled": calibration.enabled,
-        "tile_parser_source": "vit_classifier",
-        "vit_model": vit_model_from_config(classifier_config),
-        "vit_min_confidence": _vit_min_confidence(classifier_config),
-        "vit_min_mean_confidence": _vit_min_mean_confidence(classifier_config),
-        "hand_slot_count": len(selected_layout["hand"]),
-        "recognized_hand_tile_count": len(hand_tiles),
-        "hand_layout_draw_slot_index": hand_result["draw_slot_index"],
-        "hand_tile_slots": _hand_tile_slots_from_detections(raw_detections, hand_tiles),
-    }
-    if inferred_meld_count:
-        analysis_hints["recognized_meld_group_count"] = inferred_meld_count
-        analysis_hints["post_meld_hand_shape"] = _hand_shape_from_count(len(hand_tiles))
-    analysis_hints.update(discard_result.analysis_hints)
-    if discard_result.visible_tiles:
-        analysis_hints["visible_tiles"] = list(discard_result.visible_tiles)
-        if _discard_state_reliable(discard_result.analysis_hints):
-            analysis_hints["deck_state_complete"] = True
-            analysis_hints["deck_state_source"] = discard_result.analysis_hints.get(
-                "deck_state_source",
-                "discard_parser",
-            )
-
-    return TileParseResult(
-        hand_tiles=hand_tiles,
-        melds=[],
-        dora_indicators=[],
-        riichi_players=[],
-        discard_piles=discard_result.discard_piles,
-        visible_tiles=discard_result.visible_tiles,
-        raw_detections=raw_detections + discard_result.raw_detections,
-        analysis_hints=analysis_hints,
-    )
-
-
-def _from_vit_discard_classifier(
-    image: Image.Image,
-    *,
-    calibration: CalibrationProfile,
-    base_state: str,
-    classifier_config: dict[str, Any] | None,
-) -> TileParseResult | None:
-    if not vit_classifier_enabled(classifier_config, area="discard"):
-        return None
-
-    discard_result = parse_discards_from_image(
-        image,
-        {},
-        classifier_config=classifier_config,
-    )
-    if not discard_result.visible_tiles:
-        return None
-
-    analysis_hints = {
-        "analysis_version": "mahjong-core-v1",
-        "tile_level_state": base_state,
-        "tile_level_available": False,
-        "analysis_confidence": 0.0,
-        "calibration_profile": calibration.profile_id,
-        "calibration_enabled": calibration.enabled,
-        "tile_parser_source": "vit_discard_only",
-        "vit_model": vit_model_from_config(classifier_config),
-        "visible_tiles": list(discard_result.visible_tiles),
-    }
-    analysis_hints.update(discard_result.analysis_hints)
-    if _discard_state_reliable(discard_result.analysis_hints):
-        analysis_hints["deck_state_complete"] = True
-        analysis_hints["deck_state_source"] = "vit_discard_parser"
-
-    return TileParseResult(
-        discard_piles=discard_result.discard_piles,
-        visible_tiles=discard_result.visible_tiles,
-        raw_detections=discard_result.raw_detections,
-        analysis_hints=analysis_hints,
-    )
-
-
-def _best_vit_hand_result(
-    image: Image.Image,
-    *,
-    calibration: CalibrationProfile,
-    classifier_config: dict[str, Any] | None,
-) -> dict[str, Any]:
-    width, height = image.size
-    base_layout = build_hand_layout(width, height, calibration=calibration)
-    all_crops: list[Image.Image] = []
-    candidates = [
-        _prepare_vit_hand_candidate(
-            image,
-            layout=base_layout if draw_slot_index == 14 else build_hand_layout(
-                width,
-                height,
-                calibration=calibration,
-                draw_slot_index=draw_slot_index,
-            ),
-            draw_slot_index=draw_slot_index,
-            all_crops=all_crops,
-        )
-        for draw_slot_index in _candidate_draw_slot_indices()
-    ]
-    predictions = classify_tile_crops(
-        all_crops,
-        model=vit_model_from_config(classifier_config),
-        device=vit_device_from_config(classifier_config),
-        top_k=vit_top_k_from_config(classifier_config),
-    )
-    for candidate in candidates:
-        _finalize_vit_hand_candidate(
-            candidate,
-            predictions=predictions,
-            classifier_config=classifier_config,
-        )
-    return max(candidates, key=_hand_layout_score)
-
-
-def _prepare_vit_hand_candidate(
-    image: Image.Image,
-    *,
-    layout: dict[str, list[TileSlot]],
-    draw_slot_index: int,
-    all_crops: list[Image.Image],
-) -> dict[str, Any]:
-    raw_detections: list[dict[str, Any]] = []
-    crop_refs: list[tuple[int, int]] = []
-    seen_occupied = False
-    for slot, slot_metrics in zip(layout["hand"][:14], _collect_slot_metrics(image, layout["hand"][:14]), strict=True):
-        occupied = is_probably_occupied_hand_slot(slot_metrics)
-        detection = {
-            "slot_id": slot.slot_id,
-            "group": slot.group,
-            "candidate_tile": "",
-            "confidence": 0.0,
-            "box": slot.box.to_dict(),
-            "slot_mean_luma": slot_metrics.get("slot_mean_luma"),
-            "slot_colorful_ratio": slot_metrics.get("slot_colorful_ratio"),
-            "occupied": occupied,
-            "source": "vit_classifier",
-        }
-        raw_detections.append(detection)
-        if not occupied:
-            if seen_occupied:
-                break
-            continue
-
-        seen_occupied = True
-        crop = image.crop((slot.box.left, slot.box.top, slot.box.right, slot.box.bottom))
-        crop_refs.append((len(raw_detections) - 1, len(all_crops)))
-        all_crops.append(crop)
-
-    return {
-        "hand_tiles": [],
-        "raw_detections": raw_detections,
-        "confidences": [],
-        "draw_slot_index": draw_slot_index,
-        "layout": layout,
-        "crop_refs": crop_refs,
-    }
-
-
-def _finalize_vit_hand_candidate(
-    candidate: dict[str, Any],
-    *,
-    predictions: list[Any],
-    classifier_config: dict[str, Any] | None,
-) -> None:
-    hand_tiles: list[str] = []
-    confidences: list[float] = []
-    raw_detections = candidate["raw_detections"]
-    min_confidence = _vit_min_confidence(classifier_config)
-    for detection_index, crop_index in candidate.get("crop_refs", []):
-        if crop_index >= len(predictions):
-            continue
-        prediction = predictions[crop_index]
-        if prediction is None:
-            continue
-        detection = raw_detections[detection_index]
-        detection.update(prediction.to_detection_fields())
-        detection["vit_model"] = vit_model_from_config(classifier_config)
-        if prediction.confidence < min_confidence:
-            detection["accepted"] = False
-            detection["rejection_reason"] = "low_confidence"
-            continue
-        detection["accepted"] = True
-        hand_tiles.append(prediction.tile)
-        confidences.append(prediction.confidence)
-    candidate["hand_tiles"] = hand_tiles
-    candidate["confidences"] = confidences
-    candidate.pop("crop_refs", None)
-
-
-def _vit_hand_result_reliable(
-    hand_tiles: list[str],
-    analysis_confidence: float,
-    *,
-    classifier_config: dict[str, Any] | None,
-) -> bool:
-    if not hand_tiles:
-        return False
-    if _config_bool(classifier_config, "allow_partial", default=False):
-        return analysis_confidence >= _vit_min_confidence(classifier_config)
-    count = len(hand_tiles)
-    reliable_tile_count = count >= 10 or count in DISCARD_TURN_HAND_COUNTS or count in WAITING_HAND_COUNTS
-    return reliable_tile_count and analysis_confidence >= _vit_min_mean_confidence(classifier_config)
-
-
-def _vit_min_confidence(classifier_config: dict[str, Any] | None) -> float:
-    env_value = os.environ.get("MAHJONG_COMPANION_VIT_MIN_CONFIDENCE")
-    if env_value is not None:
-        return _coerce_float(env_value, default=0.65)
-    if isinstance(classifier_config, dict):
-        return _coerce_float(classifier_config.get("min_confidence"), default=0.65)
-    return 0.65
-
-
-def _vit_min_mean_confidence(classifier_config: dict[str, Any] | None) -> float:
-    env_value = os.environ.get("MAHJONG_COMPANION_VIT_MIN_MEAN_CONFIDENCE")
-    if env_value is not None:
-        return _coerce_float(env_value, default=0.70)
-    if isinstance(classifier_config, dict):
-        return _coerce_float(classifier_config.get("min_mean_confidence"), default=0.70)
-    return 0.70
-
-
-def _config_bool(config: dict[str, Any] | None, key: str, *, default: bool) -> bool:
-    if not isinstance(config, dict) or key not in config:
-        return default
-    value = config.get(key)
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() not in {"", "0", "false", "no", "off", "disabled"}
 
 
 def _best_template_hand_result(
@@ -906,7 +595,6 @@ def enrich_perceived_state_with_tiles(
     metrics: dict[str, dict[str, Any]],
     calibration_dir: Path | None = None,
     fixture_mode: str = "auto",
-    tile_classifier_config: dict[str, Any] | None = None,
 ) -> PerceivedGameState:
     parsed = parse_tiles_from_image(
         image_path,
@@ -915,7 +603,6 @@ def enrich_perceived_state_with_tiles(
         metrics=metrics,
         calibration_dir=calibration_dir,
         fixture_mode=fixture_mode,
-        tile_classifier_config=tile_classifier_config,
     )
     payload = perceived.to_dict()
     updates = parsed.to_state_updates()
