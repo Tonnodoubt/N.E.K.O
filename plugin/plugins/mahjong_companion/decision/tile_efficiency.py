@@ -296,7 +296,7 @@ def _estimate_candidate_discards(
             genbutsu_tiles=genbutsu_tiles,
             has_riichi_pressure=has_riichi_pressure,
         )
-        dora_value = _dora_value(tile, dora_tiles)
+        dora_value = _dora_value(tile, dora_tiles, counts=counts)
         defense_score = _discard_defense_score(safety_hint=safety_hint, raw_score=score, dora_value=dora_value)
         strategy_score = _discard_strategy_score(
             strategy_mode=strategy_mode,
@@ -460,7 +460,7 @@ def build_incremental_draw_candidates(
         )
         if safety_hint == "unknown":
             safety_hint = str(source.get("safety_hint", "")).strip() or "unknown"
-        dora_value = _dora_value(tile, dora_tiles)
+        dora_value = _dora_value(tile, dora_tiles, counts=hand_counts)
         defense_score = _discard_defense_score(safety_hint=safety_hint, raw_score=raw_score, dora_value=dora_value)
         strategy_score = _discard_strategy_score(
             strategy_mode=strategy_mode,
@@ -897,8 +897,21 @@ def _discard_defense_score(
     return safety_value * 7.5 + raw_score * 0.25 - dora_value * 0.35
 
 
-def _dora_value(tile: str, dora_tiles: set[str]) -> float:
-    return 1.0 if _normalize_tile(tile) in dora_tiles else 0.0
+def _dora_value(tile: str, dora_tiles: set[str], counts: Counter[str] | None = None) -> float:
+    normalized = _normalize_tile(tile)
+    if not normalized:
+        return 0.0
+    if normalized in dora_tiles:
+        held = (counts or {}).get(normalized, 1)
+        return 1.0 if held <= 1 else (1.5 if held == 2 else 2.0)
+    parsed = _parse_suited_tile(normalized)
+    if parsed is not None:
+        number, suit = parsed
+        for delta in (-1, 1):
+            adj = number + delta
+            if 1 <= adj <= 9 and f"{adj}{suit}" in dora_tiles:
+                return 0.4
+    return 0.0
 
 
 def _remaining_tile_counts(hand_counts: Counter[str], visible_tiles: list[str]) -> list[int]:
@@ -939,8 +952,23 @@ def _derive_attack_defense_bias(
     shanten_estimate: int | None,
     candidate_discards: list[dict[str, Any]],
 ) -> str:
-    if _opponent_riichi_players(state):
+    riichi_players = _opponent_riichi_players(state)
+    riichi_count = len(riichi_players)
+
+    if riichi_count >= 2:
+        if shanten_estimate is None or shanten_estimate >= 2:
+            return "defensive"
         return "slightly_defensive"
+
+    if riichi_count == 1:
+        if shanten_estimate is not None and shanten_estimate <= 0:
+            return "slightly_attack"
+        return "slightly_defensive"
+
+    visible_tile_count = len(state.visible_tiles or [])
+    if visible_tile_count >= 40 and shanten_estimate is not None and shanten_estimate >= 3:
+        return "slightly_defensive"
+
     if shanten_estimate is not None and shanten_estimate <= 1:
         return "slightly_attack"
     return "neutral"
@@ -1079,18 +1107,29 @@ def _tenpai_wait_quality_bonus(counts: Counter[str], discard_tile: str) -> int:
         del after[normalized_discard]
 
     ryanmen = 0
+    seen_pairs: set[tuple[str, str]] = set()
     for tile, count in after.items():
         n, s = _parse_suited_tile(tile) or (None, "")
-        if n is None or n < 2 or n >= 8:
+        if n is None or n >= 9:
             continue
         right = f"{n + 1}{s}"
-        if after.get(right, 0) > 0:
-            ryanmen += 1
+        if after.get(right, 0) > 0 and (tile, right) not in seen_pairs:
+            seen_pairs.add((tile, right))
+            if n >= 2 and n + 1 <= 8:
+                ryanmen += 1
+            else:
+                ryanmen += 1
+
+    pairs = sum(1 for c in after.values() if c >= 2)
 
     if ryanmen >= 2:
         return 3
     if ryanmen == 1:
+        if pairs >= 3:
+            return 3
         return 2
+    if pairs >= 3:
+        return 1
     return -1
 
 
@@ -1215,13 +1254,13 @@ def _defensive_safety_hint(
     if normalized in genbutsu_tiles:
         return "genbutsu"
     if not has_riichi_pressure:
-        return _safety_hint(normalized, counts)
+        return _safety_hint(normalized, counts, visible_tiles=visible_tiles)
 
     if counts.get(normalized, 0) + Counter(visible_tiles).get(normalized, 0) >= 4:
         return "dead"
     if _is_suji_safe(normalized, genbutsu_tiles):
         return "suji"
-    return _safety_hint(normalized, counts)
+    return _safety_hint(normalized, counts, visible_tiles=visible_tiles)
 
 
 def _is_suji_safe(tile: str, genbutsu_tiles: set[str]) -> bool:
@@ -1244,16 +1283,32 @@ def _is_suji_safe(tile: str, genbutsu_tiles: set[str]) -> bool:
     return False
 
 
-def _safety_hint(tile: str, counts: Counter[str]) -> str:
+def _safety_hint(tile: str, counts: Counter[str], visible_tiles: list[str] | None = None) -> str:
     normalized = _normalize_tile(tile)
     if not normalized:
         return "unknown"
+    vis_counter = Counter(visible_tiles or [])
     if _is_honor(normalized):
-        return "high" if counts[normalized] == 1 else "medium"
+        total_seen = counts.get(normalized, 0) + vis_counter.get(normalized, 0)
+        if total_seen >= 4:
+            return "high"
+        if counts[normalized] == 1:
+            return "high"
+        return "medium"
     number, suit = _parse_suited_tile(normalized) or (0, "")
     support = counts.get(f"{number - 1}{suit}", 0) + counts.get(f"{number + 1}{suit}", 0)
+    left_total = counts.get(f"{number - 1}{suit}", 0) + vis_counter.get(f"{number - 1}{suit}", 0)
+    right_total = counts.get(f"{number + 1}{suit}", 0) + vis_counter.get(f"{number + 1}{suit}", 0)
+    left_wall = number - 1 >= 1 and left_total >= 4
+    right_wall = number + 1 <= 9 and right_total >= 4
     if number in {1, 9} and support == 0:
         return "high"
+    if left_wall and right_wall:
+        return "high"
+    if left_wall or right_wall:
+        if support <= 1:
+            return "high"
+        return "medium"
     if support <= 1:
         return "medium"
     return "low"
