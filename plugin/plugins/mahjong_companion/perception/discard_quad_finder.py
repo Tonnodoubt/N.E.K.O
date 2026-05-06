@@ -116,11 +116,36 @@ def _tile_face_mask(crop: Image.Image) -> np.ndarray:
     saturation = max_channel - min_channel
     luma = (red * 30 + green * 59 + blue * 11) / 100.0
 
-    neutral_face = (luma >= 132) & (saturation <= 78)
-    bright_face = (luma >= 176) & (saturation <= 118)
-    orange_back = (red >= 170) & (green >= 95) & (green <= 190) & (blue <= 125) & (red >= blue + 45)
-    table_blue = (blue >= red + 28) & (blue >= green + 8) & (luma <= 125)
-    return (neutral_face | bright_face) & ~orange_back & ~table_blue
+    threshold = _otsu_threshold(luma.ravel())
+    return (luma >= threshold) & (saturation <= 100)
+
+
+def _otsu_threshold(values: np.ndarray) -> float:
+    hist, bin_edges = np.histogram(values, bins=256, range=(0, 256))
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) * 0.5
+    total = int(hist.sum())
+    if total == 0:
+        return 128.0
+    sum_total = float(np.dot(bin_centers, hist))
+    sum_bg = 0.0
+    weight_bg = 0
+    best_threshold = 128.0
+    best_variance = -1.0
+    for i in range(256):
+        weight_bg += int(hist[i])
+        if weight_bg == 0:
+            continue
+        weight_fg = total - weight_bg
+        if weight_fg == 0:
+            break
+        sum_bg += bin_centers[i] * hist[i]
+        mean_bg = sum_bg / weight_bg
+        mean_fg = (sum_total - sum_bg) / weight_fg
+        variance = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
+        if variance > best_variance:
+            best_variance = variance
+            best_threshold = bin_centers[i]
+    return float(best_threshold)
 
 
 def _best_component(

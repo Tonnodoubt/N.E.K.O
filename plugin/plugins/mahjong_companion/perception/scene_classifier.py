@@ -75,6 +75,10 @@ def classify_scene(metrics: dict[str, dict[str, Any]]) -> tuple[str, float, list
         notes.append("player hand strip over active table detected")
         return "in_match", 0.72, notes, roi_hits
 
+    if _looks_like_bright_table_with_hand(full, bottom, hand):
+        notes.append("bright tablecloth with visible hand area detected")
+        return "in_match", 0.70, notes, roi_hits
+
     notes.append("insufficient scene evidence")
     return "unknown", 0.22, notes, roi_hits
 
@@ -146,10 +150,23 @@ def _looks_like_live_table_with_hand(
         and full["mean_luma"] <= 100
         and full["dark_ratio"] >= 0.32
         and full["colorful_ratio"] >= 0.45
-        and center["dark_ratio"] <= 0.3
+        and center["dark_ratio"] <= 0.65
         and center["bright_ratio"] <= 0.22
         and bottom["bright_ratio"] >= 0.12
         and bottom["colorful_ratio"] >= 0.45
+    )
+
+
+def _looks_like_bright_table_with_hand(
+    full: dict[str, Any],
+    bottom: dict[str, Any],
+    hand: dict[str, Any],
+) -> bool:
+    return (
+        full["mean_luma"] >= 100
+        and full["dark_ratio"] <= 0.25
+        and hand["bright_ratio"] >= 0.10
+        and bottom["bright_ratio"] >= 0.10
     )
 
 
