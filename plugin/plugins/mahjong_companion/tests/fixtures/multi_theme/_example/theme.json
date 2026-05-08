@@ -1,0 +1,8 @@
+{
+  "theme_id": "_example",
+  "display_name": "示例（不参与测试）",
+  "is_official": false,
+  "screen_width": 1920,
+  "screen_height": 1080,
+  "notes": "结构示例。folders starting with underscore are skipped by the regression."
+}

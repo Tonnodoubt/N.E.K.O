@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -8,10 +9,13 @@ from PIL import Image
 from .discard_layout import DiscardSlot, build_discard_layout
 from .discard_quad_finder import DiscardQuadRefinement, refine_discard_slot_quad
 from .roi import collect_region_metrics
-from .tile_templates import TileTemplateMatch, classify_tile_from_templates
+from .tile_classifier_dispatch import classify_tiles_batch
+from .tile_classifier_dispatch import _onnx_ready as _onnx_backend_active
+from .tile_templates import TileTemplateMatch
 
 
 DEFAULT_MIN_DISCARD_CONFIDENCE = 0.55
+ONNX_OCCUPANCY_CONFIDENCE = 0.55
 AMBIGUOUS_DISCARD_TEMPLATE_PAIRS = {
     frozenset({"5p", "6p"}),
     frozenset({"6p", "7p"}),
@@ -27,6 +31,22 @@ class DiscardParseResult:
     visible_tiles: list[str] = field(default_factory=list)
     raw_detections: list[dict[str, Any]] = field(default_factory=list)
     analysis_hints: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class _SlotPlan:
+    """Mutable per-slot record threaded through the three batched phases."""
+
+    player: str
+    slot: DiscardSlot
+    slot_siblings: list[DiscardSlot]
+    detection: dict[str, Any]
+    occupied: bool
+    refinement: DiscardQuadRefinement | None = None
+    base_crop: Image.Image | None = None
+    base_match: TileTemplateMatch | None = None
+    refined_crop: Image.Image | None = None
+    refined_match: TileTemplateMatch | None = None
 
 
 def parse_discards_from_image(
@@ -47,6 +67,13 @@ def parse_discards_from_image(
         )
 
     layout = layout or build_discard_layout(*image.size)
+
+    if os.environ.get("MAHJONG_COMPANION_BAND_REFINEMENT", "0") == "1":
+        try:
+            from .tile_detector import refine_discard_layout_with_bands
+            layout = refine_discard_layout_with_bands(image, layout)
+        except Exception:
+            pass
     discard_piles: dict[str, list[dict[str, Any]]] = {}
     visible_tiles: list[str] = []
     raw_detections: list[dict[str, Any]] = []
@@ -54,6 +81,9 @@ def parse_discards_from_image(
     occupied_count = 0
     accepted_bboxes: list[list[int]] = []
 
+    # Phase 1 — discovery: walk every slot, collect metrics + base crops for
+    # occupied ones. No classification yet.
+    plans: list[_SlotPlan] = []
     for player, slots in layout.items():
         for slot in slots:
             slot_metrics = _collect_discard_slot_metrics(image, slot)
@@ -61,79 +91,127 @@ def parse_discards_from_image(
             occupied = is_probably_occupied_discard_slot(slot_metrics) or refinement is not None
             if occupied:
                 occupied_count += 1
-
             detection = _base_detection(
                 slot,
                 slot_metrics=slot_metrics,
                 occupied=occupied,
                 refinement=refinement,
             )
-            if not occupied:
-                if include_empty_detections:
-                    raw_detections.append(detection)
-                continue
-
-            match, selected_refinement = _classify_slot_with_best_crop(
-                image,
-                slot,
-                template_payload,
+            plan = _SlotPlan(
+                player=player,
+                slot=slot,
+                slot_siblings=slots,
+                detection=detection,
+                occupied=occupied,
                 refinement=refinement,
-                min_confidence=min_confidence,
             )
-            if match is None:
-                raw_detections.append(detection)
-                continue
-            detection_quad = selected_refinement.quad if selected_refinement is not None else slot.corners
-            detection_bbox = selected_refinement.bbox if selected_refinement is not None else slot.bbox
-            detection.update(
-                {
-                    "candidate_tile": match.tile,
-                    "confidence": match.confidence,
-                    "template_distance": match.distance,
-                    "runner_up_tile": match.runner_up_tile,
-                    "runner_up_distance": match.runner_up_distance,
-                    "bbox": detection_bbox,
-                    "quad": [[x, y] for x, y in detection_quad],
-                    "quad_source": "refined_tile_surface" if selected_refinement is not None else "layout_slot",
-                }
-            )
-            if selected_refinement is not None:
-                owner_slot = _better_refinement_owner(selected_refinement.bbox, slot, slots)
-                if owner_slot is not None:
-                    detection["rejected_refinement_owner_slot_id"] = owner_slot.slot_id
-                    raw_detections.append(detection)
-                    continue
-            if _overlaps_existing_detection(detection_bbox, accepted_bboxes):
-                detection["suppressed_duplicate"] = True
-                raw_detections.append(detection)
-                continue
-            rejection_reason = _template_match_rejection_reason(match, min_confidence=min_confidence)
-            if rejection_reason:
-                detection["accepted"] = False
-                detection["rejection_reason"] = rejection_reason
-                raw_detections.append(detection)
-                continue
-            raw_detections.append(detection)
+            if occupied:
+                plan.base_crop = crop_discard_slot(image, slot, refine=False)
+            plans.append(plan)
 
-            discard_item = {
-                "tile": match.tile,
-                "player": player,
-                "turn_index": slot.turn_index,
+    # Phase 2 — single batched base classification across all occupied slots.
+    base_targets = [p for p in plans if p.occupied and p.base_crop is not None]
+    if base_targets:
+        base_matches = classify_tiles_batch(
+            [p.base_crop for p in base_targets],
+            template_payload,
+        )
+        for plan, match in zip(base_targets, base_matches, strict=True):
+            plan.base_match = match
+
+    # Phase 3 — single batched refined classification, only for plans where the
+    # base match was rejected and a quad refinement is available.
+    refined_targets = [
+        p for p in base_targets
+        if p.refinement is not None and (p.base_match is None or p.base_match.confidence < min_confidence)
+    ]
+    if refined_targets:
+        for plan in refined_targets:
+            assert plan.refinement is not None  # narrowed by the comprehension above
+            plan.refined_crop = crop_discard_quad(
+                image,
+                plan.refinement.quad,
+                output_size=plan.refinement.output_size,
+                orientation=plan.slot.orientation,
+            )
+        refined_matches = classify_tiles_batch(
+            [p.refined_crop for p in refined_targets],
+            template_payload,
+        )
+        for plan, match in zip(refined_targets, refined_matches, strict=True):
+            plan.refined_match = match
+
+    # Phase 4 — sequential acceptance / rejection pass. Order matches the
+    # original layout iteration so IoU-against-already-accepted bboxes behaves
+    # identically.
+    for plan in plans:
+        slot = plan.slot
+        detection = plan.detection
+        if not plan.occupied:
+            if include_empty_detections:
+                raw_detections.append(detection)
+            continue
+
+        match, selected_refinement = _select_match_from_plan(plan, min_confidence=min_confidence)
+        if match is None:
+            raw_detections.append(detection)
+            continue
+        if _onnx_backend_active() and match.confidence < ONNX_OCCUPANCY_CONFIDENCE:
+            detection["accepted"] = False
+            detection["rejection_reason"] = "onnx_occupancy_gate"
+            raw_detections.append(detection)
+            continue
+        detection_quad = selected_refinement.quad if selected_refinement is not None else slot.corners
+        detection_bbox = selected_refinement.bbox if selected_refinement is not None else slot.bbox
+        detection.update(
+            {
+                "candidate_tile": match.tile,
+                "confidence": match.confidence,
+                "template_distance": match.distance,
+                "runner_up_tile": match.runner_up_tile,
+                "runner_up_distance": match.runner_up_distance,
                 "bbox": detection_bbox,
                 "quad": [[x, y] for x, y in detection_quad],
-                "confidence": match.confidence,
-                "orientation": slot.orientation,
-                "source": "discard_template_profile",
-                "slot_id": slot.slot_id,
                 "quad_source": "refined_tile_surface" if selected_refinement is not None else "layout_slot",
-                "template_distance": match.distance,
             }
-            if selected_refinement is not None:
-                discard_item["quad_confidence"] = selected_refinement.confidence
-            discard_piles.setdefault(player, []).append(discard_item)
-            visible_tiles.append(match.tile)
-            confidences.append(match.confidence)
-            accepted_bboxes.append(list(detection_bbox))
+        )
+        if selected_refinement is not None:
+            owner_slot = _better_refinement_owner(selected_refinement.bbox, slot, plan.slot_siblings)
+            if owner_slot is not None:
+                detection["rejected_refinement_owner_slot_id"] = owner_slot.slot_id
+                raw_detections.append(detection)
+                continue
+        if _overlaps_existing_detection(detection_bbox, accepted_bboxes):
+            detection["suppressed_duplicate"] = True
+            raw_detections.append(detection)
+            continue
+        rejection_reason = _template_match_rejection_reason(match, min_confidence=min_confidence)
+        if rejection_reason:
+            detection["accepted"] = False
+            detection["rejection_reason"] = rejection_reason
+            raw_detections.append(detection)
+            continue
+        raw_detections.append(detection)
+
+        discard_item = {
+            "tile": match.tile,
+            "player": plan.player,
+            "turn_index": slot.turn_index,
+            "bbox": detection_bbox,
+            "quad": [[x, y] for x, y in detection_quad],
+            "confidence": match.confidence,
+            "orientation": slot.orientation,
+            "source": "discard_template_profile",
+            "slot_id": slot.slot_id,
+            "quad_source": "refined_tile_surface" if selected_refinement is not None else "layout_slot",
+            "template_distance": match.distance,
+        }
+        if selected_refinement is not None:
+            discard_item["quad_confidence"] = selected_refinement.confidence
+        discard_piles.setdefault(plan.player, []).append(discard_item)
+        visible_tiles.append(match.tile)
+        confidences.append(match.confidence)
+        accepted_bboxes.append(list(detection_bbox))
 
     recognized_count = len(visible_tiles)
     analysis_confidence = round(sum(confidences) / max(1, len(confidences)), 3) if confidences else 0.0
@@ -199,16 +277,19 @@ def normalize_discard_crop(crop: Image.Image, orientation: str) -> Image.Image:
     return crop
 
 
-def _classify_slot_with_best_crop(
-    image: Image.Image,
-    slot: DiscardSlot,
-    template_payload: dict[str, Any],
+def _select_match_from_plan(
+    plan: _SlotPlan,
     *,
-    refinement: DiscardQuadRefinement | None,
     min_confidence: float,
-):
-    base_crop = crop_discard_slot(image, slot, refine=False)
-    base_match = classify_tile_from_templates(base_crop, template_payload)
+) -> tuple[TileTemplateMatch | None, DiscardQuadRefinement | None]:
+    """Pick the better of plan.base_match / plan.refined_match.
+
+    Mirrors the legacy ``_classify_slot_with_best_crop`` decision tree, but
+    operates on results already produced by the batched classifier so no
+    per-slot ONNX call is issued here.
+    """
+    base_match = plan.base_match
+    refinement = plan.refinement
     if refinement is None:
         return base_match, None
 
@@ -216,13 +297,7 @@ def _classify_slot_with_best_crop(
     if not should_try_refined:
         return base_match, None
 
-    refined_crop = crop_discard_quad(
-        image,
-        refinement.quad,
-        output_size=refinement.output_size,
-        orientation=slot.orientation,
-    )
-    refined_match = classify_tile_from_templates(refined_crop, template_payload)
+    refined_match = plan.refined_match
     if refined_match is None:
         return base_match, None
     if base_match is not None and base_match.confidence > refined_match.confidence:

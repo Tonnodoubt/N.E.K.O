@@ -1,0 +1,84 @@
+{
+  "theme_id": "cartoon_red",
+  "source_image": "screenshot_12.png",
+  "hand_tiles": [
+    "2m",
+    "3m",
+    "4m",
+    "2p",
+    "3p",
+    "4p",
+    "6p",
+    "7p",
+    "2s",
+    "4s",
+    "7s",
+    "9s",
+    "7z",
+    "1m"
+  ],
+  "discard_piles": {
+    "self": [
+      {
+        "tile": "6z",
+        "turn_index": 1
+      },
+      {
+        "tile": "1z",
+        "turn_index": 2
+      },
+      {
+        "tile": "9m",
+        "turn_index": 3
+      },
+      {
+        "tile": "7z",
+        "turn_index": 4
+      }
+    ],
+    "left_opponent": [
+      {
+        "tile": "8s",
+        "turn_index": 7
+      },
+      {
+        "tile": "3z",
+        "turn_index": 8
+      },
+      {
+        "tile": "1m",
+        "turn_index": 9
+      }
+    ],
+    "top_opponent": [
+      {
+        "tile": "7s",
+        "turn_index": 3
+      },
+      {
+        "tile": "4p",
+        "turn_index": 4
+      },
+      {
+        "tile": "1p",
+        "turn_index": 5
+      }
+    ],
+    "right_opponent": [
+      {
+        "tile": "2s",
+        "turn_index": 2
+      },
+      {
+        "tile": "3z",
+        "turn_index": 3
+      },
+      {
+        "tile": "8m",
+        "turn_index": 4
+      }
+    ]
+  },
+  "dora_indicators": [],
+  "melds": []
+}

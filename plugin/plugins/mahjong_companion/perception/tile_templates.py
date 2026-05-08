@@ -140,11 +140,13 @@ def classify_tile_from_templates(crop: Image.Image, payload: dict[str, Any]) -> 
     )
 
 
-def is_probably_occupied_hand_slot(slot_metrics: dict[str, Any]) -> bool:
+def is_probably_occupied_hand_slot(slot_metrics: dict[str, Any], *, relaxed: bool = False) -> bool:
     mean_luma = _float_metric(slot_metrics, "slot_mean_luma", "mean_luma")
     bright_ratio = _float_metric(slot_metrics, "slot_bright_ratio", "bright_ratio")
     dark_ratio = _float_metric(slot_metrics, "slot_dark_ratio", "dark_ratio")
     stddev = _float_metric(slot_metrics, "slot_stddev", "stddev")
+    if relaxed:
+        return mean_luma >= 70.0 and stddev >= 10.0 and dark_ratio <= 0.75
     return mean_luma >= 95.0 and bright_ratio >= 0.16 and dark_ratio <= 0.55 and stddev >= 18.0
 
 

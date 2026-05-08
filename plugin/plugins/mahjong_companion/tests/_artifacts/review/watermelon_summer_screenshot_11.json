@@ -1,0 +1,184 @@
+{
+  "theme_id": "watermelon_summer",
+  "source_image": "screenshot_11.png",
+  "hand_tiles": [
+    "4m",
+    "5m",
+    "6m",
+    "7m",
+    "1p",
+    "2p",
+    "3p",
+    "5p",
+    "5p",
+    "9p",
+    "9p",
+    "1z",
+    "5z",
+    "4z"
+  ],
+  "discard_piles": {
+    "self": [
+      {
+        "tile": "9m",
+        "turn_index": 1
+      },
+      {
+        "tile": "6m",
+        "turn_index": 2
+      },
+      {
+        "tile": "5z",
+        "turn_index": 3
+      },
+      {
+        "tile": "3p",
+        "turn_index": 4
+      },
+      {
+        "tile": "8m",
+        "turn_index": 5
+      },
+      {
+        "tile": "4p",
+        "turn_index": 6
+      },
+      {
+        "tile": "2p",
+        "turn_index": 7
+      },
+      {
+        "tile": "5z",
+        "turn_index": 8
+      },
+      {
+        "tile": "7s",
+        "turn_index": 9
+      },
+      {
+        "tile": "8s",
+        "turn_index": 10
+      },
+      {
+        "tile": "5s",
+        "turn_index": 11
+      }
+    ],
+    "left_opponent": [
+      {
+        "tile": "4s",
+        "turn_index": 1
+      },
+      {
+        "tile": "8s",
+        "turn_index": 2
+      },
+      {
+        "tile": "6z",
+        "turn_index": 3
+      },
+      {
+        "tile": "5s",
+        "turn_index": 4
+      },
+      {
+        "tile": "1z",
+        "turn_index": 7
+      },
+      {
+        "tile": "3z",
+        "turn_index": 8
+      },
+      {
+        "tile": "9p",
+        "turn_index": 9
+      },
+      {
+        "tile": "5m",
+        "turn_index": 10
+      },
+      {
+        "tile": "9m",
+        "turn_index": 17
+      },
+      {
+        "tile": "2p",
+        "turn_index": 18
+      }
+    ],
+    "top_opponent": [
+      {
+        "tile": "7p",
+        "turn_index": 1
+      },
+      {
+        "tile": "9s",
+        "turn_index": 2
+      },
+      {
+        "tile": "7z",
+        "turn_index": 3
+      },
+      {
+        "tile": "1z",
+        "turn_index": 4
+      },
+      {
+        "tile": "9p",
+        "turn_index": 5
+      },
+      {
+        "tile": "3z",
+        "turn_index": 6
+      },
+      {
+        "tile": "2z",
+        "turn_index": 7
+      },
+      {
+        "tile": "2p",
+        "turn_index": 8
+      },
+      {
+        "tile": "2s",
+        "turn_index": 9
+      },
+      {
+        "tile": "8p",
+        "turn_index": 10
+      }
+    ],
+    "right_opponent": [
+      {
+        "tile": "7z",
+        "turn_index": 2
+      },
+      {
+        "tile": "3z",
+        "turn_index": 3
+      },
+      {
+        "tile": "8m",
+        "turn_index": 4
+      },
+      {
+        "tile": "8p",
+        "turn_index": 7
+      },
+      {
+        "tile": "1s",
+        "turn_index": 8
+      },
+      {
+        "tile": "7s",
+        "turn_index": 9
+      },
+      {
+        "tile": "1m",
+        "turn_index": 10
+      }
+    ]
+  },
+  "dora_indicators": [],
+  "melds": []
+}

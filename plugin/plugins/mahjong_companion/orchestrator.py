@@ -18,6 +18,7 @@ from .lifecycle_controller import LifecycleControllerMixin
 from .meld_selection import MeldSelectionMixin
 from .gates import DefaultFrameChangeGate
 from .narration import NarrationEvent
+from .perception.temporal_tracker import TemporalTileTracker
 from .narration.dispatcher import NarrationDispatcher
 from .overlay import CompanionOverlay
 from .overlay_controller import OverlayControllerMixin
@@ -70,6 +71,7 @@ class SessionOrchestrator(
         self._decision_adapter = DefaultDecisionAdapter()
         self._narration_adapter = narration_adapter or DefaultNarrationAdapter()
         self._frame_change_gate = DefaultFrameChangeGate()
+        self._discard_temporal_tracker = TemporalTileTracker(decay=0.7, min_support=2)
         self._narration_dispatcher = NarrationDispatcher(plugin)
         self._selected_window_title = ""
         self._overlay = CompanionOverlay(self.logger)
@@ -145,6 +147,7 @@ class SessionOrchestrator(
             self.state.runtime_status = "idle"
             self._consecutive_capture_failures = 0
             self._frame_change_gate.reset()
+            self._discard_temporal_tracker.reset()
             self._fast_poll_until = 0.0
             self._last_frame_gate_decision = None
             self._last_screen_overlay_update_at = 0.0
@@ -193,6 +196,7 @@ class SessionOrchestrator(
         self.state.last_runtime_interrupt_reason = ""
         self.state.started_at = self.state.started_at or now_iso()
         self._frame_change_gate.reset()
+        self._discard_temporal_tracker.reset()
         self._fast_poll_until = 0.0
         self._last_frame_gate_decision = None
         self._last_screen_overlay_update_at = 0.0

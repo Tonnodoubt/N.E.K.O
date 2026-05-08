@@ -1,0 +1,1055 @@
+[
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_03.png",
+    "offsets": {
+      "self": {
+        "found": 12,
+        "gt": 12,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          1082,
+          612
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 6,
+        "gt": 7,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          630,
+          289
+        ],
+        "last_actual": [
+          706,
+          476
+        ],
+        "offset_dx": 6,
+        "offset_dy": -1
+      },
+      "top_opponent": {
+        "found": 7,
+        "gt": 9,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 5,
+        "gt": 6,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          352
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 62
+      }
+    }
+  },
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_04.png",
+    "offsets": {
+      "self": {
+        "found": 0,
+        "gt": 0,
+        "note": "no tiles found"
+      },
+      "left_opponent": {
+        "found": 1,
+        "gt": 1,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          706,
+          290
+        ],
+        "last_actual": [
+          706,
+          290
+        ],
+        "offset_dx": 82,
+        "offset_dy": 0
+      },
+      "top_opponent": {
+        "found": 0,
+        "gt": 1,
+        "note": "no tiles found"
+      },
+      "right_opponent": {
+        "found": 0,
+        "gt": 0,
+        "note": "no tiles found"
+      }
+    }
+  },
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_05.png",
+    "offsets": {
+      "self": {
+        "found": 9,
+        "gt": 9,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          890,
+          612
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 7,
+        "gt": 7,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          630,
+          289
+        ],
+        "last_actual": [
+          706,
+          476
+        ],
+        "offset_dx": 6,
+        "offset_dy": -1
+      },
+      "top_opponent": {
+        "found": 8,
+        "gt": 8,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 5,
+        "gt": 5,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1144,
+          366
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": -4,
+        "offset_dy": 76
+      }
+    }
+  },
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_06.png",
+    "offsets": {
+      "self": {
+        "found": 10,
+        "gt": 10,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          954,
+          612
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 6,
+        "gt": 7,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          630,
+          289
+        ],
+        "last_actual": [
+          706,
+          476
+        ],
+        "offset_dx": 6,
+        "offset_dy": -1
+      },
+      "top_opponent": {
+        "found": 9,
+        "gt": 9,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 6,
+        "gt": 6,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1144,
+          366
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": -4,
+        "offset_dy": 76
+      }
+    }
+  },
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_12.png",
+    "offsets": {
+      "self": {
+        "found": 4,
+        "gt": 4,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          954,
+          542
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 2,
+        "gt": 3,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          706,
+          290
+        ],
+        "last_actual": [
+          692,
+          402
+        ],
+        "offset_dx": 82,
+        "offset_dy": 0
+      },
+      "top_opponent": {
+        "found": 2,
+        "gt": 3,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          959,
+          243
+        ],
+        "last_actual": [
+          1058,
+          242
+        ],
+        "offset_dx": 157,
+        "offset_dy": 1
+      },
+      "right_opponent": {
+        "found": 2,
+        "gt": 3,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          352
+        ],
+        "last_actual": [
+          1148,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 62
+      }
+    }
+  },
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_13.png",
+    "offsets": {
+      "self": {
+        "found": 6,
+        "gt": 6,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          1082,
+          542
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 3,
+        "gt": 4,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          706,
+          290
+        ],
+        "last_actual": [
+          706,
+          476
+        ],
+        "offset_dx": 82,
+        "offset_dy": 0
+      },
+      "top_opponent": {
+        "found": 3,
+        "gt": 5,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          242
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 3,
+        "gt": 4,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          290
+        ],
+        "last_actual": [
+          1148,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      }
+    }
+  },
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_14.png",
+    "offsets": {
+      "self": {
+        "found": 10,
+        "gt": 10,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          934,
+          604
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 6,
+        "gt": 8,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          627,
+          289
+        ],
+        "last_actual": [
+          788,
+          600
+        ],
+        "offset_dx": 3,
+        "offset_dy": -1
+      },
+      "top_opponent": {
+        "found": 6,
+        "gt": 8,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 6,
+        "gt": 7,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          290
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      }
+    }
+  },
+  {
+    "theme": "cartoon_red",
+    "file": "screenshot_15.png",
+    "offsets": {
+      "self": {
+        "found": 10,
+        "gt": 10,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          974,
+          605
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 7,
+        "gt": 8,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          627,
+          289
+        ],
+        "last_actual": [
+          788,
+          600
+        ],
+        "offset_dx": 3,
+        "offset_dy": -1
+      },
+      "top_opponent": {
+        "found": 7,
+        "gt": 9,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 6,
+        "gt": 7,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1137,
+          289
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": -11,
+        "offset_dy": -1
+      }
+    }
+  },
+  {
+    "theme": "watermelon_summer",
+    "file": "screenshot_02.png",
+    "offsets": {
+      "self": {
+        "found": 11,
+        "gt": 11,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          1082,
+          612
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 8,
+        "gt": 8,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          624,
+          290
+        ],
+        "last_actual": [
+          788,
+          538
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "top_opponent": {
+        "found": 10,
+        "gt": 10,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 6,
+        "gt": 7,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1142,
+          366
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": -6,
+        "offset_dy": 76
+      }
+    }
+  },
+  {
+    "theme": "watermelon_summer",
+    "file": "screenshot_07.png",
+    "offsets": {
+      "self": {
+        "found": 4,
+        "gt": 4,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          954,
+          542
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 3,
+        "gt": 3,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          706,
+          352
+        ],
+        "last_actual": [
+          788,
+          538
+        ],
+        "offset_dx": 82,
+        "offset_dy": 62
+      },
+      "top_opponent": {
+        "found": 4,
+        "gt": 4,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          866,
+          242
+        ],
+        "last_actual": [
+          1058,
+          242
+        ],
+        "offset_dx": 64,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 4,
+        "gt": 4,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1140,
+          328
+        ],
+        "last_actual": [
+          1148,
+          476
+        ],
+        "offset_dx": -8,
+        "offset_dy": 38
+      }
+    }
+  },
+  {
+    "theme": "watermelon_summer",
+    "file": "screenshot_08.png",
+    "offsets": {
+      "self": {
+        "found": 6,
+        "gt": 6,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          1082,
+          542
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 4,
+        "gt": 4,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          706,
+          352
+        ],
+        "last_actual": [
+          788,
+          538
+        ],
+        "offset_dx": 82,
+        "offset_dy": 62
+      },
+      "top_opponent": {
+        "found": 6,
+        "gt": 6,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1138,
+          291
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 3,
+        "gt": 3,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          352
+        ],
+        "last_actual": [
+          1148,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 62
+      }
+    }
+  },
+  {
+    "theme": "watermelon_summer",
+    "file": "screenshot_09.png",
+    "offsets": {
+      "self": {
+        "found": 9,
+        "gt": 9,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          890,
+          612
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 7,
+        "gt": 7,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          631,
+          289
+        ],
+        "last_actual": [
+          788,
+          538
+        ],
+        "offset_dx": 7,
+        "offset_dy": -1
+      },
+      "top_opponent": {
+        "found": 9,
+        "gt": 9,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          1058,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 5,
+        "gt": 5,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          352
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 62
+      }
+    }
+  },
+  {
+    "theme": "watermelon_summer",
+    "file": "screenshot_10.png",
+    "offsets": {
+      "self": {
+        "found": 4,
+        "gt": 4,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          954,
+          542
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 2,
+        "gt": 3,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          685,
+          445
+        ],
+        "last_actual": [
+          788,
+          538
+        ],
+        "offset_dx": 61,
+        "offset_dy": 155
+      },
+      "top_opponent": {
+        "found": 4,
+        "gt": 4,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          866,
+          242
+        ],
+        "last_actual": [
+          1058,
+          242
+        ],
+        "offset_dx": 64,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 2,
+        "gt": 3,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          352
+        ],
+        "last_actual": [
+          1148,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 62
+      }
+    }
+  },
+  {
+    "theme": "watermelon_summer",
+    "file": "screenshot_11.png",
+    "offsets": {
+      "self": {
+        "found": 11,
+        "gt": 11,
+        "grid_origin": [
+          762,
+          542
+        ],
+        "first_actual": [
+          762,
+          542
+        ],
+        "last_actual": [
+          1018,
+          612
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "left_opponent": {
+        "found": 9,
+        "gt": 10,
+        "grid_origin": [
+          624,
+          290
+        ],
+        "first_actual": [
+          624,
+          290
+        ],
+        "last_actual": [
+          788,
+          600
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "top_opponent": {
+        "found": 10,
+        "gt": 10,
+        "grid_origin": [
+          802,
+          242
+        ],
+        "first_actual": [
+          802,
+          242
+        ],
+        "last_actual": [
+          994,
+          172
+        ],
+        "offset_dx": 0,
+        "offset_dy": 0
+      },
+      "right_opponent": {
+        "found": 6,
+        "gt": 7,
+        "grid_origin": [
+          1148,
+          290
+        ],
+        "first_actual": [
+          1148,
+          352
+        ],
+        "last_actual": [
+          1230,
+          476
+        ],
+        "offset_dx": 0,
+        "offset_dy": 62
+      }
+    }
+  }
+]

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .calibration import CalibrationProfile
+from .hand_baseline import HandBaselineAnchor
 from .roi import RoiBox
 
 
@@ -121,15 +122,62 @@ def build_discard_layout(
     height: int,
     *,
     calibration: CalibrationProfile | None = None,
+    baseline: HandBaselineAnchor | None = None,
 ) -> dict[str, list[DiscardSlot]]:
     screen_width = _positive_int(width)
     screen_height = _positive_int(height)
     _ = calibration
 
+    if baseline is not None and _baseline_plausible(baseline, width, height):
+        return _build_anchor_layout(baseline, width, height)
+
     return {
         player: _build_player_slots(player, spec, screen_width, screen_height)
         for player, spec in _BASE_LAYOUTS.items()
     }
+
+
+def _baseline_plausible(
+    baseline: HandBaselineAnchor,
+    width: int,
+    height: int,
+) -> bool:
+    if baseline.left_x > width * 0.3:
+        return False
+    if baseline.top_y < height * 0.75 or baseline.top_y > height * 0.95:
+        return False
+    return True
+
+
+def _build_anchor_layout(
+    baseline: HandBaselineAnchor,
+    width: int,
+    height: int,
+) -> dict[str, list[DiscardSlot]]:
+    from .anchor_geometry import anchor_derived_rois
+
+    layout = anchor_derived_rois(baseline, width, height)
+    result: dict[str, list[DiscardSlot]] = {}
+    for player in DISCARD_PLAYERS:
+        spec = layout.discard[player]
+        result[player] = _build_player_slots(
+            player,
+            _LayoutSpec(
+                origin_left=spec.origin_left,
+                origin_top=spec.origin_top,
+                tile_width=spec.tile_width,
+                tile_height=spec.tile_height,
+                step_x=spec.step_x,
+                step_y=spec.step_y,
+                columns=spec.columns,
+                rows=spec.rows,
+                orientation=spec.orientation,
+                order=spec.order,
+            ),
+            width,
+            height,
+        )
+    return result
 
 
 def _build_player_slots(
@@ -153,6 +201,7 @@ def _build_player_slots(
             box_height=spec.tile_height,
             screen_width=screen_width,
             screen_height=screen_height,
+            orientation=spec.orientation,
         )
         box = _box_from_quad(name=f"discard_{player}_{turn_index:02d}", quad=quad, screen_width=screen_width, screen_height=screen_height)
         slots.append(
@@ -177,6 +226,7 @@ def _scaled_quad(
     box_height: int,
     screen_width: int,
     screen_height: int,
+    orientation: str = "bottom",
 ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]]:
     _ = name
     scale_x = screen_width / BASE_WIDTH
@@ -186,18 +236,49 @@ def _scaled_quad(
     scaled_width = max(1, int(round(box_width * scale_x)))
     scaled_height = max(1, int(round(box_height * scale_y)))
 
-    right = _clamp_int(scaled_left + scaled_width, 1, screen_width)
-    bottom = _clamp_int(scaled_top + scaled_height, 1, screen_height)
-    if right <= scaled_left:
-        right = min(screen_width, scaled_left + 1)
-    if bottom <= scaled_top:
-        bottom = min(screen_height, scaled_top + 1)
-    return (
-        (scaled_left, scaled_top),
-        (scaled_left, bottom),
-        (right, bottom),
-        (right, scaled_top),
-    )
+    # Perspective skew for opponent tiles — the 3-D table surface means
+    # side-player tiles are parallelograms, not axis-aligned rectangles.
+    if orientation == "left":
+        # Tile on left side of screen: top edge leans right (closer edge is taller).
+        skew_x = max(1, scaled_width // 8)
+        return (
+            (scaled_left, scaled_top),                            # upper-left
+            (scaled_left - skew_x, scaled_top + scaled_height),    # lower-left
+            (scaled_left + scaled_width - skew_x, scaled_top + scaled_height),  # lower-right
+            (scaled_left + scaled_width, scaled_top),             # upper-right
+        )
+    elif orientation == "right":
+        # Tile on right side: top edge leans left.
+        skew_x = max(1, scaled_width // 8)
+        return (
+            (scaled_left + skew_x, scaled_top),                    # upper-left
+            (scaled_left, scaled_top + scaled_height),             # lower-left
+            (scaled_left + scaled_width, scaled_top + scaled_height),  # lower-right
+            (scaled_left + scaled_width + skew_x, scaled_top),     # upper-right
+        )
+    elif orientation == "top":
+        # Far side: trapezoidal — far edge (top of screen) is narrower.
+        skew_x = max(1, scaled_width // 12)
+        return (
+            (scaled_left + skew_x, scaled_top),                    # upper-left (narrower)
+            (scaled_left, scaled_top + scaled_height),             # lower-left
+            (scaled_left + scaled_width, scaled_top + scaled_height),  # lower-right
+            (scaled_left + scaled_width - skew_x, scaled_top),     # upper-right (narrower)
+        )
+    else:
+        # bottom (self) — axis-aligned rectangle.
+        right = _clamp_int(scaled_left + scaled_width, 1, screen_width)
+        bottom = _clamp_int(scaled_top + scaled_height, 1, screen_height)
+        if right <= scaled_left:
+            right = min(screen_width, scaled_left + 1)
+        if bottom <= scaled_top:
+            bottom = min(screen_height, scaled_top + 1)
+        return (
+            (scaled_left, scaled_top),
+            (scaled_left, bottom),
+            (right, bottom),
+            (right, scaled_top),
+        )
 
 
 def _box_from_quad(

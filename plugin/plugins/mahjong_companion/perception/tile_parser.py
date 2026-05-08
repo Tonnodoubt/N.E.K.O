@@ -11,12 +11,15 @@ from PIL import Image
 
 from ..contracts import PerceivedGameState
 from .calibration import CalibrationProfile, resolve_calibration_profile
+from .discard_layout import DiscardSlot, build_discard_layout
 from .discard_parser import parse_discards_from_image
 from .external_discard_recognizer import load_external_discard_result
+from .hand_baseline import detect_hand_baseline
 from .hand_layout import TileSlot, build_hand_layout
 from .riichi_detector import detect_riichi_players
 from .roi import collect_region_metrics
-from .tile_templates import classify_tile_from_templates, extract_tile_signature, is_probably_occupied_hand_slot
+from .tile_classifier_dispatch import classify_hand_tile
+from .tile_templates import extract_tile_signature, is_probably_occupied_hand_slot
 from .tile_templates import _decode_signature, _rms_distance
 
 logger = logging.getLogger(__name__)
@@ -69,7 +72,8 @@ def parse_tiles_from_image(
     if calibration.screen_width <= 0 or calibration.screen_height <= 0:
         calibration.screen_width = width
         calibration.screen_height = height
-    layout = build_hand_layout(width, height, calibration=calibration)
+    baseline = detect_hand_baseline(image)
+    layout = build_hand_layout(width, height, calibration=calibration, baseline=baseline)
     fixture = None if fixture_mode == "disabled" else _load_fixture(image_path)
     base_state = _classify_tile_level_state(scene=scene, metrics=metrics, calibration=calibration)
 
@@ -89,6 +93,7 @@ def parse_tiles_from_image(
         image,
         calibration=calibration,
         base_state=base_state,
+        baseline=baseline,
     )
     if template_result is not None:
         template_result = _with_visual_riichi_result(template_result, image=image)
@@ -157,6 +162,7 @@ def _from_template_profile(
     *,
     calibration: CalibrationProfile,
     base_state: str,
+    baseline: object | None = None,
 ) -> TileParseResult | None:
     if not calibration.enabled or not calibration.hand_tile_templates:
         return None
@@ -165,19 +171,18 @@ def _from_template_profile(
     hand_result = _best_template_hand_result(
         image,
         calibration=calibration,
-        base_layout=build_hand_layout(width, height, calibration=calibration),
+        base_layout=build_hand_layout(width, height, calibration=calibration, baseline=baseline),
+        baseline=baseline,
     )
     hand_tiles = hand_result["hand_tiles"]
     raw_detections = hand_result["raw_detections"]
     confidences = hand_result["confidences"]
     selected_layout = hand_result["layout"]
 
-    discard_templates = _combined_discard_template_payload(
-        discard_payload=calibration.discard_tile_templates,
-        hand_payload=calibration.hand_tile_templates,
-    )
+    discard_templates = calibration.discard_tile_templates or calibration.hand_tile_templates
     _ = image_path
-    discard_result = parse_discards_from_image(image, discard_templates)
+    discard_layout = build_discard_layout(width, height, calibration=calibration, baseline=baseline)
+    discard_result = parse_discards_from_image(image, discard_templates, layout=discard_layout)
     raw_detections.extend(discard_result.raw_detections)
     analysis_confidence = round(sum(confidences) / max(1, len(confidences)), 3) if confidences else 0.0
     reliable_tile_count = len(hand_tiles) >= 10 or len(hand_tiles) in DISCARD_TURN_HAND_COUNTS
@@ -196,6 +201,7 @@ def _from_template_profile(
         "min_hand_tile_confidence": MIN_HAND_TILE_CONFIDENCE,
         "hand_layout_draw_slot_index": hand_result["draw_slot_index"],
         "hand_tile_slots": _hand_tile_slots_from_detections(raw_detections, hand_tiles),
+        "anchor_driven_layout": baseline is not None,
     }
     if inferred_meld_count:
         analysis_hints["recognized_meld_group_count"] = inferred_meld_count
@@ -225,6 +231,8 @@ def _best_template_hand_result(
     *,
     calibration: CalibrationProfile,
     base_layout: dict[str, list[TileSlot]],
+    baseline: object | None = None,
+    relaxed: bool = False,
 ) -> dict[str, Any]:
     width, height = image.size
     draw_indices = _candidate_draw_slot_indices()
@@ -233,9 +241,9 @@ def _best_template_hand_result(
         layout = (
             base_layout
             if draw_slot_index == 14
-            else build_hand_layout(width, height, calibration=calibration, draw_slot_index=draw_slot_index)
+            else build_hand_layout(width, height, calibration=calibration, draw_slot_index=draw_slot_index, baseline=baseline)
         )
-        result = _classify_hand_from_layout(image, calibration=calibration, layout=layout)
+        result = _classify_hand_from_layout(image, calibration=calibration, layout=layout, relaxed=relaxed)
         result["draw_slot_index"] = draw_slot_index
         result["layout"] = layout
         return result
@@ -254,17 +262,15 @@ def _classify_hand_from_layout(
     *,
     calibration: CalibrationProfile,
     layout: dict[str, list[TileSlot]],
+    relaxed: bool = False,
 ) -> dict[str, Any]:
     hand_tiles: list[str] = []
     raw_detections: list[dict[str, Any]] = []
     confidences: list[float] = []
-    template_payload = _combined_hand_template_payload(
-        hand_payload=calibration.hand_tile_templates,
-        discard_payload=calibration.discard_tile_templates,
-    )
+    template_payload = calibration.hand_tile_templates or calibration.discard_tile_templates
 
     for slot, slot_metrics in zip(layout["hand"][:14], _collect_slot_metrics(image, layout["hand"][:14]), strict=True):
-        occupied = is_probably_occupied_hand_slot(slot_metrics)
+        occupied = is_probably_occupied_hand_slot(slot_metrics, relaxed=relaxed)
         detection = {
             "slot_id": slot.slot_id,
             "group": slot.group,
@@ -283,7 +289,7 @@ def _classify_hand_from_layout(
             continue
 
         crop = image.crop((slot.box.left, slot.box.top, slot.box.right, slot.box.bottom))
-        match = classify_tile_from_templates(crop, template_payload)
+        match = classify_hand_tile(crop, template_payload)
         if match is None:
             raw_detections.append(detection)
             continue
@@ -455,124 +461,6 @@ def _with_visual_riichi_result(result: TileParseResult, *, image: Image.Image) -
     if players and not result.riichi_players:
         result.riichi_players = players
     return result
-
-
-def _combined_discard_template_payload(
-    *,
-    discard_payload: dict[str, Any],
-    hand_payload: dict[str, Any],
-) -> dict[str, Any]:
-    if not discard_payload:
-        return hand_payload
-    if not hand_payload:
-        return discard_payload
-    discard_templates = discard_payload.get("templates")
-    hand_templates = hand_payload.get("templates")
-    if not isinstance(discard_templates, dict) or not isinstance(hand_templates, dict):
-        return discard_payload
-    if discard_payload.get("version") != hand_payload.get("version"):
-        return discard_payload
-    if discard_payload.get("signature_version") != hand_payload.get("signature_version"):
-        return discard_payload
-
-    merged = dict(hand_payload)
-    merged_templates: dict[str, dict[str, Any]] = {
-        str(tile): dict(item)
-        for tile, item in hand_templates.items()
-        if isinstance(item, dict)
-    }
-    max_samples_per_tile = _coerce_int(
-        discard_payload.get("max_samples_per_tile") or hand_payload.get("max_samples_per_tile"),
-        default=12,
-    )
-    for tile, item in discard_templates.items():
-        if not isinstance(item, dict):
-            continue
-        tile_key = str(tile)
-        hand_item = merged_templates.get(tile_key, {})
-        discard_signatures = _signature_list(item.get("signatures"))
-        hand_signatures = _signature_list(hand_item.get("signatures"))
-        signatures = (discard_signatures + hand_signatures)[: max(1, max_samples_per_tile)]
-        if not signatures:
-            continue
-        merged_templates[tile_key] = {
-            **hand_item,
-            "count": _coerce_int(item.get("count"), default=len(discard_signatures))
-            + _coerce_int(hand_item.get("count"), default=len(hand_signatures)),
-            "signatures": signatures,
-        }
-
-    merged["templates"] = merged_templates
-    merged["source_sample_count"] = _coerce_int(discard_payload.get("source_sample_count"), default=0) + _coerce_int(
-        hand_payload.get("source_sample_count"),
-        default=0,
-    )
-    merged["stored_sample_count"] = sum(
-        len(_signature_list(item.get("signatures")))
-        for item in merged_templates.values()
-        if isinstance(item, dict)
-    )
-    merged["source"] = "discard_and_hand_tile_templates"
-    return merged
-
-
-def _combined_hand_template_payload(
-    *,
-    hand_payload: dict[str, Any],
-    discard_payload: dict[str, Any],
-) -> dict[str, Any]:
-    if not discard_payload:
-        return hand_payload
-    if not hand_payload:
-        return discard_payload
-    discard_templates = discard_payload.get("templates")
-    hand_templates = hand_payload.get("templates")
-    if not isinstance(discard_templates, dict) or not isinstance(hand_templates, dict):
-        return hand_payload
-    if discard_payload.get("version") != hand_payload.get("version"):
-        return hand_payload
-    if discard_payload.get("signature_version") != hand_payload.get("signature_version"):
-        return hand_payload
-
-    merged = dict(hand_payload)
-    merged_templates: dict[str, dict[str, Any]] = {
-        str(tile): dict(item)
-        for tile, item in hand_templates.items()
-        if isinstance(item, dict)
-    }
-    max_samples_per_tile = _coerce_int(
-        hand_payload.get("max_samples_per_tile") or discard_payload.get("max_samples_per_tile"),
-        default=12,
-    )
-    for tile, item in discard_templates.items():
-        if not isinstance(item, dict):
-            continue
-        tile_key = str(tile)
-        hand_item = merged_templates.get(tile_key, {})
-        hand_signatures = _signature_list(hand_item.get("signatures"))
-        discard_signatures = _signature_list(item.get("signatures"))
-        signatures = (hand_signatures + discard_signatures)[: max(1, max_samples_per_tile)]
-        if not signatures:
-            continue
-        merged_templates[tile_key] = {
-            **hand_item,
-            "count": _coerce_int(hand_item.get("count"), default=len(hand_signatures))
-            + _coerce_int(item.get("count"), default=len(discard_signatures)),
-            "signatures": signatures,
-        }
-
-    merged["templates"] = merged_templates
-    merged["source_sample_count"] = _coerce_int(hand_payload.get("source_sample_count"), default=0) + _coerce_int(
-        discard_payload.get("source_sample_count"),
-        default=0,
-    )
-    merged["stored_sample_count"] = sum(
-        len(_signature_list(item.get("signatures")))
-        for item in merged_templates.values()
-        if isinstance(item, dict)
-    )
-    merged["source"] = "hand_and_discard_tile_templates"
-    return merged
 
 
 def _discard_template_source(calibration: CalibrationProfile) -> str:

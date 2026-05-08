@@ -1,0 +1,92 @@
+{
+  "theme_id": "watermelon_summer",
+  "source_image": "screenshot_07.png",
+  "hand_tiles": [
+    "4m",
+    "7m",
+    "8m",
+    "9m",
+    "9m",
+    "9m",
+    "3p",
+    "3p",
+    "8p",
+    "9p",
+    "1s",
+    "9s",
+    "6z",
+    "9p"
+  ],
+  "discard_piles": {
+    "self": [
+      {
+        "tile": "5s",
+        "turn_index": 1
+      },
+      {
+        "tile": "3s",
+        "turn_index": 2
+      },
+      {
+        "tile": "5z",
+        "turn_index": 3
+      },
+      {
+        "tile": "6p",
+        "turn_index": 4
+      }
+    ],
+    "left_opponent": [
+      {
+        "tile": "8s",
+        "turn_index": 8
+      },
+      {
+        "tile": "5s",
+        "turn_index": 9
+      },
+      {
+        "tile": "5s",
+        "turn_index": 17
+      }
+    ],
+    "top_opponent": [
+      {
+        "tile": "6z",
+        "turn_index": 2
+      },
+      {
+        "tile": "1m",
+        "turn_index": 3
+      },
+      {
+        "tile": "2m",
+        "turn_index": 4
+      },
+      {
+        "tile": "3z",
+        "turn_index": 5
+      }
+    ],
+    "right_opponent": [
+      {
+        "tile": "6z",
+        "turn_index": 1
+      },
+      {
+        "tile": "9s",
+        "turn_index": 2
+      },
+      {
+        "tile": "9s",
+        "turn_index": 3
+      },
+      {
+        "tile": "7z",
+        "turn_index": 4
+      }
+    ]
+  },
+  "dora_indicators": [],
+  "melds": []
+}

@@ -1,5 +1,69 @@
 # Changelog
 
+## v1.2.0 - 2026-05-06
+
+### ONNX 置信度门控 + 批处理重构
+
+- **ONNX 置信度门控** (`discard_parser.py`): 新增 `ONNX_OCCUPANCY_CONFIDENCE = 0.65`，ONNX backend 激活时，top-1 置信度低于 0.65 的识别结果视为空位。牌河 F1 从 ~50% 提升到 **0.96**（P=1.00, R=0.92）。
+- **牌河批处理重构** (`discard_parser.py`): 将逐槽位串行分类改为三阶段批处理流水线（Phase 1: 占用发现 → Phase 2: 批量 base 分类 → Phase 3: 批量 refined 分类），一帧最多 2 次 ONNX forward。
+- 新增 `_SlotPlan` dataclass 替代原有嵌套循环 + `_classify_slot_with_best_crop`，逻辑更清晰，batch 边界显式。
+- 4 个牌分类调用点（手牌、牌河、快速路径、副露选择）已全部统一通过 `classify_tile` / `classify_tiles_batch` 分发层。
+
+### ONNX 分类器验证结果
+
+| 验证项 | 结果 |
+|--------|------|
+| ONNX vs HuggingFace 一致性 | 100/100 top-1 一致，max logit diff = 0.017 |
+| 牌河分类（含置信度门控） | **P=1.00 R=0.92 F1=0.96** |
+| 手牌分类（crop 正确时） | 约 78-86% 准确率 |
+| **瓶颈** | 网格定位/裁剪，不是分类器 |
+
+### 新增模块
+
+- `perception/panel_anchor.py`: 积分面板（score panel）视觉锚点检测——基于灰度暗区连通域分析，定位屏幕中央深色矩形 UI 区域。为后续风向图标 anchor 方案提供基础。
+
+### 新增评估/测量脚本
+
+| 脚本 | 用途 |
+|------|------|
+| `scripts/verify_onnx_vs_hf.py` | ONNX vs HuggingFace 一致性验证 |
+| `scripts/eval_onnx_accuracy.py` | ONNX 分类准确率评估 |
+| `scripts/eval_discard_pipeline.py` | 牌河 pipeline 端到端评估（F1/P/R） |
+| `scripts/measure_offsets_auto.py` | 自动偏移测量（仅自家可信） |
+| `scripts/verify_offsets_visual.py` | 14 张对比图生成（红框=网格，彩色框=检测） |
+| `scripts/measure_anchors.py` | 手动标注工具（浏览器点击量坐标） |
+| `scripts/analyze_offsets.py` | 偏移数据分析 |
+| `scripts/annotate_discard_demo.py` | 牌河标注演示 |
+| `scripts/annotate_quad_demo.py` | 四边形标注演示 |
+| `scripts/debug_discard_grid.py` | 牌河网格调试 |
+| `scripts/discard_sliding_onnx.py` | 滑动窗口 ONNX 检测 |
+| `scripts/visualize_tile_detection.py` | 牌检测可视化 |
+
+### 新增测试
+
+- `tests/perception/` 目录：15 个测试（dispatch 7 + onnx 8），覆盖无模型短路、preprocessor 解析、smoke 推理、回落链、ONNX vs HF 一致性。
+
+### 技术简报
+
+- `tests/_artifacts/DISCARD_INVESTIGATION.md`: 牌河定位问题完整技术简报，含 pipeline 验证结果、网格参数、偏移数据、备选方案（风向 anchor / YOLO）。
+
+### 已知限制
+
+- **网格定位偏移**: 自家牌河准确，左家/对家/右家的网格硬编码坐标 (`discard_layout.py`) 与实际位置有偏移。14 张实测偏移数据保存在 `discard_offsets.json`，待从数据反推正确参数。
+- ONNX 改善的是分类置信度过滤，不是网格定位精度。定位问题需要从实测数据反推或换用 anchor/YOLO 方案。
+
+## v1.1.0 - 2026-05-06
+
+### ONNX 牌识别 — 吞吐量优化
+
+- 新增 `perception/vit_tile_classifier_onnx.py`：ONNX runtime 推理类，镜像 transformers 后端接口，仅依赖 onnxruntime + numpy + Pillow，单张推理 ~10ms。
+- 新增 `perception/tile_classifier_dispatch.py`：分发层，ONNX 可用时走神经网络（batch 推理），否则回落到模板匹配。`discard_parser` 已改为 batch 模式（50 个槽位 ≤2 次 forward，~500ms → ~20ms）。
+- 新增 `scripts/export_vit_to_onnx.py`：一次性导出脚本，将 HuggingFace ViT 导出为 ONNX（327.6 MB）。
+- 4 个牌分类调用点（手牌、牌河、快速路径、副露选择）统一通过 `classify_tile` / `classify_tiles_batch` 分发。
+- 新增 15 个单测（dispatch 7 + onnx 8），覆盖无模型短路、preprocessor 解析、smoke 推理、回落链。
+
+**注意**: 本轮改善的是吞吐量（一帧延迟），不是识别准确度。ONNX 与 transformers 路径输出一致已验证（`test_backend_consistency_against_transformers`），但 ONNX vs 模板匹配的准确度对比尚未量化。需要用 `tests/fixtures/multi_theme/` 跑三条路径（templates / transformers / ONNX）的 hand-F1 / discard-F1 才能得出结论。
+
 ## v1.0.1 - 2026-05-05
 
 ### UI / API 精简

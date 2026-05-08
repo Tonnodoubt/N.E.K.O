@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -10,6 +11,7 @@ from .contracts import DecisionResult, PerceivedGameState
 from .decision.preturn_planner import apply_preturn_discard_plan, build_preturn_discard_plan
 from .frame_resources import _path_mtime
 from .narration import NarrationEvent, apply_speech_policy
+from .perception.temporal_tracker import apply_temporal_smoothing_to_discard_piles
 from .session_state import now_iso
 from .storage import load_json_payload
 
@@ -194,9 +196,33 @@ class StateTransitionMixin:
         return payload
 
     def _prepare_perceived_state_for_decision(self, perceived: PerceivedGameState) -> PerceivedGameState:
+        self._apply_discard_temporal_smoothing(perceived)
         if not self._preturn_planning_enabled():
             self._clear_preturn_discard_plan_locked()
             return perceived
+
+    def _apply_discard_temporal_smoothing(self, perceived: PerceivedGameState) -> None:
+        """Cross-frame EMA vote over discard tile classifications.
+
+        Mutates ``perceived.discard_piles`` and ``perceived.analysis_hints``
+        in place. Disabled by env var ``MAHJONG_COMPANION_TEMPORAL_SMOOTHING=disabled``
+        as a kill switch.
+        """
+        if str(os.environ.get("MAHJONG_COMPANION_TEMPORAL_SMOOTHING", "")).strip().lower() == "disabled":
+            return
+        tracker = getattr(self, "_discard_temporal_tracker", None)
+        if tracker is None:
+            return
+        counters = apply_temporal_smoothing_to_discard_piles(perceived.discard_piles, tracker)
+        if counters["observed"] == 0:
+            return
+        hints = perceived.analysis_hints if isinstance(perceived.analysis_hints, dict) else {}
+        hints["temporal_smoothing"] = {
+            "observed": counters["observed"],
+            "smoothed": counters["smoothed"],
+            "stable": counters["stable"],
+        }
+        perceived.analysis_hints = hints
 
         prepared, meta = apply_preturn_discard_plan(perceived, self._preturn_discard_plan)
         if meta.get("applied"):

@@ -117,7 +117,18 @@ def _tile_face_mask(crop: Image.Image) -> np.ndarray:
     luma = (red * 30 + green * 59 + blue * 11) / 100.0
 
     threshold = _otsu_threshold(luma.ravel())
-    return (luma >= threshold) & (saturation <= 100)
+    # The "low saturation" gate keeps generic ivory tile faces but used
+    # to drop the saturated red center of red-dora 0m/0p/0s. Open a
+    # second path for "red-dominant" pixels so red-fives survive the
+    # tile-face mask. The thresholds are calibrated for majsoul's red-
+    # dora hue (~(200,40,40)..(220,60,60)) and stay below the wood
+    # texture / ivory tile body, so they don't flood the mask.
+    red_dominant = (
+        (red >= 150)
+        & ((red - green) >= 60)
+        & ((red - blue) >= 60)
+    )
+    return (luma >= threshold) & ((saturation <= 100) | red_dominant)
 
 
 def _otsu_threshold(values: np.ndarray) -> float:

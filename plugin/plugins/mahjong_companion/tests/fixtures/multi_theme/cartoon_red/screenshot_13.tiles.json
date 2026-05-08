@@ -1,0 +1,96 @@
+{
+  "theme_id": "cartoon_red",
+  "source_image": "screenshot_13.png",
+  "hand_tiles": [
+    "6p",
+    "7p"
+  ],
+  "discard_piles": {
+    "self": [
+      {
+        "tile": "6z",
+        "turn_index": 1
+      },
+      {
+        "tile": "1z",
+        "turn_index": 2
+      },
+      {
+        "tile": "9m",
+        "turn_index": 3
+      },
+      {
+        "tile": "7z",
+        "turn_index": 4
+      },
+      {
+        "tile": "1m",
+        "turn_index": 5
+      },
+      {
+        "tile": "7z",
+        "turn_index": 6
+      }
+    ],
+    "left_opponent": [
+      {
+        "tile": "8s",
+        "turn_index": 7
+      },
+      {
+        "tile": "3z",
+        "turn_index": 8
+      },
+      {
+        "tile": "9m",
+        "turn_index": 9
+      },
+      {
+        "tile": "1s",
+        "turn_index": 10
+      }
+    ],
+    "top_opponent": [
+      {
+        "tile": "7m",
+        "turn_index": 1
+      },
+      {
+        "tile": "9s",
+        "turn_index": 2
+      },
+      {
+        "tile": "7s",
+        "turn_index": 3
+      },
+      {
+        "tile": "4p",
+        "turn_index": 4
+      },
+      {
+        "tile": "1p",
+        "turn_index": 5
+      }
+    ],
+    "right_opponent": [
+      {
+        "tile": "3p",
+        "turn_index": 1
+      },
+      {
+        "tile": "2s",
+        "turn_index": 2
+      },
+      {
+        "tile": "3z",
+        "turn_index": 3
+      },
+      {
+        "tile": "8m",
+        "turn_index": 4
+      }
+    ]
+  },
+  "dora_indicators": [],
+  "melds": []
+}

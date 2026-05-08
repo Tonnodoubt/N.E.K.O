@@ -1,0 +1,161 @@
+{
+  "theme_id": "cartoon_red",
+  "source_image": "screenshot_03.png",
+  "hand_tiles": [
+    "3m",
+    "1p",
+    "2p",
+    "4p",
+    "3s",
+    "4s",
+    "5s"
+  ],
+  "discard_piles": {
+    "self": [
+      {
+        "tile": "7z",
+        "turn_index": 1
+      },
+      {
+        "tile": "4z",
+        "turn_index": 2
+      },
+      {
+        "tile": "1m",
+        "turn_index": 3
+      },
+      {
+        "tile": "1s",
+        "turn_index": 4
+      },
+      {
+        "tile": "6m",
+        "turn_index": 5
+      },
+      {
+        "tile": "7s",
+        "turn_index": 6
+      },
+      {
+        "tile": "4m",
+        "turn_index": 7
+      },
+      {
+        "tile": "7m",
+        "turn_index": 8
+      },
+      {
+        "tile": "8s",
+        "turn_index": 9
+      },
+      {
+        "tile": "6s",
+        "turn_index": 10
+      },
+      {
+        "tile": "6m",
+        "turn_index": 11
+      },
+      {
+        "tile": "1s",
+        "turn_index": 12
+      }
+    ],
+    "left_opponent": [
+      {
+        "tile": "4m",
+        "turn_index": 1
+      },
+      {
+        "tile": "2m",
+        "turn_index": 2
+      },
+      {
+        "tile": "2s",
+        "turn_index": 3
+      },
+      {
+        "tile": "1m",
+        "turn_index": 7
+      },
+      {
+        "tile": "1m",
+        "turn_index": 8
+      },
+      {
+        "tile": "9m",
+        "turn_index": 9
+      },
+      {
+        "tile": "9m",
+        "turn_index": 10
+      }
+    ],
+    "top_opponent": [
+      {
+        "tile": "2m",
+        "turn_index": 1
+      },
+      {
+        "tile": "6m",
+        "turn_index": 2
+      },
+      {
+        "tile": "4z",
+        "turn_index": 3
+      },
+      {
+        "tile": "8s",
+        "turn_index": 4
+      },
+      {
+        "tile": "5z",
+        "turn_index": 5
+      },
+      {
+        "tile": "1p",
+        "turn_index": 8
+      },
+      {
+        "tile": "3s",
+        "turn_index": 9
+      },
+      {
+        "tile": "3z",
+        "turn_index": 10
+      },
+      {
+        "tile": "8s",
+        "turn_index": 11
+      }
+    ],
+    "right_opponent": [
+      {
+        "tile": "6z",
+        "turn_index": 2
+      },
+      {
+        "tile": "2z",
+        "turn_index": 3
+      },
+      {
+        "tile": "7m",
+        "turn_index": 4
+      },
+      {
+        "tile": "4s",
+        "turn_index": 8
+      },
+      {
+        "tile": "1z",
+        "turn_index": 9
+      },
+      {
+        "tile": "3m",
+        "turn_index": 10
+      }
+    ]
+  },
+  "dora_indicators": [],
+  "melds": []
+}

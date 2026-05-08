@@ -384,6 +384,8 @@ draw_gap   = tile_width * 0.28 + offsets.draw_gap_px
 | top_opponent | 6 列 × 3 行 | top (旋转 180°) |
 | right_opponent | 3 列 × 6 行 (列主序) | right (旋转 270°) |
 
+**已知限制**: 自家网格定位准确；左家/对家/右家的硬编码 origin/step 参数与实际位置有偏移，需要从实测数据反推或换用 anchor 方案。
+
 #### 2.5.2 四边形精修
 
 **文件**: `perception/discard_quad_finder.py`
@@ -409,28 +411,35 @@ draw_gap   = tile_width * 0.28 + offsets.draw_gap_px
 
 #### 2.5.3 弃牌识别流程
 
-`parse_discards_from_image()` (discard_parser.py:32):
+`parse_discards_from_image()` (discard_parser.py:51) 采用三阶段批处理流水线：
 
 ```
-对每个玩家的每个弃牌槽位:
-  │
-  ├─ is_probably_occupied_discard_slot(metrics)    # 占用判断
-  │    └─ mean_luma>=88, bright>=0.12 OR white>=0.04, dark<=0.62, stddev>=14
-  │
-  ├─ crop_discard_slot(image, slot)                # 基础裁剪
-  │    ├─ 基础 crop (slot.box)
-  │    └─ 精修 crop (refine_discard_slot_quad → 四边形透视校正)
-  │
-  ├─ classify_tile_from_templates(crop, payload)   # 模板匹配
-  │
-  ├─ 置信度过滤: >= 0.55 (DEFAULT_MIN_DISCARD_CONFIDENCE)
-  │
-  └─ IoU 去重: 重叠度 > 0.45 时保留置信度更高的
+Phase 1 — 发现 (per-slot, 无分类):
+  对每个玩家的每个弃牌槽位:
+    ├─ is_probably_occupied_discard_slot(metrics)    # 占用判断
+    │    └─ mean_luma>=88, bright>=0.12 OR white>=0.04, dark<=0.62, stddev>=14
+    ├─ refine_discard_slot_quad(image, slot)          # OTSU 四边形精修
+    └─ 收集 base_crop (占用时)
+
+Phase 2 — 批量 base 分类 (单次 ONNX forward):
+  classify_tiles_batch([base_crops...], template_payload)
+    └─ ONNX 可用时走神经网络，否则模板匹配
+
+Phase 3 — 批量 refined 分类 (单次 ONNX forward, 仅 base 失败的槽):
+  对 base_match.confidence < min_confidence 且有 quad refinement 的槽:
+    ├─ crop_discard_quad(image, quad, orientation)   # 透视校正
+    └─ classify_tiles_batch([refined_crops...])
+
+Phase 4 — 接受/拒绝 (顺序遍历, IoU 去重):
+  对每个槽位:
+    ├─ 选 best match (base vs refined)
+    ├─ ONNX 置信度门控: confidence >= 0.65 (ONNX_OCCUPANCY_CONFIDENCE)
+    ├─ 易混淆对检测: {5p,6p}, {6p,7p}, {6s,9s}
+    │    └─ confidence < 0.78 或 distance margin < 12.0 → 拒绝
+    └─ IoU 去重: 重叠度 > 0.45 时保留置信度更高的
 ```
 
-弃牌也有混淆对处理 (`AMBIGUOUS_DISCARD_TEMPLATE_PAIRS`):
-- {5p, 6p}, {6p, 7p}, {6s, 9s}
-- 置信度 < 0.78 且距离差 < 12.0 的结果被降级
+**关键变更 (v1.2)**: 旧版逐槽位串行分类改为三阶段批处理，一帧最多 2 次 ONNX forward；新增 ONNX 置信度门控（top-1 < 0.65 → 空位），牌河 F1 从 ~50% 提升到 0.96。
 
 ### 2.6 外部识别器
 
@@ -444,7 +453,70 @@ draw_gap   = tile_width * 0.28 + offsets.draw_gap_px
 | `MAHJONG_COMPANION_DISCARD_RECOGNIZER_URL` | HTTP 端点 |
 | `MAHJONG_COMPANION_DISCARD_RECOGNIZER_TIMEOUT_SEC` | 超时 (默认 1.5s) |
 
-### 2.7 立直棒检测
+### 2.7 ONNX 神经网络识别器
+
+ViT 神经网络通过 ONNX runtime 接管线，ONNX 模型文件存在时走神经网络（batch 推理），否则回落到模板匹配。
+
+#### 已验证
+
+| 验证项 | 结果 |
+|--------|------|
+| ONNX vs HuggingFace 一致性 | 100/100 top-1 一致，max logit diff = 0.017 |
+| 牌河分类（含置信度门控 0.65） | **P=1.00 R=0.92 F1=0.96** |
+| 手牌分类（crop 正确时） | 约 78-86% |
+| **瓶颈** | 网格定位/裁剪，不是分类器 |
+
+#### 已就绪
+
+| 资源 | 状态 | 位置 |
+|------|------|------|
+| onnxruntime 1.25.0 | 已安装 | pyproject.toml |
+| ONNX 模型 (327.6 MB) | 已导出 | `data/models/vit_tile_classifier/model.onnx` |
+| ONNX 推理类 | 已就绪 | `perception/vit_tile_classifier_onnx.py` |
+| Dispatch 分发层 | **已接管线** | `perception/tile_classifier_dispatch.py`（ONNX → templates 回落链） |
+| 手牌识别 (`_classify_hand_from_layout`) | **已接** | `tile_parser.py` — `classify_tile()` |
+| 牌河识别 (`parse_discards_from_image`) | **已接，批处理** | `discard_parser.py` — `classify_tiles_batch()`（一帧最多 2 次 forward：base + 弱-base 的 refined） |
+| 快速路径 (`drawn_tile_fast_path`) | **已接** | `drawn_tile_fast_path.py` — `classify_tile()` |
+| 副露选择 (`meld_selection`) | **已接** | `meld_selection.py` — `classify_tile()` |
+| ViT 分类器（transformers 路径） | 已就绪，仅离线训练用 | `perception/vit_tile_classifier.py` |
+| 测试 | 15 个（14 passed / 1 skipped — `test_backend_consistency_against_transformers` 在无 transformers 时 skip） | `tests/perception/test_tile_classifier_dispatch.py` + `test_vit_tile_classifier_onnx.py` |
+
+#### 回落链
+
+```
+classify_tile(crop, template_payload)
+  │
+  ├─ ONNX 模型可用? ──是──→ classify_tile_crops_onnx([crop])
+  │                         └─ 转换 VitTilePrediction → TileTemplateMatch
+  │                            (confidence 直接映射, distance = (1-conf)×82)
+  │
+  └─ ONNX 不可用 ──→ classify_tile_from_templates(crop, template_payload)  [原有路径]
+```
+
+所有 4 个调用点统一通过 `classify_tile()` 分发，下游代码（拒绝逻辑、易混淆对校验）无需改动。
+
+#### 网络受限时的替代方案
+
+在有网环境运行导出脚本，将 `data/models/vit_tile_classifier/` 目录拷贝到离线机器即可；运行时也可设 `MAHJONG_COMPANION_VIT_ONNX_DIR` 指向其它路径。
+
+### 2.8 积分面板锚点检测
+
+**文件**: `perception/panel_anchor.py`
+
+`detect_score_panel()` 检测屏幕中央的积分面板（深色矩形 UI 区域），为后续基于风向图标 anchor 的牌河定位方案提供基础：
+
+```
+积分面板检测:
+  │
+  ├─ 灰度转换, 暗区遮罩 (luma < 90)
+  ├─ 连通域分析 (flood fill)
+  ├─ 面积过滤: image_area × 0.5% ~ 8%
+  ├─ 宽高比过滤: 1.5 ~ 6.0 (面板宽>高)
+  ├─ 位置评分: 距屏幕中心距离
+  └─ 返回 (left, top, right, bottom) 或 None
+```
+
+### 2.9 立直棒检测
 
 **文件**: `perception/riichi_detector.py`
 
@@ -462,7 +534,7 @@ draw_gap   = tile_width * 0.28 + offsets.draw_gap_px
   └─ 置信度 = min(0.98, 0.52 + score×0.26 + red_score×0.20)
 ```
 
-### 2.8 快速路径：摸牌即识别
+### 2.10 快速路径：摸牌即识别
 
 **文件**: `perception/drawn_tile_fast_path.py` + `fast_path.py`
 
@@ -480,7 +552,7 @@ _maybe_emit_fast_preturn_advice_locked()  [fast_path.py:220]
 
 比完整管线快 3-5 倍，从 ~300ms 降到 ~60-100ms。
 
-### 2.9 感知输出
+### 2.11 感知输出
 
 `PerceivedGameState` (`contracts.py:21`)：
 
@@ -938,9 +1010,9 @@ PreturnDiscardPlan
 
 ## 8. 已知薄弱点与优化方向
 
-1. **模板匹配精度**: 当前使用 16×24 RGB 签名 + RMS 距离，对易混淆牌（6s/9s, 5p/6p 等）区分力不足。可考虑：多尺度签名、梯度方向直方图、或引入轻量神经网络。
-2. **Calibration 依赖**: 无对应分辨率 profile 时识别严重退化（hand_tiles 和 discard_piles 均为空）。可考虑：自适应校准、自动 profile 生成、或为常见分辨率预置模板。
-3. **弃牌识别鲁棒性**: 四边形精修在牌河拥挤时精度下降，重叠牌难以分离。OTSU 自适应 mask 已替换硬编码颜色阈值，但在亮色桌布上仍需 calibration 数据量化效果。
-4. **向听数缓存**: 递归穷举 + lru_cache 在极端手牌组合下可能miss率高，可考虑迭代式向听算法。
-5. **外部识别器集成**: 当前为可选功能，未来可成为默认路径以替代模板匹配。
+1. **牌河网格定位偏移 (当前主要瓶颈)**: 自家牌河网格准确，左家/对家/右家的硬编码 origin/step 参数与实际位置有偏移（50+px）。分类器本身已验证 F1=0.96，瓶颈完全在定位。解决方案：(A) 风向图标 anchor 检测，(B) YOLO 牌检测器。14 张实测偏移数据在 `discard_offsets.json`。
+2. **模板匹配精度**: 当前使用 16×24 RGB 签名 + RMS 距离，对易混淆牌（6s/9s, 5p/6p 等）区分力不足。ONNX ViT 后端已接管线作为默认 backend（见 2.7），模板匹配现在作为回落路径。
+3. **Calibration 依赖**: 无对应分辨率 profile 时识别严重退化（hand_tiles 和 discard_piles 均为空）。可考虑：自适应校准、自动 profile 生成、或为常见分辨率预置模板。
+4. **弃牌识别鲁棒性**: 四边形精修在牌河拥挤时精度下降，重叠牌难以分离。OTSU 自适应 mask 已替换硬编码颜色阈值，但在亮色桌布上仍需 calibration 数据量化效果。
+5. **向听数缓存**: 递归穷举 + lru_cache 在极端手牌组合下可能miss率高，可考虑迭代式向听算法。
 6. **场景分类硬编码阈值**: 当前 `center.dark_ratio<=0.65`、`full.dark_ratio<=0.25` 等常数基于 baseline 14 张图调参，面对新主题（绿色、紫色等）可能需要继续放宽或改用聚类。

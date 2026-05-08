@@ -1,0 +1,36 @@
+{
+  "theme_id": "cartoon_red",
+  "source_image": "screenshot_04.png",
+  "hand_tiles": [
+    "1m",
+    "3m",
+    "7m",
+    "1p",
+    "1p",
+    "8p",
+    "3s",
+    "6s",
+    "7s",
+    "8s",
+    "8s",
+    "1z",
+    "7z",
+    "9p"
+  ],
+  "discard_piles": {
+    "left_opponent": [
+      {
+        "tile": "9m",
+        "turn_index": 7
+      }
+    ],
+    "top_opponent": [
+      {
+        "tile": "3z",
+        "turn_index": 5
+      }
+    ]
+  },
+  "dora_indicators": [],
+  "melds": []
+}

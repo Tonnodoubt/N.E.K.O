@@ -1,0 +1,406 @@
+{
+  "fixture_root": "/Users/tongqianqiu/N.E.K.O.TONG/plugin/plugins/mahjong_companion/tests/fixtures/multi_theme",
+  "case_count": 14,
+  "themes": {
+    "cartoon_red": {
+      "display_name": "卡通中国红（深红 + 黑猫小兔插画）",
+      "is_official": true,
+      "case_count": 8,
+      "errors": 0,
+      "scene_accuracy": 0.875,
+      "hand": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      }
+    },
+    "watermelon_summer": {
+      "display_name": "西瓜夏日（浅褐木纹 + 西瓜插画）",
+      "is_official": true,
+      "case_count": 6,
+      "errors": 0,
+      "scene_accuracy": 1.0,
+      "hand": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      }
+    }
+  },
+  "cases": [
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_03",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 7,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 34,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_04",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 2,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_05",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 13,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 29,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_06",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 32,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_12",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 13,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_13",
+      "scene": {
+        "predicted": "unknown",
+        "expected": "in_match",
+        "correct": false
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 2,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 19,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_14",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 33,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "cartoon_red",
+      "case_name": "screenshot_15",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 34,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "watermelon_summer",
+      "case_name": "screenshot_02",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 5,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 36,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "watermelon_summer",
+      "case_name": "screenshot_07",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 15,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "watermelon_summer",
+      "case_name": "screenshot_08",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 11,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 19,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "watermelon_summer",
+      "case_name": "screenshot_09",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 11,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 30,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "watermelon_summer",
+      "case_name": "screenshot_10",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    },
+    {
+      "theme_id": "watermelon_summer",
+      "case_name": "screenshot_11",
+      "scene": {
+        "predicted": "in_match",
+        "expected": "in_match",
+        "correct": true
+      },
+      "hand": {
+        "predicted": 0,
+        "expected": 14,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "discard": {
+        "predicted": 0,
+        "expected": 38,
+        "matched": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "error": ""
+    }
+  ]
+}

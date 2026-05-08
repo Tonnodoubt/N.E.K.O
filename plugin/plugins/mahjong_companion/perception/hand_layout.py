@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .calibration import CalibrationProfile
+from .hand_baseline import HandBaselineAnchor
 from .roi import RoiBox
 
 
@@ -27,9 +28,114 @@ def build_hand_layout(
     *,
     calibration: CalibrationProfile | None = None,
     draw_slot_index: int = 14,
+    baseline: HandBaselineAnchor | None = None,
 ) -> dict[str, list[TileSlot]]:
-    calibration = calibration or CalibrationProfile(screen_width=width, screen_height=height)
     draw_slot_index = _bounded_hand_slot_index(draw_slot_index)
+    if baseline is not None and _baseline_plausible(baseline, width, height):
+        return _build_anchor_layout(
+            baseline, width, height, draw_slot_index=draw_slot_index,
+            calibration=calibration,
+        )
+    calibration = calibration or CalibrationProfile(screen_width=width, screen_height=height)
+    return _build_hardcoded_layout(
+        width, height, calibration=calibration, draw_slot_index=draw_slot_index,
+    )
+
+
+def _baseline_plausible(
+    baseline: HandBaselineAnchor,
+    width: int,
+    height: int,
+) -> bool:
+    if baseline.image_size != (width, height):
+        return False
+    if baseline.left_x > width * 0.3:
+        return False
+    if baseline.top_y < height * 0.75 or baseline.top_y > height * 0.95:
+        return False
+    return True
+
+
+def _build_anchor_layout(
+    baseline: HandBaselineAnchor,
+    width: int,
+    height: int,
+    *,
+    draw_slot_index: int,
+    calibration: CalibrationProfile | None = None,
+) -> dict[str, list[TileSlot]]:
+    from .anchor_geometry import anchor_derived_rois
+
+    layout = anchor_derived_rois(baseline, width, height)
+    origin = layout.hand
+    cal = calibration
+
+    tile_width = origin.width + (cal.hand_offsets.width_px if cal else 0)
+    tile_height = origin.height + (cal.hand_offsets.height_px if cal else 0)
+    gap = max(0, int(tile_width * 0.12) + (cal.hand_offsets.gap_px if cal else 0))
+    draw_gap = max(0, int(tile_width * 0.35) + (cal.hand_offsets.draw_gap_px if cal else 0))
+    hand_left = origin.left + (cal.hand_offsets.x_px if cal else 0)
+    hand_top = origin.top + (cal.hand_offsets.y_px if cal else 0)
+
+    hand_slots = [
+        TileSlot(
+            slot_id=f"hand_{index + 1}",
+            group="hand",
+            box=RoiBox(
+                name=f"hand_{index + 1}",
+                left=hand_left + index * (tile_width + gap) + (draw_gap if index == draw_slot_index - 1 else 0),
+                top=hand_top,
+                width=tile_width,
+                height=tile_height,
+            ),
+        )
+        for index in range(14)
+    ]
+
+    dora_origin = layout.dora_origin
+    dora_gap = max(2, int(dora_origin.width * 0.1))
+    dora_slots = [
+        TileSlot(
+            slot_id=f"dora_{index + 1}",
+            group="dora",
+            box=RoiBox(
+                name=f"dora_{index + 1}",
+                left=dora_origin.left + index * (dora_origin.width + dora_gap),
+                top=dora_origin.top,
+                width=dora_origin.width,
+                height=dora_origin.height,
+            ),
+        )
+        for index in range(5)
+    ]
+
+    meld_origin = layout.meld_origin
+    meld_gap = max(2, int(meld_origin.width * 0.08))
+    meld_slots = [
+        TileSlot(
+            slot_id=f"meld_{index + 1}",
+            group="meld",
+            box=RoiBox(
+                name=f"meld_{index + 1}",
+                left=meld_origin.left + index * (meld_origin.width + meld_gap),
+                top=meld_origin.top,
+                width=meld_origin.width,
+                height=meld_origin.height,
+            ),
+        )
+        for index in range(4)
+    ]
+
+    return {"hand": hand_slots, "dora": dora_slots, "meld": meld_slots}
+
+
+def _build_hardcoded_layout(
+    width: int,
+    height: int,
+    *,
+    calibration: CalibrationProfile,
+    draw_slot_index: int,
+) -> dict[str, list[TileSlot]]:
     hand_left = int(width * 0.14) + calibration.hand_offsets.x_px
     hand_top = int(height * 0.72) + calibration.hand_offsets.y_px
     tile_width = max(18, int(width * 0.036) + calibration.hand_offsets.width_px)
@@ -90,11 +196,7 @@ def build_hand_layout(
         for index in range(4)
     ]
 
-    return {
-        "hand": hand_slots,
-        "dora": dora_slots,
-        "meld": meld_slots,
-    }
+    return {"hand": hand_slots, "dora": dora_slots, "meld": meld_slots}
 
 
 def _bounded_hand_slot_index(value: int) -> int:

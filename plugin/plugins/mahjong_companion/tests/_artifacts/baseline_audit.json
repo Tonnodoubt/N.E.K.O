@@ -1,0 +1,1187 @@
+{
+  "recorded_at": "2026-05-06T02:47:43+00:00",
+  "baseline_label": "pre-P0-background-invariance-fixes",
+  "reports": [
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_03.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 9,
+      "buttons_quickfilter": [],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1445,
+        "table_blue_ratio": 0.0046,
+        "orange_back_ratio": 0.0217,
+        "neutral_face_ratio": 0.1592,
+        "bright_face_ratio": 0.0718
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 86.23,
+          "stddev": 64.71,
+          "bright_ratio": 0.1001,
+          "dark_ratio": 0.6029,
+          "colorful_ratio": 0.6008,
+          "gold_ratio": 0.0143,
+          "orange_ratio": 0.0069,
+          "red_ratio": 0.0016,
+          "green_ratio": 0.0019
+        },
+        "top_banner": {
+          "mean_luma": 72.12,
+          "stddev": 53.38,
+          "bright_ratio": 0.0289,
+          "dark_ratio": 0.6847,
+          "colorful_ratio": 0.6648,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0016,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 103.28,
+          "stddev": 69.53,
+          "bright_ratio": 0.1572,
+          "dark_ratio": 0.4686,
+          "colorful_ratio": 0.3924,
+          "gold_ratio": 0.0245,
+          "orange_ratio": 0.0204,
+          "red_ratio": 0.0066,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 98.82,
+          "stddev": 66.43,
+          "bright_ratio": 0.1342,
+          "dark_ratio": 0.5368,
+          "colorful_ratio": 0.6227,
+          "gold_ratio": 0.0209,
+          "orange_ratio": 0.0003,
+          "red_ratio": 0.0,
+          "green_ratio": 0.0045
+        },
+        "bottom_hand_area": {
+          "mean_luma": 102.36,
+          "stddev": 66.31,
+          "bright_ratio": 0.1426,
+          "dark_ratio": 0.517,
+          "colorful_ratio": 0.656,
+          "gold_ratio": 0.0316,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0001,
+          "green_ratio": 0.0052
+        },
+        "right_replay_panel": {
+          "mean_luma": 76.17,
+          "stddev": 58.9,
+          "bright_ratio": 0.0532,
+          "dark_ratio": 0.6162,
+          "colorful_ratio": 0.6014,
+          "gold_ratio": 0.0376,
+          "orange_ratio": 0.0085,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_04.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [
+        "confirm"
+      ],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1052,
+        "table_blue_ratio": 0.003,
+        "orange_back_ratio": 0.0354,
+        "neutral_face_ratio": 0.1285,
+        "bright_face_ratio": 0.0304
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 81.27,
+          "stddev": 60.74,
+          "bright_ratio": 0.076,
+          "dark_ratio": 0.6324,
+          "colorful_ratio": 0.6509,
+          "gold_ratio": 0.0169,
+          "orange_ratio": 0.0096,
+          "red_ratio": 0.0022,
+          "green_ratio": 0.001
+        },
+        "top_banner": {
+          "mean_luma": 68.83,
+          "stddev": 48.81,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.6959,
+          "colorful_ratio": 0.6752,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 78.72,
+          "stddev": 49.33,
+          "bright_ratio": 0.012,
+          "dark_ratio": 0.5965,
+          "colorful_ratio": 0.5906,
+          "gold_ratio": 0.0345,
+          "orange_ratio": 0.0295,
+          "red_ratio": 0.0094,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 115.89,
+          "stddev": 74.63,
+          "bright_ratio": 0.2257,
+          "dark_ratio": 0.4483,
+          "colorful_ratio": 0.5532,
+          "gold_ratio": 0.0296,
+          "orange_ratio": 0.0109,
+          "red_ratio": 0.0003,
+          "green_ratio": 0.0
+        },
+        "bottom_hand_area": {
+          "mean_luma": 108.93,
+          "stddev": 70.51,
+          "bright_ratio": 0.187,
+          "dark_ratio": 0.497,
+          "colorful_ratio": 0.6298,
+          "gold_ratio": 0.037,
+          "orange_ratio": 0.0105,
+          "red_ratio": 0.0005,
+          "green_ratio": 0.0008
+        },
+        "right_replay_panel": {
+          "mean_luma": 76.03,
+          "stddev": 58.57,
+          "bright_ratio": 0.0502,
+          "dark_ratio": 0.6163,
+          "colorful_ratio": 0.6039,
+          "gold_ratio": 0.039,
+          "orange_ratio": 0.0085,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_05.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 13,
+      "buttons_quickfilter": [
+        "confirm"
+      ],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1413,
+        "table_blue_ratio": 0.003,
+        "orange_back_ratio": 0.0217,
+        "neutral_face_ratio": 0.1558,
+        "bright_face_ratio": 0.0692
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 86.56,
+          "stddev": 65.35,
+          "bright_ratio": 0.1054,
+          "dark_ratio": 0.5992,
+          "colorful_ratio": 0.5939,
+          "gold_ratio": 0.0136,
+          "orange_ratio": 0.0062,
+          "red_ratio": 0.0017,
+          "green_ratio": 0.002
+        },
+        "top_banner": {
+          "mean_luma": 68.86,
+          "stddev": 49.17,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.6951,
+          "colorful_ratio": 0.6752,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 102.2,
+          "stddev": 69.17,
+          "bright_ratio": 0.1544,
+          "dark_ratio": 0.4686,
+          "colorful_ratio": 0.3985,
+          "gold_ratio": 0.0251,
+          "orange_ratio": 0.0216,
+          "red_ratio": 0.0066,
+          "green_ratio": 0.0001
+        },
+        "bottom_action_bar": {
+          "mean_luma": 114.64,
+          "stddev": 73.68,
+          "bright_ratio": 0.2163,
+          "dark_ratio": 0.439,
+          "colorful_ratio": 0.5048,
+          "gold_ratio": 0.0212,
+          "orange_ratio": 0.0005,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0037
+        },
+        "bottom_hand_area": {
+          "mean_luma": 108.2,
+          "stddev": 69.75,
+          "bright_ratio": 0.1769,
+          "dark_ratio": 0.4797,
+          "colorful_ratio": 0.5952,
+          "gold_ratio": 0.0302,
+          "orange_ratio": 0.0012,
+          "red_ratio": 0.0004,
+          "green_ratio": 0.0057
+        },
+        "right_replay_panel": {
+          "mean_luma": 75.11,
+          "stddev": 57.73,
+          "bright_ratio": 0.0502,
+          "dark_ratio": 0.6177,
+          "colorful_ratio": 0.605,
+          "gold_ratio": 0.0316,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_06.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [
+        "confirm"
+      ],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1356,
+        "table_blue_ratio": 0.0029,
+        "orange_back_ratio": 0.0253,
+        "neutral_face_ratio": 0.1513,
+        "bright_face_ratio": 0.0654
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 87.67,
+          "stddev": 66.18,
+          "bright_ratio": 0.1115,
+          "dark_ratio": 0.5954,
+          "colorful_ratio": 0.5945,
+          "gold_ratio": 0.0146,
+          "orange_ratio": 0.0075,
+          "red_ratio": 0.0017,
+          "green_ratio": 0.001
+        },
+        "top_banner": {
+          "mean_luma": 69.23,
+          "stddev": 48.6,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.6954,
+          "colorful_ratio": 0.6752,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 105.0,
+          "stddev": 70.28,
+          "bright_ratio": 0.1666,
+          "dark_ratio": 0.4528,
+          "colorful_ratio": 0.3801,
+          "gold_ratio": 0.0267,
+          "orange_ratio": 0.0218,
+          "red_ratio": 0.0066,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 115.59,
+          "stddev": 74.58,
+          "bright_ratio": 0.2235,
+          "dark_ratio": 0.4537,
+          "colorful_ratio": 0.5482,
+          "gold_ratio": 0.0272,
+          "orange_ratio": 0.0109,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0
+        },
+        "bottom_hand_area": {
+          "mean_luma": 108.49,
+          "stddev": 70.35,
+          "bright_ratio": 0.1849,
+          "dark_ratio": 0.4949,
+          "colorful_ratio": 0.6267,
+          "gold_ratio": 0.0339,
+          "orange_ratio": 0.0075,
+          "red_ratio": 0.0005,
+          "green_ratio": 0.0006
+        },
+        "right_replay_panel": {
+          "mean_luma": 75.29,
+          "stddev": 58.12,
+          "bright_ratio": 0.0521,
+          "dark_ratio": 0.6174,
+          "colorful_ratio": 0.6022,
+          "gold_ratio": 0.0291,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_12.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [
+        "confirm"
+      ],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1002,
+        "table_blue_ratio": 0.0046,
+        "orange_back_ratio": 0.0335,
+        "neutral_face_ratio": 0.1215,
+        "bright_face_ratio": 0.0306
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 84.66,
+          "stddev": 64.44,
+          "bright_ratio": 0.0995,
+          "dark_ratio": 0.6178,
+          "colorful_ratio": 0.62,
+          "gold_ratio": 0.0155,
+          "orange_ratio": 0.0091,
+          "red_ratio": 0.0025,
+          "green_ratio": 0.0009
+        },
+        "top_banner": {
+          "mean_luma": 73.93,
+          "stddev": 54.44,
+          "bright_ratio": 0.0341,
+          "dark_ratio": 0.6708,
+          "colorful_ratio": 0.6444,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0002
+        },
+        "center_dialog": {
+          "mean_luma": 86.71,
+          "stddev": 58.19,
+          "bright_ratio": 0.0666,
+          "dark_ratio": 0.5556,
+          "colorful_ratio": 0.5082,
+          "gold_ratio": 0.0257,
+          "orange_ratio": 0.0251,
+          "red_ratio": 0.009,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 116.94,
+          "stddev": 75.32,
+          "bright_ratio": 0.2352,
+          "dark_ratio": 0.4476,
+          "colorful_ratio": 0.5442,
+          "gold_ratio": 0.0293,
+          "orange_ratio": 0.0109,
+          "red_ratio": 0.0005,
+          "green_ratio": 0.0
+        },
+        "bottom_hand_area": {
+          "mean_luma": 110.77,
+          "stddev": 71.64,
+          "bright_ratio": 0.2011,
+          "dark_ratio": 0.4925,
+          "colorful_ratio": 0.6233,
+          "gold_ratio": 0.0368,
+          "orange_ratio": 0.0105,
+          "red_ratio": 0.0007,
+          "green_ratio": 0.0001
+        },
+        "right_replay_panel": {
+          "mean_luma": 74.71,
+          "stddev": 58.9,
+          "bright_ratio": 0.0541,
+          "dark_ratio": 0.6326,
+          "colorful_ratio": 0.6085,
+          "gold_ratio": 0.0376,
+          "orange_ratio": 0.0085,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_13.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 2,
+      "buttons_quickfilter": [
+        "confirm"
+      ],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1143,
+        "table_blue_ratio": 0.0046,
+        "orange_back_ratio": 0.0251,
+        "neutral_face_ratio": 0.1296,
+        "bright_face_ratio": 0.0437
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 79.2,
+          "stddev": 57.25,
+          "bright_ratio": 0.0532,
+          "dark_ratio": 0.624,
+          "colorful_ratio": 0.6013,
+          "gold_ratio": 0.0161,
+          "orange_ratio": 0.0092,
+          "red_ratio": 0.0015,
+          "green_ratio": 0.0008
+        },
+        "top_banner": {
+          "mean_luma": 73.98,
+          "stddev": 54.74,
+          "bright_ratio": 0.0341,
+          "dark_ratio": 0.6668,
+          "colorful_ratio": 0.6441,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 91.65,
+          "stddev": 62.96,
+          "bright_ratio": 0.0991,
+          "dark_ratio": 0.5363,
+          "colorful_ratio": 0.4691,
+          "gold_ratio": 0.0252,
+          "orange_ratio": 0.0198,
+          "red_ratio": 0.0063,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 89.14,
+          "stddev": 53.71,
+          "bright_ratio": 0.0368,
+          "dark_ratio": 0.5127,
+          "colorful_ratio": 0.5087,
+          "gold_ratio": 0.0335,
+          "orange_ratio": 0.0188,
+          "red_ratio": 0.0,
+          "green_ratio": 0.0
+        },
+        "bottom_hand_area": {
+          "mean_luma": 89.99,
+          "stddev": 53.04,
+          "bright_ratio": 0.0371,
+          "dark_ratio": 0.5182,
+          "colorful_ratio": 0.61,
+          "gold_ratio": 0.0402,
+          "orange_ratio": 0.0164,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0
+        },
+        "right_replay_panel": {
+          "mean_luma": 74.57,
+          "stddev": 58.58,
+          "bright_ratio": 0.051,
+          "dark_ratio": 0.6327,
+          "colorful_ratio": 0.611,
+          "gold_ratio": 0.039,
+          "orange_ratio": 0.0085,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_14.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [
+        "confirm"
+      ],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1298,
+        "table_blue_ratio": 0.0046,
+        "orange_back_ratio": 0.0253,
+        "neutral_face_ratio": 0.1453,
+        "bright_face_ratio": 0.0576
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 87.85,
+          "stddev": 67.31,
+          "bright_ratio": 0.1177,
+          "dark_ratio": 0.5991,
+          "colorful_ratio": 0.591,
+          "gold_ratio": 0.015,
+          "orange_ratio": 0.0075,
+          "red_ratio": 0.0019,
+          "green_ratio": 0.001
+        },
+        "top_banner": {
+          "mean_luma": 73.78,
+          "stddev": 54.83,
+          "bright_ratio": 0.0374,
+          "dark_ratio": 0.6684,
+          "colorful_ratio": 0.6436,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0002
+        },
+        "center_dialog": {
+          "mean_luma": 102.96,
+          "stddev": 69.86,
+          "bright_ratio": 0.1593,
+          "dark_ratio": 0.4715,
+          "colorful_ratio": 0.394,
+          "gold_ratio": 0.0238,
+          "orange_ratio": 0.0218,
+          "red_ratio": 0.0073,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 115.99,
+          "stddev": 74.62,
+          "bright_ratio": 0.2232,
+          "dark_ratio": 0.4496,
+          "colorful_ratio": 0.5566,
+          "gold_ratio": 0.034,
+          "orange_ratio": 0.0108,
+          "red_ratio": 0.0005,
+          "green_ratio": 0.0002
+        },
+        "bottom_hand_area": {
+          "mean_luma": 109.55,
+          "stddev": 70.66,
+          "bright_ratio": 0.1922,
+          "dark_ratio": 0.4941,
+          "colorful_ratio": 0.6311,
+          "gold_ratio": 0.0376,
+          "orange_ratio": 0.0073,
+          "red_ratio": 0.0006,
+          "green_ratio": 0.0003
+        },
+        "right_replay_panel": {
+          "mean_luma": 72.92,
+          "stddev": 58.33,
+          "bright_ratio": 0.0546,
+          "dark_ratio": 0.6435,
+          "colorful_ratio": 0.6132,
+          "gold_ratio": 0.0353,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "cartoon_red",
+      "image": "screenshot_15.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [
+        "confirm"
+      ],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1506,
+        "table_blue_ratio": 0.0046,
+        "orange_back_ratio": 0.0185,
+        "neutral_face_ratio": 0.157,
+        "bright_face_ratio": 0.0767
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 89.34,
+          "stddev": 68.37,
+          "bright_ratio": 0.1251,
+          "dark_ratio": 0.5886,
+          "colorful_ratio": 0.5749,
+          "gold_ratio": 0.0144,
+          "orange_ratio": 0.0066,
+          "red_ratio": 0.0024,
+          "green_ratio": 0.0009
+        },
+        "top_banner": {
+          "mean_luma": 73.54,
+          "stddev": 55.03,
+          "bright_ratio": 0.0374,
+          "dark_ratio": 0.6697,
+          "colorful_ratio": 0.6435,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 105.89,
+          "stddev": 71.44,
+          "bright_ratio": 0.1789,
+          "dark_ratio": 0.4586,
+          "colorful_ratio": 0.3671,
+          "gold_ratio": 0.0234,
+          "orange_ratio": 0.0152,
+          "red_ratio": 0.0058,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 118.73,
+          "stddev": 74.86,
+          "bright_ratio": 0.24,
+          "dark_ratio": 0.4156,
+          "colorful_ratio": 0.4991,
+          "gold_ratio": 0.0235,
+          "orange_ratio": 0.0027,
+          "red_ratio": 0.0045,
+          "green_ratio": 0.0002
+        },
+        "bottom_hand_area": {
+          "mean_luma": 113.03,
+          "stddev": 71.53,
+          "bright_ratio": 0.2051,
+          "dark_ratio": 0.4578,
+          "colorful_ratio": 0.5842,
+          "gold_ratio": 0.0325,
+          "orange_ratio": 0.0055,
+          "red_ratio": 0.0041,
+          "green_ratio": 0.0003
+        },
+        "right_replay_panel": {
+          "mean_luma": 74.87,
+          "stddev": 61.69,
+          "bright_ratio": 0.0717,
+          "dark_ratio": 0.6444,
+          "colorful_ratio": 0.5966,
+          "gold_ratio": 0.039,
+          "orange_ratio": 0.0085,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "watermelon_summer",
+      "image": "screenshot_02.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 10,
+      "buttons_quickfilter": [],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1437,
+        "table_blue_ratio": 0.0014,
+        "orange_back_ratio": 0.1584,
+        "neutral_face_ratio": 0.2874,
+        "bright_face_ratio": 0.0606
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 114.39,
+          "stddev": 53.66,
+          "bright_ratio": 0.1041,
+          "dark_ratio": 0.1571,
+          "colorful_ratio": 0.3058,
+          "gold_ratio": 0.0123,
+          "orange_ratio": 0.0115,
+          "red_ratio": 0.0034,
+          "green_ratio": 0.0008
+        },
+        "top_banner": {
+          "mean_luma": 107.28,
+          "stddev": 44.77,
+          "bright_ratio": 0.0257,
+          "dark_ratio": 0.1765,
+          "colorful_ratio": 0.2713,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 131.41,
+          "stddev": 55.02,
+          "bright_ratio": 0.1598,
+          "dark_ratio": 0.1365,
+          "colorful_ratio": 0.4579,
+          "gold_ratio": 0.0466,
+          "orange_ratio": 0.0411,
+          "red_ratio": 0.01,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 122.55,
+          "stddev": 47.51,
+          "bright_ratio": 0.1373,
+          "dark_ratio": 0.0491,
+          "colorful_ratio": 0.2823,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0002,
+          "red_ratio": 0.0,
+          "green_ratio": 0.0002
+        },
+        "bottom_hand_area": {
+          "mean_luma": 125.3,
+          "stddev": 47.6,
+          "bright_ratio": 0.1438,
+          "dark_ratio": 0.0424,
+          "colorful_ratio": 0.3568,
+          "gold_ratio": 0.0044,
+          "orange_ratio": 0.003,
+          "red_ratio": 0.0,
+          "green_ratio": 0.0
+        },
+        "right_replay_panel": {
+          "mean_luma": 101.03,
+          "stddev": 46.9,
+          "bright_ratio": 0.0534,
+          "dark_ratio": 0.1905,
+          "colorful_ratio": 0.1266,
+          "gold_ratio": 0.0111,
+          "orange_ratio": 0.007,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "watermelon_summer",
+      "image": "screenshot_07.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.113,
+        "table_blue_ratio": 0.0025,
+        "orange_back_ratio": 0.1985,
+        "neutral_face_ratio": 0.2969,
+        "bright_face_ratio": 0.0316
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 114.91,
+          "stddev": 52.25,
+          "bright_ratio": 0.093,
+          "dark_ratio": 0.151,
+          "colorful_ratio": 0.3409,
+          "gold_ratio": 0.0271,
+          "orange_ratio": 0.0264,
+          "red_ratio": 0.005,
+          "green_ratio": 0.0009
+        },
+        "top_banner": {
+          "mean_luma": 105.15,
+          "stddev": 41.63,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.1744,
+          "colorful_ratio": 0.2685,
+          "gold_ratio": 0.0039,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 125.88,
+          "stddev": 46.44,
+          "bright_ratio": 0.0784,
+          "dark_ratio": 0.1274,
+          "colorful_ratio": 0.5943,
+          "gold_ratio": 0.0944,
+          "orange_ratio": 0.0922,
+          "red_ratio": 0.0216,
+          "green_ratio": 0.0001
+        },
+        "bottom_action_bar": {
+          "mean_luma": 136.56,
+          "stddev": 56.32,
+          "bright_ratio": 0.2254,
+          "dark_ratio": 0.0601,
+          "colorful_ratio": 0.2405,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0002,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0003
+        },
+        "bottom_hand_area": {
+          "mean_luma": 131.93,
+          "stddev": 52.31,
+          "bright_ratio": 0.1904,
+          "dark_ratio": 0.0473,
+          "colorful_ratio": 0.3152,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0007,
+          "red_ratio": 0.0003,
+          "green_ratio": 0.0003
+        },
+        "right_replay_panel": {
+          "mean_luma": 100.56,
+          "stddev": 46.22,
+          "bright_ratio": 0.0527,
+          "dark_ratio": 0.1864,
+          "colorful_ratio": 0.1163,
+          "gold_ratio": 0.0022,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "watermelon_summer",
+      "image": "screenshot_08.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 11,
+      "buttons_quickfilter": [],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1212,
+        "table_blue_ratio": 0.0025,
+        "orange_back_ratio": 0.1865,
+        "neutral_face_ratio": 0.2932,
+        "bright_face_ratio": 0.0404
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 114.22,
+          "stddev": 52.16,
+          "bright_ratio": 0.0922,
+          "dark_ratio": 0.1524,
+          "colorful_ratio": 0.3298,
+          "gold_ratio": 0.0215,
+          "orange_ratio": 0.0198,
+          "red_ratio": 0.0048,
+          "green_ratio": 0.0009
+        },
+        "top_banner": {
+          "mean_luma": 105.48,
+          "stddev": 41.68,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.1744,
+          "colorful_ratio": 0.2691,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0003
+        },
+        "center_dialog": {
+          "mean_luma": 127.87,
+          "stddev": 48.92,
+          "bright_ratio": 0.1009,
+          "dark_ratio": 0.1291,
+          "colorful_ratio": 0.5679,
+          "gold_ratio": 0.0876,
+          "orange_ratio": 0.0806,
+          "red_ratio": 0.0198,
+          "green_ratio": 0.0002
+        },
+        "bottom_action_bar": {
+          "mean_luma": 128.52,
+          "stddev": 52.9,
+          "bright_ratio": 0.1763,
+          "dark_ratio": 0.0577,
+          "colorful_ratio": 0.2365,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0003,
+          "red_ratio": 0.0,
+          "green_ratio": 0.0002
+        },
+        "bottom_hand_area": {
+          "mean_luma": 128.12,
+          "stddev": 50.62,
+          "bright_ratio": 0.1657,
+          "dark_ratio": 0.0463,
+          "colorful_ratio": 0.3134,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0009,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0001
+        },
+        "right_replay_panel": {
+          "mean_luma": 100.39,
+          "stddev": 46.2,
+          "bright_ratio": 0.0521,
+          "dark_ratio": 0.1872,
+          "colorful_ratio": 0.1163,
+          "gold_ratio": 0.0022,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "watermelon_summer",
+      "image": "screenshot_09.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 12,
+      "buttons_quickfilter": [],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1397,
+        "table_blue_ratio": 0.0025,
+        "orange_back_ratio": 0.1584,
+        "neutral_face_ratio": 0.2833,
+        "bright_face_ratio": 0.057
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 114.68,
+          "stddev": 53.48,
+          "bright_ratio": 0.1031,
+          "dark_ratio": 0.1553,
+          "colorful_ratio": 0.3102,
+          "gold_ratio": 0.0147,
+          "orange_ratio": 0.0134,
+          "red_ratio": 0.0048,
+          "green_ratio": 0.0008
+        },
+        "top_banner": {
+          "mean_luma": 105.12,
+          "stddev": 41.44,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.1744,
+          "colorful_ratio": 0.2696,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 130.1,
+          "stddev": 53.55,
+          "bright_ratio": 0.1416,
+          "dark_ratio": 0.1394,
+          "colorful_ratio": 0.4933,
+          "gold_ratio": 0.0576,
+          "orange_ratio": 0.0488,
+          "red_ratio": 0.0206,
+          "green_ratio": 0.0001
+        },
+        "bottom_action_bar": {
+          "mean_luma": 128.64,
+          "stddev": 52.98,
+          "bright_ratio": 0.18,
+          "dark_ratio": 0.0585,
+          "colorful_ratio": 0.2353,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0003,
+          "red_ratio": 0.0,
+          "green_ratio": 0.0002
+        },
+        "bottom_hand_area": {
+          "mean_luma": 128.0,
+          "stddev": 50.65,
+          "bright_ratio": 0.1652,
+          "dark_ratio": 0.0465,
+          "colorful_ratio": 0.3115,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0009,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0001
+        },
+        "right_replay_panel": {
+          "mean_luma": 100.27,
+          "stddev": 46.14,
+          "bright_ratio": 0.0534,
+          "dark_ratio": 0.1877,
+          "colorful_ratio": 0.117,
+          "gold_ratio": 0.0022,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "watermelon_summer",
+      "image": "screenshot_10.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1091,
+        "table_blue_ratio": 0.0012,
+        "orange_back_ratio": 0.198,
+        "neutral_face_ratio": 0.2925,
+        "bright_face_ratio": 0.0304
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 114.77,
+          "stddev": 52.36,
+          "bright_ratio": 0.093,
+          "dark_ratio": 0.1504,
+          "colorful_ratio": 0.3385,
+          "gold_ratio": 0.0286,
+          "orange_ratio": 0.0273,
+          "red_ratio": 0.005,
+          "green_ratio": 0.0008
+        },
+        "top_banner": {
+          "mean_luma": 105.06,
+          "stddev": 41.39,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.1749,
+          "colorful_ratio": 0.2682,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 126.06,
+          "stddev": 46.51,
+          "bright_ratio": 0.0755,
+          "dark_ratio": 0.1183,
+          "colorful_ratio": 0.5962,
+          "gold_ratio": 0.1038,
+          "orange_ratio": 0.0988,
+          "red_ratio": 0.0223,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 135.64,
+          "stddev": 56.68,
+          "bright_ratio": 0.2252,
+          "dark_ratio": 0.0638,
+          "colorful_ratio": 0.2308,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0002,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0
+        },
+        "bottom_hand_area": {
+          "mean_luma": 131.37,
+          "stddev": 52.56,
+          "bright_ratio": 0.1908,
+          "dark_ratio": 0.048,
+          "colorful_ratio": 0.3075,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0007,
+          "red_ratio": 0.0006,
+          "green_ratio": 0.0
+        },
+        "right_replay_panel": {
+          "mean_luma": 99.97,
+          "stddev": 45.73,
+          "bright_ratio": 0.0504,
+          "dark_ratio": 0.1868,
+          "colorful_ratio": 0.1167,
+          "gold_ratio": 0.0022,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    },
+    {
+      "theme": "watermelon_summer",
+      "image": "screenshot_11.png",
+      "scene": "unknown",
+      "scene_confidence": 0.22,
+      "hand_occupied_count": 14,
+      "buttons_quickfilter": [],
+      "discard_mask_means": {
+        "face_kept_ratio": 0.1538,
+        "table_blue_ratio": 0.0012,
+        "orange_back_ratio": 0.1373,
+        "neutral_face_ratio": 0.2824,
+        "bright_face_ratio": 0.07
+      },
+      "roi_metrics": {
+        "full_frame": {
+          "mean_luma": 116.02,
+          "stddev": 55.33,
+          "bright_ratio": 0.1173,
+          "dark_ratio": 0.1565,
+          "colorful_ratio": 0.2943,
+          "gold_ratio": 0.0116,
+          "orange_ratio": 0.0101,
+          "red_ratio": 0.0024,
+          "green_ratio": 0.0008
+        },
+        "top_banner": {
+          "mean_luma": 104.9,
+          "stddev": 41.28,
+          "bright_ratio": 0.014,
+          "dark_ratio": 0.1749,
+          "colorful_ratio": 0.2683,
+          "gold_ratio": 0.0038,
+          "orange_ratio": 0.0041,
+          "red_ratio": 0.0014,
+          "green_ratio": 0.0
+        },
+        "center_dialog": {
+          "mean_luma": 132.32,
+          "stddev": 57.03,
+          "bright_ratio": 0.1733,
+          "dark_ratio": 0.1378,
+          "colorful_ratio": 0.4316,
+          "gold_ratio": 0.0486,
+          "orange_ratio": 0.0365,
+          "red_ratio": 0.0069,
+          "green_ratio": 0.0
+        },
+        "bottom_action_bar": {
+          "mean_luma": 135.98,
+          "stddev": 56.77,
+          "bright_ratio": 0.2266,
+          "dark_ratio": 0.0636,
+          "colorful_ratio": 0.2311,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0002,
+          "red_ratio": 0.0002,
+          "green_ratio": 0.0
+        },
+        "bottom_hand_area": {
+          "mean_luma": 131.43,
+          "stddev": 52.76,
+          "bright_ratio": 0.1916,
+          "dark_ratio": 0.0494,
+          "colorful_ratio": 0.3068,
+          "gold_ratio": 0.0003,
+          "orange_ratio": 0.0006,
+          "red_ratio": 0.0006,
+          "green_ratio": 0.0
+        },
+        "right_replay_panel": {
+          "mean_luma": 100.38,
+          "stddev": 46.23,
+          "bright_ratio": 0.0527,
+          "dark_ratio": 0.1865,
+          "colorful_ratio": 0.1164,
+          "gold_ratio": 0.0022,
+          "orange_ratio": 0.0019,
+          "red_ratio": 0.0008,
+          "green_ratio": 0.0
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total_shots": 14,
+    "scene_in_match": 0,
+    "avg_hand_occupied": 12.07
+  }
+}

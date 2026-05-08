@@ -1,0 +1,88 @@
+{
+  "theme_id": "watermelon_summer",
+  "source_image": "screenshot_10.png",
+  "hand_tiles": [
+    "4m",
+    "5m",
+    "6m",
+    "7m",
+    "1p",
+    "2p",
+    "3p",
+    "5p",
+    "5p",
+    "9p",
+    "9p",
+    "1z",
+    "5z",
+    "8m"
+  ],
+  "discard_piles": {
+    "self": [
+      {
+        "tile": "9m",
+        "turn_index": 1
+      },
+      {
+        "tile": "6m",
+        "turn_index": 2
+      },
+      {
+        "tile": "5z",
+        "turn_index": 3
+      },
+      {
+        "tile": "3p",
+        "turn_index": 4
+      }
+    ],
+    "left_opponent": [
+      {
+        "tile": "3z",
+        "turn_index": 8
+      },
+      {
+        "tile": "2z",
+        "turn_index": 9
+      },
+      {
+        "tile": "9m",
+        "turn_index": 17
+      }
+    ],
+    "top_opponent": [
+      {
+        "tile": "9s",
+        "turn_index": 2
+      },
+      {
+        "tile": "7z",
+        "turn_index": 3
+      },
+      {
+        "tile": "1z",
+        "turn_index": 4
+      },
+      {
+        "tile": "9p",
+        "turn_index": 5
+      }
+    ],
+    "right_opponent": [
+      {
+        "tile": "7z",
+        "turn_index": 2
+      },
+      {
+        "tile": "3z",
+        "turn_index": 3
+      },
+      {
+        "tile": "8m",
+        "turn_index": 4
+      }
+    ]
+  },
+  "dora_indicators": [],
+  "melds": []
+}
