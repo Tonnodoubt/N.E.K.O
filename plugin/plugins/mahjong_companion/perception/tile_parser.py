@@ -14,6 +14,14 @@ from .calibration import CalibrationProfile, resolve_calibration_profile
 from .discard_layout import DiscardSlot, build_discard_layout
 from .discard_parser import parse_discards_from_image
 from .external_discard_recognizer import load_external_discard_result
+from .fixture_loader import (
+    load_fixture as _load_fixture,
+    normalize_discard_piles as _normalize_discard_piles,
+    normalize_group_list as _normalize_group_list,
+    normalize_tile_list as _normalize_tile_list,
+    raw_detections_from_label as _raw_detections_from_label,
+    raw_discard_detections_from_piles as _raw_discard_detections_from_piles,
+)
 from .hand_baseline import detect_hand_baseline
 from .hand_layout import TileSlot, build_hand_layout
 from .riichi_detector import detect_riichi_players
@@ -705,112 +713,6 @@ def _draw_slot_index_for_hand_count(hand_count: int) -> int:
     return 14
 
 
-def _load_fixture(image_path: Path) -> dict[str, Any] | None:
-    candidates = [
-        image_path.with_name(f"{image_path.stem}-tiles.json"),
-        image_path.with_suffix(".tiles.json"),
-        image_path.with_suffix(".label.json"),
-    ]
-    for candidate in candidates:
-        if not candidate.exists():
-            continue
-        try:
-            payload = json.loads(candidate.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("failed to load tile fixture %s: %s", candidate, exc)
-            continue
-        if isinstance(payload, dict):
-            return payload
-    return None
-
-
-def _raw_detections_from_label(fixture: dict[str, Any], hand_tiles: list[str]) -> list[dict[str, Any]] | None:
-    layout = fixture.get("layout")
-    if not isinstance(layout, dict):
-        return None
-    hand_slots = layout.get("hand_slots")
-    if not isinstance(hand_slots, list):
-        return None
-
-    raw_detections: list[dict[str, Any]] = []
-    for index, slot in enumerate(hand_slots):
-        if not isinstance(slot, dict):
-            continue
-        tile = str(slot.get("tile", "")).strip()
-        if not tile and index < len(hand_tiles):
-            tile = hand_tiles[index]
-        raw_detections.append(
-            {
-                "slot_id": str(slot.get("slot_id", f"hand_{index + 1}")),
-                "group": "hand",
-                "candidate_tile": tile,
-                "confidence": float(fixture.get("analysis_confidence", 0.86) or 0.86),
-                "box": slot.get("box") if isinstance(slot.get("box"), dict) else {},
-            }
-        )
-    return raw_detections
-
-
-def _normalize_tile_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
-def _normalize_group_list(value: Any) -> list[list[str]]:
-    if not isinstance(value, list):
-        return []
-    groups: list[list[str]] = []
-    for item in value:
-        if not isinstance(item, list):
-            continue
-        group = _normalize_tile_list(item)
-        if group:
-            groups.append(group)
-    return groups
-
-
-def _normalize_discard_piles(value: Any) -> dict[str, list[dict[str, Any]]]:
-    if not isinstance(value, dict):
-        return {}
-    piles: dict[str, list[dict[str, Any]]] = {}
-    for player, raw_items in value.items():
-        player_key = str(player).strip()
-        if not player_key or not isinstance(raw_items, list):
-            continue
-        normalized_items: list[dict[str, Any]] = []
-        for index, item in enumerate(raw_items):
-            if not isinstance(item, dict):
-                continue
-            tile = str(item.get("tile", "")).strip()
-            if not tile:
-                continue
-            payload = {
-                "tile": tile,
-                "player": str(item.get("player") or player_key),
-                "turn_index": _coerce_int(item.get("turn_index"), default=index + 1),
-                "confidence": _coerce_float(item.get("confidence"), default=1.0),
-                "orientation": str(item.get("orientation", "")).strip() or player_key,
-                "source": str(item.get("source", "")).strip() or "fixture",
-            }
-            bbox = item.get("bbox")
-            if isinstance(bbox, list | tuple) and len(bbox) == 4:
-                try:
-                    payload["bbox"] = [int(part) for part in bbox]
-                except (TypeError, ValueError):
-                    pass
-            quad = item.get("quad")
-            if isinstance(quad, list | tuple) and len(quad) == 4:
-                try:
-                    payload["quad"] = [[int(point[0]), int(point[1])] for point in quad]
-                except (TypeError, ValueError, IndexError):
-                    pass
-            normalized_items.append(payload)
-        if normalized_items:
-            piles[player_key] = normalized_items
-    return piles
-
-
 def _discard_state_reliable(hints: dict[str, Any]) -> bool:
     try:
         recognized_count = int(hints.get("recognized_discard_tile_count", 0) or 0)
@@ -852,31 +754,6 @@ def _derive_known_genbutsu_tiles(
             if tile:
                 tiles.append(tile)
     return _dedupe_text(tiles)
-
-
-def _raw_discard_detections_from_piles(
-    discard_piles: dict[str, list[dict[str, Any]]],
-    *,
-    analysis_confidence: float,
-) -> list[dict[str, Any]]:
-    detections: list[dict[str, Any]] = []
-    for player, pile in discard_piles.items():
-        for item in pile:
-            tile = str(item.get("tile", "")).strip()
-            if not tile:
-                continue
-            detections.append({
-                "slot_id": f"discard_{player}_{item.get('turn_index', len(detections) + 1)}",
-                "group": "discard",
-                "player": player,
-                "candidate_tile": tile,
-                "confidence": float(item.get("confidence", analysis_confidence) or analysis_confidence),
-                "box": item.get("bbox", []),
-                "quad": item.get("quad", []),
-                "orientation": item.get("orientation", ""),
-                "source": item.get("source", "fixture"),
-            })
-    return detections
 
 
 def _coerce_int(value: Any, *, default: int) -> int:

@@ -8,7 +8,7 @@ from .hand_baseline import HandBaselineAnchor
 from .roi import RoiBox
 
 
-@dataclass
+@dataclass(frozen=True)
 class TileSlot:
     slot_id: str
     box: RoiBox

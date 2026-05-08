@@ -47,6 +47,12 @@ DEFAULT_IVORY_MIN_GREEN = 150
 DEFAULT_IVORY_MIN_BLUE = 110
 DEFAULT_GAP_CLOSE_RATIO = 0.005
 
+# Public ivory predicate constants — imported by tile_detector and
+# discard_quad_finder so thresholds stay in one place.
+IVORY_MIN_RED = 165
+IVORY_MIN_GREEN = 150
+IVORY_MIN_BLUE = 110
+
 
 @dataclass(frozen=True)
 class HandBaselineAnchor:

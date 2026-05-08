@@ -330,11 +330,12 @@ def find_tiles_in_band(
     crop = image.crop((band_left, band_top, band_left + band_width, band_top + band_height))
     arr = np.asarray(crop.convert("RGB"), dtype=np.int16)
 
-    # Ivory predicate – same colour space as hand_baseline detection.
+    from .hand_baseline import IVORY_MIN_BLUE, IVORY_MIN_GREEN, IVORY_MIN_RED
+
     ivory = (
-        (arr[..., 0] >= 165)
-        & (arr[..., 1] >= 150)
-        & (arr[..., 2] >= 110)
+        (arr[..., 0] >= IVORY_MIN_RED)
+        & (arr[..., 1] >= IVORY_MIN_GREEN)
+        & (arr[..., 2] >= IVORY_MIN_BLUE)
         & (arr[..., 0] >= arr[..., 2] - 5)
     )
 

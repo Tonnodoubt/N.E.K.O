@@ -24,17 +24,25 @@ from .tile_templates import (
 
 _ONNX_PROBED: bool | None = None
 _ONNX_READY: bool = False
+_ONNX_LOCK = __import__("threading").Lock()
 
 # Red-five tiles that the 34-class model does not know about.
 _RED_FIVE_MAP = {"5m": "0m", "5p": "0p", "5s": "0s"}
 
 
-def _onnx_ready() -> bool:
+def onnx_backend_available() -> bool:
+    """True if the ONNX tile classifier is ready for inference."""
     global _ONNX_PROBED, _ONNX_READY
     if _ONNX_PROBED is None:
-        _ONNX_READY = vit_onnx_available()
-        _ONNX_PROBED = True
+        with _ONNX_LOCK:
+            if _ONNX_PROBED is None:
+                _ONNX_READY = vit_onnx_available()
+                _ONNX_PROBED = True
     return _ONNX_READY
+
+
+# Legacy alias kept for internal callers that haven't migrated yet.
+_onnx_ready = onnx_backend_available
 
 
 def classify_tile(

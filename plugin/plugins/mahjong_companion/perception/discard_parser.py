@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -10,8 +11,10 @@ from .discard_layout import DiscardSlot, build_discard_layout
 from .discard_quad_finder import DiscardQuadRefinement, refine_discard_slot_quad
 from .roi import collect_region_metrics
 from .tile_classifier_dispatch import classify_tiles_batch
-from .tile_classifier_dispatch import _onnx_ready as _onnx_backend_active
+from .tile_classifier_dispatch import onnx_backend_available as _onnx_backend_active
 from .tile_templates import TileTemplateMatch
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_MIN_DISCARD_CONFIDENCE = 0.55
@@ -73,7 +76,7 @@ def parse_discards_from_image(
             from .tile_detector import refine_discard_layout_with_bands
             layout = refine_discard_layout_with_bands(image, layout)
         except Exception:
-            pass
+            logger.debug("band refinement skipped — error during ivory scan", exc_info=True)
     discard_piles: dict[str, list[dict[str, Any]]] = {}
     visible_tiles: list[str] = []
     raw_detections: list[dict[str, Any]] = []
@@ -398,6 +401,11 @@ def _better_refinement_owner(
             best_score = score
     if best_slot.slot_id == slot.slot_id:
         return None
+    # Require a meaningful score improvement before re-assigning a detection
+    # to a different slot.  The floor (0.18) rejects matches that barely fit
+    # any slot; the additive margin (+0.07) prevents jitter between
+    # near-identical slots; the multiplicative margin (×1.12) ensures the
+    # gain is proportionally meaningful for higher-scoring candidates.
     if best_score >= max(0.18, current_score + 0.07, current_score * 1.12):
         return best_slot
     return None

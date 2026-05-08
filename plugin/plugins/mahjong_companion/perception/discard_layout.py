@@ -126,7 +126,7 @@ def build_discard_layout(
 ) -> dict[str, list[DiscardSlot]]:
     screen_width = _positive_int(width)
     screen_height = _positive_int(height)
-    _ = calibration
+    _ = calibration  # reserved: discard calibration offsets (future extension)
 
     if baseline is not None and _baseline_plausible(baseline, width, height):
         return _build_anchor_layout(baseline, width, height)
