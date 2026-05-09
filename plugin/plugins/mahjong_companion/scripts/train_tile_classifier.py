@@ -9,7 +9,8 @@ Output::
 
     model_output/
       model.onnx        # ONNX model for inference
-      labels.txt        # class label list (copied from dataset)
+      labels.txt        # class label list (one per line)
+      labels.json       # class label mapping {id: name} for ONNX loader
       config.json       # model config for the ONNX loader
 """
 
@@ -179,10 +180,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(f"ONNX exported: {onnx_path} ({_file_size_mb(onnx_path):.1f} MB)")
 
-    # Copy labels
+    # Copy labels (two formats: labels.txt for reference, labels.json for ONNX loader)
     shutil.copy(str(labels_file), str(output_dir / "labels.txt"))
+    labels_json = {str(i): name for i, name in enumerate(class_names)}
+    (output_dir / "labels.json").write_text(json.dumps(labels_json, indent=2, ensure_ascii=False))
 
-    # Write config
+    # Write config (legacy, kept for reference)
     config = {
         "backbone": backbone,
         "timm_name": cfg["timm_name"],
@@ -194,6 +197,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     (output_dir / "config.json").write_text(json.dumps(config, indent=2))
     print(f"Config saved: {output_dir / 'config.json'}")
+
+    # Write preprocessor.json (compatible with vit_tile_classifier_onnx.py)
+    preprocessor = {
+        "image_mean": [0.485, 0.456, 0.406],
+        "image_std": [0.229, 0.224, 0.225],
+        "size": {"shortest_edge": input_size},
+        "do_normalize": True,
+        "do_resize": True,
+        "do_rescale": True,
+        "rescale_factor": 0.00392156862745098,
+    }
+    (output_dir / "preprocessor.json").write_text(json.dumps(preprocessor, indent=2))
+    print(f"Preprocessor saved: {output_dir / 'preprocessor.json'}")
     return 0
 
 
