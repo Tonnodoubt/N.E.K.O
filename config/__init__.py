@@ -218,6 +218,7 @@ def _build_local_allowed_origins(port: int, *, extra_origins: tuple[str, ...] = 
 
 # 服务器端口配置
 MAIN_SERVER_PORT = _read_port_env("MAIN_SERVER_PORT", 48911)
+LAN_PROXY_PORT = _read_port_env("LAN_PROXY_PORT", 48920)
 MEMORY_SERVER_PORT = _read_port_env("MEMORY_SERVER_PORT", 48912)
 MONITOR_SERVER_PORT = _read_port_env("MONITOR_SERVER_PORT", 48913)
 COMMENTER_SERVER_PORT = _read_port_env("COMMENTER_SERVER_PORT", 48914)
@@ -1855,6 +1856,7 @@ __all__ = [
     'EXTRA_BODY_GEMINI',
     'AGENT_USE_EXTRA_BODY',
     'MAIN_SERVER_PORT',
+    'LAN_PROXY_PORT',
     'MEMORY_SERVER_PORT',
     'MONITOR_SERVER_PORT',
     'COMMENTER_SERVER_PORT',

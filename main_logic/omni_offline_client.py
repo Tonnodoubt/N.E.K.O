@@ -1800,14 +1800,15 @@ class OmniOfflineClient:
         """Compatibility method - not used in text mode"""
         pass
     
-    async def stream_image(self, image_b64: str) -> None:
+    async def stream_image(self, image_b64: str, image_source: Optional[str] = None) -> None:
         """
         Add an image to pending images queue.
         Images will be sent together with the next text message.
         """
         if not image_b64:
             return
-        
+
+        # image_source is accepted for API parity with realtime sessions.
         # Store base64 image
         self._pending_images.append(image_b64)
         logger.info(f"Added image to pending queue (total: {len(self._pending_images)})")

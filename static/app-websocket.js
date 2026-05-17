@@ -993,6 +993,9 @@
      */
     function ensureWebSocketOpen(timeoutMs = 5000) {
         return new Promise(function (resolve, reject) {
+            if (S.mobileTakeoverActive) {
+                return reject(new Error('Desktop websocket yielded to mobile'));
+            }
             if (S.socket && S.socket.readyState === WebSocket.OPEN) {
                 return resolve();
             }
@@ -1103,6 +1106,10 @@
     // ========================  connectWebSocket  ========================
 
     function connectWebSocket() {
+        if (S.mobileTakeoverActive) {
+            console.log('[WS] connect skipped: desktop yielded to mobile');
+            return;
+        }
         var currentLanlanName = getWebSocketLanlanName();
         // 进入 connectWebSocket 即意味着"当前已经在主动重连"，排队中的 auto-reconnect 不再需要。
         // 切换档案时 Chat 窗口曾出现这样的 stale 序列：handleCatgirlSwitch 刚 connect 的新代理被
@@ -1153,6 +1160,11 @@
 
         // ---- onopen ----
         S.socket.onopen = function () {
+            if (S.mobileTakeoverActive) {
+                console.log('[WS] open skipped: desktop yielded to mobile');
+                try { _thisSocket.close(1000, 'desktop-yielded-to-mobile'); } catch (_closeErr) { }
+                return;
+            }
             console.log(window.t('console.websocketConnected'));
 
             // Warm up Agent snapshot once websocket is ready.
@@ -2979,7 +2991,7 @@
             // Auto-reconnect: skip if switching catgirl OR this socket was already
             // replaced by a newer connectWebSocket() call (prevents reconnect storm
             // when the old socket's onclose fires after the switch completes).
-            if (!S.isSwitchingCatgirl && S.socket === _thisSocket) {
+            if (!S.mobileTakeoverActive && !S.isSwitchingCatgirl && S.socket === _thisSocket) {
                 S.autoReconnectTimeoutId = setTimeout(connectWebSocket, 3000);
             }
         };
@@ -3018,11 +3030,91 @@
         }
     };
 
+    mod.setDesktopMobileTakeover = async function (enabled) {
+        var shouldEnable = !!enabled;
+        if (S.mobileTakeoverActive === shouldEnable) {
+            return {
+                enabled: S.mobileTakeoverActive,
+                alreadyApplied: true,
+                socketState: S.socket ? S.socket.readyState : WebSocket.CLOSED
+            };
+        }
+
+        if (shouldEnable) {
+            try {
+                if (typeof window.stopMicCapture === 'function' && S.isRecording) {
+                    await window.stopMicCapture();
+                } else if (typeof window.stopRecording === 'function') {
+                    window.stopRecording();
+                }
+            } catch (error) {
+                console.warn('[WS] mobile takeover stopMicCapture failed:', error);
+            }
+
+            try {
+                if (typeof window.stopScreenSharing === 'function') {
+                    await window.stopScreenSharing(true);
+                } else if (typeof window.stopScreening === 'function') {
+                    window.stopScreening();
+                }
+            } catch (error) {
+                console.warn('[WS] mobile takeover stopScreenSharing failed:', error);
+            }
+
+            try {
+                if (typeof window.stopProactiveChatSchedule === 'function') {
+                    window.stopProactiveChatSchedule();
+                }
+            } catch (error) {
+                console.warn('[WS] mobile takeover stopProactiveChatSchedule failed:', error);
+            }
+
+            try {
+                if (typeof window.stopProactiveVisionDuringSpeech === 'function') {
+                    window.stopProactiveVisionDuringSpeech();
+                }
+            } catch (error) {
+                console.warn('[WS] mobile takeover stopProactiveVisionDuringSpeech failed:', error);
+            }
+
+            try {
+                if (S.socket && S.socket.readyState === WebSocket.OPEN) {
+                    S.socket.send(JSON.stringify({ action: 'end_session' }));
+                }
+            } catch (error) {
+                console.warn('[WS] mobile takeover end_session send failed:', error);
+            }
+
+            S.mobileTakeoverActive = true;
+            mod.stopHeartbeat();
+            mod.cancelAutoReconnect();
+
+            try {
+                if (S.socket && (S.socket.readyState === WebSocket.OPEN || S.socket.readyState === WebSocket.CONNECTING)) {
+                    S.socket.close(1000, 'desktop-yielded-to-mobile');
+                }
+            } catch (error) {
+                console.warn('[WS] mobile takeover socket close failed:', error);
+            }
+        } else {
+            S.mobileTakeoverActive = false;
+            if (!S.isSwitchingCatgirl) {
+                connectWebSocket();
+            }
+        }
+
+        return {
+            enabled: S.mobileTakeoverActive,
+            socketState: S.socket ? S.socket.readyState : WebSocket.CLOSED
+        };
+    };
+
     // ========================  Backward-compat globals  ========================
     window.connectWebSocket = connectWebSocket;
     window.ensureWebSocketOpen = ensureWebSocketOpen;
     window.ensureAssistantTurnStarted = ensureAssistantTurnStarted;
     window.clearPendingAssistantTurnStart = clearPendingAssistantTurnStart;
+    window.__nekoSetDesktopMobileTakeover = mod.setDesktopMobileTakeover;
 
     // ========================  Greeting check (after model loaded)  ========================
     // 需要 WS 已连接 AND 模型已加载 两个条件同时满足才发送，

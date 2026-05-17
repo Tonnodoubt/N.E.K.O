@@ -102,6 +102,7 @@
         socket: null,
         heartbeatInterval: null,
         autoReconnectTimeoutId: null,
+        mobileTakeoverActive: false,
         isRecording: false,
         voiceChatActive: false,
         voiceStartPending: false,
