@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.3.0 - 2026-05-17
+
+### Lightweight ONNX tile classifier
+
+- Added a deployed MobileNetV3-Small ONNX tile classifier trained from the public `pjura/mahjong_souls_tiles` Mahjong Soul crop dataset plus local empty/fixture augmentation.
+- Added `scripts/prepare_hf_tile_dataset.py` and fixed `scripts/train_tile_classifier.py` CLI args so epochs, batch size, and learning rate are honored during training.
+- Updated runtime dispatch so discard/river classification uses ONNX by default with template fallback, while hand-tile ONNX remains opt-in via `MAHJONG_COMPANION_ONNX_HAND_ENABLED=1`.
+- Raised the ONNX discard occupancy gate to `0.90`; current release gate result is `346/348`, `P=0.94`, `R=0.99`, `F1=0.97`.
+- Reworked ONNX and discard eval scripts around current runtime crop helpers, and tightened the discard pipeline gate to `precision>=0.90`, `recall>=0.95`, `F1>=0.94`.
+- Added model provenance metadata and runtime diagnostics for ONNX model availability, label count, model size, hand-ONNX policy, and occupancy threshold.
+
 ## v1.2.0 - 2026-05-06
 
 ### ONNX 置信度门控 + 批处理重构

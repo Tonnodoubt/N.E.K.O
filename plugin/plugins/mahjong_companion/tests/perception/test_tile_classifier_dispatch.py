@@ -12,6 +12,7 @@ from PIL import Image
 from plugin.plugins.mahjong_companion.perception.tile_classifier_dispatch import (
     _apply_red_five,
     _to_template_match,
+    classify_hand_tile,
     classify_tile,
     classify_tiles_batch,
     detect_red_five,
@@ -77,6 +78,31 @@ def test_batch_onnx_path() -> None:
     assert len(results) == 1
     assert results[0] is not None
     assert results[0].tile == "1s"
+
+
+@pytest.mark.unit
+def test_hand_classification_skips_onnx_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MAHJONG_COMPANION_ONNX_HAND_ENABLED", raising=False)
+    fake_pred = _fake_vit_prediction("7p", 0.88)
+    crop = Image.new("RGB", (32, 32), (128, 128, 128))
+    with patch("plugin.plugins.mahjong_companion.perception.tile_classifier_dispatch._onnx_ready", return_value=True), \
+         patch("plugin.plugins.mahjong_companion.perception.tile_classifier_dispatch._onnx_single", return_value=_to_template_match(fake_pred)), \
+         patch("plugin.plugins.mahjong_companion.perception.tile_classifier_dispatch.classify_tile_from_templates", return_value=None) as template_mock:
+        result = classify_hand_tile(crop, _template_payload())
+    assert result is None
+    template_mock.assert_called_once()
+
+
+@pytest.mark.unit
+def test_hand_classification_can_opt_into_onnx(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MAHJONG_COMPANION_ONNX_HAND_ENABLED", "1")
+    fake_pred = _fake_vit_prediction("7p", 0.88)
+    crop = Image.new("RGB", (32, 32), (128, 128, 128))
+    with patch("plugin.plugins.mahjong_companion.perception.tile_classifier_dispatch._onnx_ready", return_value=True), \
+         patch("plugin.plugins.mahjong_companion.perception.tile_classifier_dispatch._onnx_single", return_value=_to_template_match(fake_pred)):
+        result = classify_hand_tile(crop, _template_payload())
+    assert result is not None
+    assert result.tile == "7p"
 
 
 @pytest.mark.unit

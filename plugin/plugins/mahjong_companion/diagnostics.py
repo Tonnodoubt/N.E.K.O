@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,9 @@ from utils.logger_config import get_module_logger
 
 from .action.action_registry import ActionRegistry
 from .perception.calibration import load_calibration_profile
+from .perception.discard_parser import ONNX_OCCUPANCY_CONFIDENCE
 from .perception.external_discard_recognizer import ENV_COMMAND, ENV_ENDPOINT, ENV_TIMEOUT
+from .perception.vit_tile_classifier_onnx import REQUIRED_FILES
 
 logger = get_module_logger(__name__)
 
@@ -40,6 +43,7 @@ def build_runtime_diagnostics(
         _check_data_directories(data_root),
         _check_calibration_profiles(data_root / "calibration" / "profiles"),
         _check_button_templates(plugin_dir / "perception" / "templates"),
+        _check_onnx_tile_classifier(data_root),
         _check_external_discard_recognizer(),
         _check_runtime_config(config),
         _check_recent_status(status),
@@ -56,6 +60,65 @@ def build_runtime_diagnostics(
         "issues": issues,
         "issue_count": len(issues),
         "summary": _build_summary(checks, issues),
+    }
+
+
+def _check_onnx_tile_classifier(data_root: Path) -> dict[str, Any]:
+    env_dir = os.environ.get("MAHJONG_COMPANION_VIT_ONNX_DIR", "").strip()
+    model_dir = Path(env_dir).expanduser().resolve() if env_dir else (
+        data_root / "models" / "vit_tile_classifier"
+    )
+    required_paths = {filename: model_dir / filename for filename in REQUIRED_FILES}
+    missing_required = [
+        filename for filename, path in required_paths.items()
+        if not path.is_file()
+    ]
+    optional_files = ("labels.txt", "config.json", "metadata.json")
+    optional_present = [
+        filename for filename in optional_files
+        if (model_dir / filename).is_file()
+    ]
+    labels_payload = _read_json_dict(model_dir / "labels.json")
+    metadata = _read_json_dict(model_dir / "metadata.json")
+    labels_count = len(labels_payload)
+    model_path = model_dir / "model.onnx"
+    model_size_mb = (
+        round(model_path.stat().st_size / (1024 * 1024), 2)
+        if model_path.is_file()
+        else None
+    )
+    issues = []
+    if missing_required:
+        severity = "warning" if model_dir.exists() else "info"
+        issues.append(_issue(
+            severity,
+            "onnx_tile_model_missing",
+            "ONNX tile classifier artifacts are missing; runtime will fall back to templates.",
+            {"model_dir": str(model_dir), "missing": missing_required},
+        ))
+    elif not labels_payload:
+        issues.append(_issue(
+            "warning",
+            "onnx_tile_labels_unreadable",
+            "ONNX tile classifier labels.json is missing or unreadable.",
+            {"labels_path": str(model_dir / "labels.json")},
+        ))
+    return {
+        "check_id": "onnx_tile_classifier",
+        "ok": not missing_required and bool(labels_payload),
+        "available": not missing_required,
+        "model_dir": str(model_dir),
+        "env_override": bool(env_dir),
+        "required_files": list(REQUIRED_FILES),
+        "missing_required": missing_required,
+        "optional_present": optional_present,
+        "model_size_mb": model_size_mb,
+        "labels_count": labels_count,
+        "onnxruntime_installed": find_spec("onnxruntime") is not None,
+        "hand_onnx_enabled": _env_truthy("MAHJONG_COMPANION_ONNX_HAND_ENABLED"),
+        "discard_occupancy_confidence": ONNX_OCCUPANCY_CONFIDENCE,
+        "metadata": metadata,
+        "issues": issues,
     }
 
 
@@ -386,6 +449,10 @@ def _source_sample_count(payload: dict[str, Any]) -> int:
         if isinstance(item, dict):
             total += int(item.get("source_sample_count", item.get("sample_count", 0)) or 0)
     return total
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _read_json_dict(path: Path) -> dict[str, Any]:

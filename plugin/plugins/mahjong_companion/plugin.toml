@@ -3,7 +3,7 @@ id = "mahjong_companion"
 name = "雀魂陪伴"
 description = "雀魂陪伴、讲解与复盘插件"
 short_description = "Screen-driven Mahjong Soul companion plugin for guidance and review."
-version = "1.2.0"
+version = "1.3.0"
 entry = "plugin.plugins.mahjong_companion:MahjongCompanionPlugin"
 
 [plugin.author]

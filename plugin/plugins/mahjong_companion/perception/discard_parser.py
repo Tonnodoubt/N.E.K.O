@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_MIN_DISCARD_CONFIDENCE = 0.55
-ONNX_OCCUPANCY_CONFIDENCE = 0.55
+ONNX_OCCUPANCY_CONFIDENCE = 0.90
 AMBIGUOUS_DISCARD_TEMPLATE_PAIRS = {
     frozenset({"5p", "6p"}),
     frozenset({"6p", "7p"}),

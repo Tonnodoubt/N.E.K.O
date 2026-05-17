@@ -15,7 +15,7 @@ from .frame_resources import _path_mtime
 from .perception.calibration import resolve_calibration_profile
 from .perception.hand_layout import TileSlot, build_hand_layout
 from .perception.tile_parser import _collect_slot_metrics
-from .perception.tile_classifier_dispatch import classify_tile
+from .perception.tile_classifier_dispatch import classify_hand_tile
 from .perception.tile_templates import is_probably_occupied_hand_slot
 from .session_state import now_iso
 from .state_transitions import _image_region_signature
@@ -87,7 +87,7 @@ class MeldSelectionMixin:
         for entry in highlighted_slots:
             slot = entry["slot"]
             crop = image.crop((slot.box.left, slot.box.top, slot.box.right, slot.box.bottom))
-            match = classify_tile(crop, template_payload)
+            match = classify_hand_tile(crop, template_payload)
             entry["tile"] = _normalize_tile(str(getattr(match, "tile", "") or "").strip())
             entry["confidence"] = float(getattr(match, "confidence", 0.0) or 0.0)
 

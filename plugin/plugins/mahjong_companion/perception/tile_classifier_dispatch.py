@@ -10,6 +10,7 @@ backend switch is transparent to downstream code.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
@@ -113,10 +114,24 @@ def classify_hand_tile(
 
     Only call this for hand tiles — discard tiles are never red fives.
     """
-    result = classify_tile(crop, template_payload)
+    result = (
+        classify_tile(crop, template_payload)
+        if _onnx_hand_enabled()
+        else classify_tile_from_templates(crop, template_payload)
+    )
     if result is not None:
         return _apply_red_five(crop, result)
     return None
+
+
+def _onnx_hand_enabled() -> bool:
+    """True when ONNX should be used for hand-tile crops.
+
+    The lightweight model is currently strong on discard crops but weaker than
+    calibrated templates on hand crops, so hand ONNX is opt-in.
+    """
+    value = os.environ.get("MAHJONG_COMPANION_ONNX_HAND_ENABLED", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def detect_red_five(crop: Image.Image, classified_tile: str) -> str | None:

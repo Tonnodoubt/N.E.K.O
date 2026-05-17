@@ -115,6 +115,9 @@ def test_strong_base_runs_single_batch_no_refined() -> None:
     ), patch(
         "plugin.plugins.mahjong_companion.perception.discard_parser.classify_tiles_batch",
         side_effect=fake_batch,
+    ), patch(
+        "plugin.plugins.mahjong_companion.perception.discard_parser._onnx_backend_active",
+        return_value=False,
     ):
         result = parse_discards_from_image(image, _template_payload(), layout=layout)
 
@@ -153,6 +156,9 @@ def test_weak_base_triggers_refined_batch_only_for_weak_slots() -> None:
     ), patch(
         "plugin.plugins.mahjong_companion.perception.discard_parser.classify_tiles_batch",
         side_effect=fake_batch,
+    ), patch(
+        "plugin.plugins.mahjong_companion.perception.discard_parser._onnx_backend_active",
+        return_value=False,
     ):
         result = parse_discards_from_image(image, _template_payload(), layout=layout)
 
@@ -163,6 +169,28 @@ def test_weak_base_triggers_refined_batch_only_for_weak_slots() -> None:
     weak_item = self_pile[1]
     assert weak_item["quad_source"] == "refined_tile_surface"
     assert weak_item["confidence"] == pytest.approx(0.81)
+
+
+@pytest.mark.unit
+def test_onnx_occupancy_gate_rejects_low_confidence_match() -> None:
+    image = _occupied_image()
+    layout = {"self": [_make_slot("d-self-0", 10, turn_index=0)]}
+    base_matches = [_make_match("5p", 0.89)]
+
+    with patch(
+        "plugin.plugins.mahjong_companion.perception.discard_parser.refine_discard_slot_quad",
+        return_value=None,
+    ), patch(
+        "plugin.plugins.mahjong_companion.perception.discard_parser.classify_tiles_batch",
+        return_value=base_matches,
+    ), patch(
+        "plugin.plugins.mahjong_companion.perception.discard_parser._onnx_backend_active",
+        return_value=True,
+    ):
+        result = parse_discards_from_image(image, _template_payload(), layout=layout)
+
+    assert result.discard_piles == {}
+    assert result.raw_detections[0]["rejection_reason"] == "onnx_occupancy_gate"
 
 
 @pytest.mark.unit

@@ -9,7 +9,7 @@ from PIL import Image
 from .calibration import resolve_calibration_profile
 from .hand_layout import TileSlot, build_hand_layout
 from .roi import collect_region_metrics
-from .tile_classifier_dispatch import classify_tile
+from .tile_classifier_dispatch import classify_hand_tile
 from .tile_templates import is_probably_occupied_hand_slot
 
 MIN_DRAW_TILE_CONFIDENCE = 0.12
@@ -77,7 +77,7 @@ def detect_drawn_tile_fast_path(
             )
 
         crop = image.crop((draw_slot.box.left, draw_slot.box.top, draw_slot.box.right, draw_slot.box.bottom))
-        match = classify_tile(crop, calibration.hand_tile_templates)
+        match = classify_hand_tile(crop, calibration.hand_tile_templates)
         if match is None:
             detection["occupied"] = True
             return DrawnTileFastPathResult(

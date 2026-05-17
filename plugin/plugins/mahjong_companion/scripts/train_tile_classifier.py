@@ -119,8 +119,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     train_dataset = _ImageFolder(train_dir, class_names, train_transform)
     val_dataset = _ImageFolder(val_dir, class_names, val_transform) if val_dir.exists() else train_dataset
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
     print(f"Train: {len(train_dataset)} samples, Val: {len(val_dataset)} samples")
 
@@ -129,12 +129,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=WEIGHT_DECAY)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     # --- Train ---
     best_acc = 0.0
-    for epoch in range(1, EPOCHS + 1):
+    for epoch in range(1, args.epochs + 1):
         model.train()
         train_loss = 0.0
         train_correct = 0
@@ -156,7 +156,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         val_acc = _evaluate(model, val_loader, criterion, device) if val_loader else 0.0
         best_acc = max(best_acc, val_acc or train_acc)
 
-        if epoch % 5 == 0 or epoch == 1:
+        if epoch % 5 == 0 or epoch == 1 or epoch == args.epochs:
             print(f"Epoch {epoch:3d}: train_loss={train_loss/max(len(train_loader),1):.4f} "
                   f"train_acc={train_acc:.3f} val_acc={val_acc:.3f} lr={scheduler.get_last_lr()[0]:.6f}")
 
@@ -176,7 +176,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         input_names=["pixel_values"],
         output_names=["logits"],
         dynamic_axes={"pixel_values": {0: "batch_size"}, "logits": {0: "batch_size"}},
-        opset_version=14,
+        opset_version=18,
+        external_data=False,
     )
     print(f"ONNX exported: {onnx_path} ({_file_size_mb(onnx_path):.1f} MB)")
 

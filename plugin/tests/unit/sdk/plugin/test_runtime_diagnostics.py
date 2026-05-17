@@ -50,6 +50,8 @@ def test_runtime_diagnostics_reports_ready_local_assets(tmp_path: Path) -> None:
     assert result["health"] == "ok"
     assert checks["calibration_profiles"]["enabled_profile_count"] == 1
     assert checks["button_templates"]["missing_buttons"] == []
+    assert checks["onnx_tile_classifier"]["available"] is True
+    assert checks["onnx_tile_classifier"]["labels_count"] == 2
     assert checks["advice_only_registry"]["registered_ui_ids"] == []
 
 
@@ -71,6 +73,36 @@ def test_runtime_diagnostics_warns_when_calibration_profile_missing(tmp_path: Pa
     assert result["health"] == "warning"
     assert "calibration_profile_missing" in issue_codes
     assert "window_not_bound" in issue_codes
+
+
+def test_onnx_tile_classifier_diagnostics_reports_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "data"
+    model_dir = _write_fake_onnx_model(data_root)
+    monkeypatch.setenv("MAHJONG_COMPANION_ONNX_HAND_ENABLED", "yes")
+
+    result = diagnostics._check_onnx_tile_classifier(data_root)
+
+    assert result["ok"] is True
+    assert result["available"] is True
+    assert result["model_dir"] == str(model_dir)
+    assert result["model_size_mb"] == 0.0
+    assert result["labels_count"] == 2
+    assert result["hand_onnx_enabled"] is True
+    assert result["discard_occupancy_confidence"] == 0.90
+    assert result["metadata"]["purpose"] == "discard_onnx_default_hand_opt_in"
+    assert result["issues"] == []
+
+
+def test_onnx_tile_classifier_diagnostics_missing_dir_is_info(tmp_path: Path) -> None:
+    result = diagnostics._check_onnx_tile_classifier(tmp_path / "data")
+
+    assert result["ok"] is False
+    assert result["available"] is False
+    assert result["issues"][0]["severity"] == "info"
+    assert result["issues"][0]["code"] == "onnx_tile_model_missing"
 
 
 def test_recent_status_ok_follows_issue_health_for_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -131,3 +163,20 @@ def _write_ready_data_root(data_root: Path) -> None:
         ),
         encoding="utf-8",
     )
+    _write_fake_onnx_model(data_root)
+
+
+def _write_fake_onnx_model(data_root: Path) -> Path:
+    model_dir = data_root / "models" / "vit_tile_classifier"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "model.onnx").write_bytes(b"fake")
+    (model_dir / "preprocessor.json").write_text("{}", encoding="utf-8")
+    (model_dir / "labels.json").write_text(
+        json.dumps({"0": "1m", "1": "empty"}),
+        encoding="utf-8",
+    )
+    (model_dir / "metadata.json").write_text(
+        json.dumps({"purpose": "discard_onnx_default_hand_opt_in"}),
+        encoding="utf-8",
+    )
+    return model_dir
