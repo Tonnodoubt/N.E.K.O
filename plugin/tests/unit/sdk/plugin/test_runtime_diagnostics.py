@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from plugin.plugins.mahjong_companion import diagnostics
+from plugin.plugins.mahjong_companion import MahjongCompanionPlugin
 from plugin.plugins.mahjong_companion.config_defaults import DEFAULT_CONFIG, merge_runtime_config
 from plugin.plugins.mahjong_companion.diagnostics import _check_recent_status, build_runtime_diagnostics
 from plugin.plugins.mahjong_companion.orchestrator import SessionOrchestrator
@@ -103,6 +104,27 @@ def test_onnx_tile_classifier_diagnostics_missing_dir_is_info(tmp_path: Path) ->
     assert result["available"] is False
     assert result["issues"][0]["severity"] == "info"
     assert result["issues"][0]["code"] == "onnx_tile_model_missing"
+
+
+def test_startup_seed_runtime_data_assets(tmp_path: Path) -> None:
+    plugin = _FakePlugin(tmp_path)
+    plugin._copy_bundled_asset_tree = (  # type: ignore[attr-defined]
+        lambda source_dir, target_dir: MahjongCompanionPlugin._copy_bundled_asset_tree(
+            plugin,
+            source_dir,
+            target_dir,
+        )
+    )
+    copied = MahjongCompanionPlugin._ensure_runtime_data_assets(plugin)
+
+    assert copied["calibration_profiles"] >= 1
+    assert copied["onnx_tile_model"] >= 1
+    assert (plugin.data_path("calibration", "profiles") / "majsoul-pc-manual-2026.05-vit-discard-2560x1440.json").is_file()
+    assert (plugin.data_path("models", "vit_tile_classifier") / "model.onnx").is_file()
+
+    copied_again = MahjongCompanionPlugin._ensure_runtime_data_assets(plugin)
+
+    assert copied_again == {}
 
 
 def test_recent_status_ok_follows_issue_health_for_errors(monkeypatch: pytest.MonkeyPatch) -> None:

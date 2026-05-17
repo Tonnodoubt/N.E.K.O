@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.1 - 2026-05-17
+
+### Runtime data seeding
+
+- Seed bundled calibration profiles and the compact ONNX tile model into the per-user runtime data directory on plugin startup, so live AppData runs do not fall back to weak heuristic layouts with empty tile recognition.
+
 ## v1.3.0 - 2026-05-17
 
 ### Lightweight ONNX tile classifier

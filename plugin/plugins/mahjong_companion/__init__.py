@@ -32,6 +32,9 @@ class MahjongCompanionPlugin(NekoPluginBase):
         merged = merge_runtime_config(DEFAULT_CONFIG, cfg if isinstance(cfg, dict) else {})
         self.orchestrator.apply_config(merged)
         self.orchestrator.load_cached_outputs()
+        seeded_assets = self._ensure_runtime_data_assets()
+        if seeded_assets:
+            self.logger.info("mahjong companion runtime data assets seeded: {}", seeded_assets)
 
         if self._ensure_static_ui_assets():
             ok = self.register_static_ui(
@@ -221,6 +224,49 @@ class MahjongCompanionPlugin(NekoPluginBase):
     @plugin_entry(id="unbind_window", name="解除窗口绑定", kind="action")
     async def unbind_window(self, **_):
         return await self.orchestrator.unbind_window()
+
+    def _ensure_runtime_data_assets(self) -> dict[str, int]:
+        """Seed bundled runtime assets into the per-user data directory.
+
+        The SDK stores plugin runtime data under AppData/Local on Windows, while
+        bundled calibration profiles and compact ONNX models live next to the
+        plugin source.  Missing seeds leave the live pipeline on heuristic
+        layouts, which is too weak for Mahjong Soul screenshots.
+        """
+        copied: dict[str, int] = {}
+        asset_groups = (
+            (
+                Path("data") / "calibration" / "profiles",
+                self.data_path("calibration", "profiles"),
+                "calibration_profiles",
+            ),
+            (
+                Path("data") / "models" / "vit_tile_classifier",
+                self.data_path("models", "vit_tile_classifier"),
+                "onnx_tile_model",
+            ),
+        )
+        plugin_root = Path(__file__).resolve().parent
+        for relative_source, target_dir, group_id in asset_groups:
+            source_dir = plugin_root / relative_source
+            copied[group_id] = self._copy_bundled_asset_tree(source_dir, Path(target_dir))
+        return {key: value for key, value in copied.items() if value}
+
+    def _copy_bundled_asset_tree(self, source_dir: Path, target_dir: Path) -> int:
+        if not source_dir.is_dir():
+            return 0
+        copied = 0
+        for source_path in source_dir.rglob("*"):
+            if source_path.is_dir():
+                continue
+            relative = source_path.relative_to(source_dir)
+            target_path = target_dir / relative
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if target_path.is_file() and target_path.stat().st_size == source_path.stat().st_size:
+                continue
+            shutil.copy2(source_path, target_path)
+            copied += 1
+        return copied
 
     def _ensure_static_ui_assets(self) -> bool:
         source_dir = Path(__file__).resolve().parent / "static"
