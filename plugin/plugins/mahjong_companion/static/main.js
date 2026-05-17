@@ -248,6 +248,11 @@ function getAnalysisHints(data) {
 }
 
 function topDiscardCandidate(data) {
+  const single = data.last_decision?.engine_meta?.single_recommendation;
+  if (single && (single.kind === "discard" || single.kind === "preturn_discard")) {
+    if (single.candidate && typeof single.candidate === "object") return single.candidate;
+    if (single.tile) return { tile: single.tile };
+  }
   const analysis = data.last_decision?.mahjong_analysis;
   const candidates = analysis && Array.isArray(analysis.candidate_discards) ? analysis.candidate_discards : [];
   return candidates.find((item) => item && typeof item === "object") || null;

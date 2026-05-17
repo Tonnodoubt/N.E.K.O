@@ -86,7 +86,7 @@ def build_decision(state: PerceivedGameState) -> DecisionResult:
         recommended_focus = "win_confirmation"
         reason_codes.extend(f"button.{button}_visible" for button in win_buttons)
         review_tags.extend(["win_window", "high_value_timing"])
-        recommended_button_types = list(win_buttons)
+        recommended_button_types = _preferred_win_buttons(win_buttons)
     elif effective_scene == "in_match" and declaration_buttons:
         decision_type = "danger_action"
         priority = 88
@@ -99,7 +99,7 @@ def build_decision(state: PerceivedGameState) -> DecisionResult:
         recommended_focus = "riichi_decision"
         reason_codes.extend(f"button.{button}_visible" for button in declaration_buttons)
         review_tags.extend(["riichi_window", "decision_point"])
-        recommended_button_types = list(declaration_buttons)
+        recommended_button_types = _preferred_declaration_buttons(declaration_buttons)
     elif effective_scene == "in_match" and "kan" in call_buttons:
         decision_type = "danger_action"
         priority = 82
@@ -128,15 +128,29 @@ def build_decision(state: PerceivedGameState) -> DecisionResult:
         decision_type = "action_available"
         priority = 56
         risk_level = "medium"
-        action_required = True
-        speakable = bool(state.is_user_turn and ("confirm" in passive_buttons or "cancel" in passive_buttons))
+        only_skip_visible = set(passive_buttons) == {"skip"}
+        action_required = not only_skip_visible
+        speakable = bool(
+            state.is_user_turn
+            and not only_skip_visible
+            and ("confirm" in passive_buttons or "cancel" in passive_buttons)
+        )
         summary = "当前存在确认或略过类操作。"
         detail = "画面更像是在等待用户确认、取消或跳过，这类按钮值得看一眼但通常不必高声打断。"
         suggestion = "先看清这是不是过牌、确认还是取消，再决定是否操作。"
-        recommended_focus = "confirm_or_skip"
+        if only_skip_visible:
+            decision_type = "scene_update"
+            priority = 38
+            risk_level = "low"
+            summary = "对局中暂时只看到跳过按钮。"
+            detail = "这经常是吃碰杠按钮还没被完整识别出来的中间帧，先不主动建议跳过。"
+            suggestion = "先等下一帧确认完整操作窗口。"
+            recommended_focus = "skip_observe"
+        else:
+            recommended_focus = "confirm_or_skip"
         reason_codes.extend(f"button.{button}_visible" for button in passive_buttons)
         review_tags.append("ui_confirmation")
-        recommended_button_types = _preferred_passive_buttons(passive_buttons)
+        recommended_button_types = [] if only_skip_visible else _preferred_passive_buttons(passive_buttons)
     elif effective_scene == "in_match" and state.is_user_turn:
         decision_type = "scene_update"
         priority = 44
@@ -267,6 +281,14 @@ def build_decision(state: PerceivedGameState) -> DecisionResult:
         recommended_focus=recommended_focus,
         review_tags=review_tags,
     )
+    recommended_button_types = _single_button_list(recommended_button_types)
+    single_recommendation = _build_single_recommendation(
+        recommended_button_types=recommended_button_types,
+        mahjong_analysis=mahjong_analysis,
+        decision_type=decision_type,
+        recommended_focus=recommended_focus,
+        is_user_turn=state.is_user_turn,
+    )
 
     return DecisionResult(
         decision_type=decision_type,
@@ -301,6 +323,7 @@ def build_decision(state: PerceivedGameState) -> DecisionResult:
                 "passive": passive_buttons,
             },
             "recommended_button_types": recommended_button_types,
+            "single_recommendation": single_recommendation,
             "tile_level_available": mahjong_analysis.tile_level_available,
             "review_candidate": bool(review_tags and priority >= 44),
         },
@@ -379,7 +402,66 @@ def _expected_discard_turn_hand_count(state: PerceivedGameState) -> int:
 
 
 def _preferred_passive_buttons(buttons: list[str]) -> list[str]:
-    return [button for button in ("skip", "confirm", "cancel") if button in buttons]
+    return _single_button_list([button for button in ("skip", "confirm", "cancel") if button in buttons])
+
+
+def _preferred_win_buttons(buttons: list[str]) -> list[str]:
+    return _single_button_list([button for button in ("tsumo", "ron") if button in buttons])
+
+
+def _preferred_declaration_buttons(buttons: list[str]) -> list[str]:
+    return _single_button_list([button for button in ("riichi",) if button in buttons])
+
+
+def _single_button_list(buttons: list[str]) -> list[str]:
+    for button in buttons:
+        clean = str(button or "").strip()
+        if clean:
+            return [clean]
+    return []
+
+
+def _build_single_recommendation(
+    *,
+    recommended_button_types: list[str],
+    mahjong_analysis: Any,
+    decision_type: str,
+    recommended_focus: str,
+    is_user_turn: bool,
+) -> dict[str, Any]:
+    if recommended_button_types:
+        button = recommended_button_types[0]
+        return {
+            "kind": "button",
+            "action": button,
+            "button_type": button,
+            "source": recommended_focus or decision_type,
+        }
+
+    if recommended_focus == "skip_observe":
+        return {
+            "kind": "observe",
+            "action": "observe",
+            "source": recommended_focus,
+        }
+
+    candidates = list(getattr(mahjong_analysis, "candidate_discards", []) or [])
+    top_candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+    tile = str(top_candidate.get("tile") or top_candidate.get("tile_id") or "").strip()
+    if tile:
+        return {
+            "kind": "discard" if is_user_turn else "preturn_discard",
+            "action": "discard",
+            "tile": tile,
+            "candidate": dict(top_candidate),
+            "source": "tile_efficiency" if is_user_turn else "preturn_plan",
+        }
+
+    return {
+        "kind": "observe",
+        "action": "observe",
+        "source": recommended_focus or decision_type,
+    }
 
 
 def _button_priority_list(primary: str, buttons: list[str]) -> list[str]:

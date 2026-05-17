@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.3 - 2026-05-17
+
+### Text-only single-advice UX
+
+- Removed live red-box screen markers for discard, action-button, and meld-selection recommendations. Advice is now shown as text in the companion overlay instead of drawing boxes over the game.
+- Added a `single_recommendation` decision payload and constrained button recommendations to at most one action.
+- Stopped treating a lone in-match `skip` detection as an immediate skip recommendation, preventing transient "skip first, call later" advice while the call window is still being recognized.
+- Added `river_detector_v2`, a class-agnostic discard-river locator that detects tile surfaces from broad table-center ROIs instead of the old fixed grid, emits fitted perspective quads for opponent rivers, completes likely left/right river holes from neighboring row geometry when image evidence exists, and uses expanded perspective crops for classification so tight debug quads do not truncate side-river tiles.
+
 ## v1.3.2 - 2026-05-17
 
 ### Hand draw-slot alignment

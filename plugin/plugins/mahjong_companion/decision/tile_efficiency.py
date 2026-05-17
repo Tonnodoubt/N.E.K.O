@@ -804,10 +804,7 @@ def _discard_candidate_sort_key(item: dict[str, Any]) -> tuple[int, float, float
     raw_score = _coerce_float(item.get("raw_score")) or 0.0
     safety = _SAFETY_SORT_VALUE.get(str(item.get("safety_hint", "unknown")).strip(), 0)
     strategy_score = _candidate_strategy_sort_score(item, raw_score=raw_score, ukeire=ukeire_rank, safety=safety)
-    strategy_mode = str(item.get("strategy_mode", "")).strip()
-    if strategy_mode in {"defense", "guarded_push"}:
-        return (shanten_rank, -strategy_score, -float(ukeire_rank), -raw_score, -safety)
-    return (shanten_rank, -float(ukeire_rank), -strategy_score, -raw_score, -safety)
+    return (shanten_rank, -strategy_score, -float(ukeire_rank), -raw_score, -safety)
 
 
 def _candidate_strategy_sort_score(

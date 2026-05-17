@@ -115,7 +115,7 @@ def test_overlay_advice_surfaces_meld_selection_prompt() -> None:
     assert view == {"primary": "选牌", "reason": "choose 三万 四万"}
 
 
-def test_screen_marker_renders_meld_selection_boxes() -> None:
+def test_screen_marker_suppresses_meld_selection_boxes() -> None:
     marker = _FakeMarker()
     canvas = _FakeCanvas()
 
@@ -132,7 +132,7 @@ def test_screen_marker_renders_meld_selection_boxes() -> None:
         },
     )
 
-    assert marker.visible is True
-    assert marker.lifted is True
-    assert marker.geometry_value == "56x66+92+192"
-    assert canvas.rectangles[0] == (8, 8, 48, 58, "#ff2d2d", 5)
+    assert marker.visible is False
+    assert marker.lifted is False
+    assert marker.geometry_value == ""
+    assert canvas.rectangles == []

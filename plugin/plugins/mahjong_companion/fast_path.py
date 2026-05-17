@@ -9,9 +9,7 @@ from .decision.preturn_planner import apply_preturn_draw_tile
 from .decision.generator import build_decision
 from .perception.pipeline import analyze_action_buttons_fast
 from .perception.drawn_tile_fast_path import detect_drawn_tile_fast_path
-from .frame_resources import _path_mtime
 from .session_state import now_iso
-from .state_transitions import _image_region_signature
 
 
 class PreturnFastPathMixin:
@@ -93,6 +91,8 @@ class PreturnFastPathMixin:
 
         decision = build_decision(perceived)
         overlays = self._build_fast_action_button_overlays(decision, perceived, frame_path)
+        engine_meta = decision.engine_meta if isinstance(decision.engine_meta, dict) else {}
+        recommended_buttons = engine_meta.get("recommended_button_types")
         self._last_fast_button_scan_meta = {
             "ok": True,
             "frame_path": str(frame_path),
@@ -104,13 +104,16 @@ class PreturnFastPathMixin:
             "debug": dict(debug_payload),
         }
         if not overlays:
-            if self._clear_missing_fast_action_button_overlay_locked(
-                visible_buttons,
-                reason="fast_recommended_button_missing",
-            ):
-                self._emit_status()
-                return True
-            return False
+            if isinstance(recommended_buttons, list) and recommended_buttons:
+                overlays = []
+            else:
+                if self._clear_missing_fast_action_button_overlay_locked(
+                    visible_buttons,
+                    reason="fast_recommended_button_missing",
+                ):
+                    self._emit_status()
+                    return True
+                return False
 
         existing_overlays = self._current_screen_overlays()
         if existing_overlays and overlays:
@@ -137,7 +140,8 @@ class PreturnFastPathMixin:
             **dict(payload.get("engine_meta") if isinstance(payload.get("engine_meta"), dict) else {}),
             "screen_overlays": overlays,
             "screen_overlay_count": len(overlays),
-            "fast_action_button_overlay": True,
+            "fast_action_button_overlay": bool(overlays),
+            "fast_action_button_advice": True,
         }
 
         self.state.last_decision_at = now_iso()
@@ -181,41 +185,9 @@ class PreturnFastPathMixin:
         perceived: PerceivedGameState,
         frame_path: Path,
     ) -> list[dict[str, Any]]:
-        engine_meta = decision.engine_meta if isinstance(decision.engine_meta, dict) else {}
-        recommended_buttons = engine_meta.get("recommended_button_types")
-        if not isinstance(recommended_buttons, list):
-            return []
-        frame_mtime = _path_mtime(frame_path)
-        overlays: list[dict[str, Any]] = []
-        for button_type in recommended_buttons:
-            clean_type = str(button_type or "").strip()
-            if not clean_type:
-                continue
-            region = self._find_button_region(perceived.button_regions, clean_type)
-            if region is None:
-                continue
-            local_box = self._button_region_to_local_box(region)
-            if not local_box:
-                continue
-            screen_box = self._local_box_to_screen_box(local_box)
-            if not screen_box:
-                continue
-            region_signature = _image_region_signature(frame_path, local_box)
-            overlays.append({
-                "kind": "action_button_recommendation",
-                "button_type": clean_type,
-                "label": str(region.get("label") or clean_type),
-                "box": screen_box,
-                "local_box": local_box,
-                "frame_path": str(frame_path),
-                "frame_mtime": frame_mtime,
-                "region_signature": region_signature,
-                "confidence": region.get("confidence"),
-                "template_id": str(region.get("template_id") or ""),
-                "source": "fast_button_scan",
-            })
-            break
-        return overlays
+        # Live advice is text-only. Keep button recognition for decision making,
+        # but never draw marker boxes over Mahjong Soul.
+        return []
 
     def _maybe_emit_fast_preturn_advice_locked(self, frame_path: Path) -> bool:
         if not self._preturn_planning_enabled() or self._preturn_discard_plan is None:

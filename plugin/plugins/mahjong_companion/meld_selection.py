@@ -11,14 +11,12 @@ from .decision.tile_efficiency import (
     _estimate_standard_shanten_with_open_melds,
 )
 from .decision.utils import meld_group_count as _state_meld_group_count
-from .frame_resources import _path_mtime
 from .perception.calibration import resolve_calibration_profile
 from .perception.hand_layout import TileSlot, build_hand_layout
 from .perception.tile_parser import _collect_slot_metrics
 from .perception.tile_classifier_dispatch import classify_hand_tile
 from .perception.tile_templates import is_probably_occupied_hand_slot
 from .session_state import now_iso
-from .state_transitions import _image_region_signature
 from .tile_labels import normalize_tile as _normalize_tile
 
 
@@ -115,8 +113,6 @@ class MeldSelectionMixin:
             highlighted_slots,
             frame_path,
         )
-        if not overlays:
-            return False
 
         # Build decision payload for status
         tile_list_label = " ".join(best_option["tiles"])
@@ -164,40 +160,8 @@ class MeldSelectionMixin:
         highlighted_slots: list[dict[str, Any]],
         frame_path: Path,
     ) -> list[dict[str, Any]]:
-        tiles = option.get("tiles") if isinstance(option.get("tiles"), list) else []
-        tile_set = set(tiles)
-        frame_mtime = _path_mtime(frame_path)
-        overlays: list[dict[str, Any]] = []
-        for entry in highlighted_slots:
-            tile = entry.get("tile", "")
-            if tile not in tile_set:
-                continue
-            slot = entry["slot"]
-            local_box = {
-                "left": slot.box.left,
-                "top": slot.box.top,
-                "width": slot.box.width,
-                "height": slot.box.height,
-            }
-            screen_box = self._local_box_to_screen_box(local_box)
-            if not screen_box:
-                continue
-            region_signature = _image_region_signature(frame_path, local_box)
-            overlays.append({
-                "kind": "meld_selection_recommendation",
-                "button_type": "meld_selection",
-                "label": tile,
-                "box": screen_box,
-                "local_box": local_box,
-                "frame_path": str(frame_path),
-                "frame_mtime": frame_mtime,
-                "region_signature": region_signature,
-                "confidence": entry.get("confidence"),
-                "source": "meld_selection_scan",
-                "meld_type": option.get("meld_type", ""),
-                "tile": tile,
-            })
-        return overlays
+        # Text-only live UX: do not draw boxes around selectable tiles.
+        return []
 
     def _set_meld_selection_pending(self, meld_type: str, call_tile: str = "") -> None:
         self._meld_selection_pending = True

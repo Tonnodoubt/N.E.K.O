@@ -5,13 +5,6 @@ from typing import Any
 
 from ..tile_labels import format_tile_label, replace_tile_codes_in_text
 
-_SCREEN_MARKER_KINDS = {
-    "discard_recommendation",
-    "action_button_recommendation",
-    "meld_selection_recommendation",
-}
-
-
 @dataclass
 class _DragState:
     value: bool = False
@@ -43,6 +36,19 @@ def _advice_view(status: dict[str, Any]) -> dict[str, str]:
         action_label = _action_primary_label(decision, recommended_focus)
         reason = _decision_primary_text(decision, status) or fallback
         return {"primary": action_label, "reason": _reason_line(reason)}
+
+    single = _single_recommendation(decision)
+    if single.get("kind") in {"discard", "preturn_discard"}:
+        tile = str(single.get("tile") or "").strip()
+        candidate = single.get("candidate") if isinstance(single.get("candidate"), dict) else {}
+        reason = replace_tile_codes_in_text(str(candidate.get("reason", "")).strip())
+        if not reason:
+            reason = str(decision.get("detail") or decision.get("suggestion") or "").strip()
+        if tile:
+            return {
+                "primary": format_tile_label(tile) or tile,
+                "reason": _reason_line(reason or "保留更连贯的块，只给这一张出牌建议。"),
+            }
 
     analysis = decision.get("mahjong_analysis") if isinstance(decision.get("mahjong_analysis"), dict) else {}
     candidates = analysis.get("candidate_discards") if isinstance(analysis.get("candidate_discards"), list) else []
@@ -87,6 +93,11 @@ def _action_primary_label(decision: dict[str, Any], recommended_focus: str) -> s
         "cancel": "取消",
     }
     engine_meta = decision.get("engine_meta") if isinstance(decision.get("engine_meta"), dict) else {}
+    single = _single_recommendation(decision)
+    if single.get("kind") == "button":
+        label = button_labels.get(str(single.get("button_type") or single.get("action") or ""))
+        if label:
+            return label
     buttons = engine_meta.get("recommended_button_types")
     if not isinstance(buttons, list) or not buttons:
         buttons = decision.get("buttons")
@@ -106,6 +117,12 @@ def _action_primary_label(decision: dict[str, Any], recommended_focus: str) -> s
         "confirm_or_skip": "跳过",
     }
     return focus_labels.get(recommended_focus, "提醒")
+
+
+def _single_recommendation(decision: dict[str, Any]) -> dict[str, Any]:
+    engine_meta = decision.get("engine_meta") if isinstance(decision.get("engine_meta"), dict) else {}
+    single = engine_meta.get("single_recommendation")
+    return single if isinstance(single, dict) else {}
 
 
 def _reason_line(text: str, *, limit: int = 54) -> str:
@@ -224,64 +241,7 @@ def _meta_text(status: dict[str, Any]) -> str:
 
 
 def _render_screen_markers(marker: Any, canvas: Any, status: dict[str, Any]) -> None:
-    overlays = status.get("screen_overlays")
-    if not isinstance(overlays, list):
-        _hide_marker(marker, canvas)
-        return
-
-    boxes: list[dict[str, int]] = []
-    for overlay in overlays:
-        if (
-            not isinstance(overlay, dict)
-            or overlay.get("kind") not in _SCREEN_MARKER_KINDS
-        ):
-            continue
-        box = overlay.get("box")
-        if not isinstance(box, dict):
-            continue
-        parsed = _parse_marker_box(box)
-        if parsed:
-            boxes.append(parsed)
-
-    if not boxes:
-        _hide_marker(marker, canvas)
-        return
-
-    left = min(box["left"] for box in boxes) - 8
-    top = min(box["top"] for box in boxes) - 8
-    right = max(box["left"] + box["width"] for box in boxes) + 8
-    bottom = max(box["top"] + box["height"] for box in boxes) + 8
-    width = max(1, right - left)
-    height = max(1, bottom - top)
-    try:
-        marker.geometry(f"{width}x{height}+{left}+{top}")
-        canvas.config(width=width, height=height)
-        canvas.delete("all")
-        for box in boxes:
-            x1 = box["left"] - left
-            y1 = box["top"] - top
-            x2 = x1 + box["width"]
-            y2 = y1 + box["height"]
-            canvas.create_rectangle(
-                x1,
-                y1,
-                x2,
-                y2,
-                outline="#ff2d2d",
-                width=5,
-            )
-            canvas.create_rectangle(
-                x1 + 5,
-                y1 + 5,
-                x2 - 5,
-                y2 - 5,
-                outline="#fff0f0",
-                width=1,
-            )
-        marker.deiconify()
-        marker.lift()
-    except Exception:
-        _hide_marker(marker, canvas)
+    _hide_marker(marker, canvas)
 
 
 def _hide_marker(marker: Any, canvas: Any) -> None:

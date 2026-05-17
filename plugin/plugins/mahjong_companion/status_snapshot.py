@@ -33,14 +33,9 @@ def derive_report_status(state: SessionState) -> str:
 
 
 def current_screen_overlays(decision_payload: dict[str, Any] | None) -> list[dict[str, Any]]:
-    decision = decision_payload if isinstance(decision_payload, dict) else {}
-    direct = decision.get("screen_overlays")
-    if isinstance(direct, list):
-        return [dict(item) for item in direct if isinstance(item, dict)]
-    engine_meta = decision.get("engine_meta") if isinstance(decision.get("engine_meta"), dict) else {}
-    overlays = engine_meta.get("screen_overlays")
-    if isinstance(overlays, list):
-        return [dict(item) for item in overlays if isinstance(item, dict)]
+    # The live companion is intentionally text-only. Decisions may keep
+    # historical/debug overlay metadata, but status snapshots never expose
+    # marker boxes to the UI.
     return []
 
 
