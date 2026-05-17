@@ -9,7 +9,7 @@ from ..storage import write_json_atomic
 
 def write_debug_artifacts(
     frame_path: Path,
-    perceived: PerceivedGameState,
+    perceived: PerceivedGameState | None,
     debug_payload: dict[str, Any],
 ) -> dict[str, str]:
     base_path = frame_path.with_suffix("")
@@ -20,7 +20,7 @@ def write_debug_artifacts(
         perception_path,
         {
             "frame_path": str(frame_path),
-            "perceived_state": perceived.to_dict(),
+            "perceived_state": perceived.to_dict() if perceived is not None else None,
             "debug": debug_payload,
         },
     )
@@ -29,10 +29,10 @@ def write_debug_artifacts(
         {
             "frame_path": str(frame_path),
             "roi_boxes": debug_payload.get("roi_boxes", {}),
-            "roi_hits": perceived.roi_hits,
-            "button_regions": perceived.button_regions,
-            "discard_piles": perceived.discard_piles,
-            "notes": perceived.notes,
+            "roi_hits": list(perceived.roi_hits) if perceived is not None else [],
+            "button_regions": list(perceived.button_regions) if perceived is not None else [],
+            "discard_piles": dict(perceived.discard_piles) if perceived is not None else {},
+            "notes": list(perceived.notes) if perceived is not None else [],
         },
     )
     artifacts = {

@@ -366,7 +366,7 @@ def _template_payload_for_domain(profile: CalibrationProfile, domain: str) -> di
 def _template_domain_score(profile: CalibrationProfile, *, domain: str) -> tuple[Any, ...]:
     payload = _template_payload_for_domain(profile, domain)
     text = _profile_template_text(profile, payload)
-    discard_specialized = "discard_only" in text
+    discard_specialized = any(marker in text for marker in ("discard_only", "discard-only", "vit-discard"))
     stored_samples = _coerce_template_int(payload.get("stored_sample_count"), default=0)
     source_samples = _coerce_template_int(payload.get("source_sample_count"), default=0)
     if domain == "discard":

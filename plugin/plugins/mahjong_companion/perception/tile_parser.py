@@ -40,6 +40,10 @@ DISCARD_TURN_HAND_COUNTS = {14: 0, **POST_MELD_DRAW_HAND_COUNTS}
 WAITING_HAND_COUNTS = {13: 0, **POST_MELD_WAITING_HAND_COUNTS}
 
 
+def classify_tile_from_templates(crop: Image.Image, payload: dict[str, Any]):
+    return classify_hand_tile(crop, payload)
+
+
 @dataclass
 class TileParseResult:
     hand_tiles: list[str] = field(default_factory=list)
@@ -297,7 +301,7 @@ def _classify_hand_from_layout(
             continue
 
         crop = image.crop((slot.box.left, slot.box.top, slot.box.right, slot.box.bottom))
-        match = classify_hand_tile(crop, template_payload)
+        match = classify_tile_from_templates(crop, template_payload)
         if match is None:
             raw_detections.append(detection)
             continue

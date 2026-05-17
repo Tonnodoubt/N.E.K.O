@@ -201,29 +201,6 @@ class StateTransitionMixin:
             self._clear_preturn_discard_plan_locked()
             return perceived
 
-    def _apply_discard_temporal_smoothing(self, perceived: PerceivedGameState) -> None:
-        """Cross-frame EMA vote over discard tile classifications.
-
-        Mutates ``perceived.discard_piles`` and ``perceived.analysis_hints``
-        in place. Disabled by env var ``MAHJONG_COMPANION_TEMPORAL_SMOOTHING=disabled``
-        as a kill switch.
-        """
-        if str(os.environ.get("MAHJONG_COMPANION_TEMPORAL_SMOOTHING", "")).strip().lower() == "disabled":
-            return
-        tracker = getattr(self, "_discard_temporal_tracker", None)
-        if tracker is None:
-            return
-        counters = apply_temporal_smoothing_to_discard_piles(perceived.discard_piles, tracker)
-        if counters["observed"] == 0:
-            return
-        hints = perceived.analysis_hints if isinstance(perceived.analysis_hints, dict) else {}
-        hints["temporal_smoothing"] = {
-            "observed": counters["observed"],
-            "smoothed": counters["smoothed"],
-            "stable": counters["stable"],
-        }
-        perceived.analysis_hints = hints
-
         prepared, meta = apply_preturn_discard_plan(perceived, self._preturn_discard_plan)
         if meta.get("applied"):
             self._last_preturn_plan_meta = dict(meta)
@@ -246,6 +223,29 @@ class StateTransitionMixin:
         elif perceived.is_user_turn:
             self._last_preturn_plan_meta = dict(meta)
         return perceived
+
+    def _apply_discard_temporal_smoothing(self, perceived: PerceivedGameState) -> None:
+        """Cross-frame EMA vote over discard tile classifications.
+
+        Mutates ``perceived.discard_piles`` and ``perceived.analysis_hints``
+        in place. Disabled by env var ``MAHJONG_COMPANION_TEMPORAL_SMOOTHING=disabled``
+        as a kill switch.
+        """
+        if str(os.environ.get("MAHJONG_COMPANION_TEMPORAL_SMOOTHING", "")).strip().lower() == "disabled":
+            return
+        tracker = getattr(self, "_discard_temporal_tracker", None)
+        if tracker is None:
+            return
+        counters = apply_temporal_smoothing_to_discard_piles(perceived.discard_piles, tracker)
+        if counters["observed"] == 0:
+            return
+        hints = perceived.analysis_hints if isinstance(perceived.analysis_hints, dict) else {}
+        hints["temporal_smoothing"] = {
+            "observed": counters["observed"],
+            "smoothed": counters["smoothed"],
+            "stable": counters["stable"],
+        }
+        perceived.analysis_hints = hints
 
     def _apply_decision_result(self, decision: DecisionResult) -> dict[str, Any]:
         # Preserve fast-path meld_selection decision — the slow path's
