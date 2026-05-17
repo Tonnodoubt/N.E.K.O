@@ -256,7 +256,7 @@ from pathlib import Path
 from typing import Dict
 from multiprocessing import Process, freeze_support, Event
 import config as config_module
-from config import APP_NAME, MAIN_SERVER_PORT, MEMORY_SERVER_PORT, TOOL_SERVER_PORT
+from config import APP_NAME, MAIN_SERVER_PORT, MEMORY_SERVER_PORT, TOOL_SERVER_PORT, LAN_PROXY_PORT
 from utils.port_utils import (
     probe_neko_health,
     acquire_startup_lock,
@@ -308,6 +308,7 @@ _expected_launcher_shutdown = False
 _existing_neko_services: set[str] = set()  # 已有 N.E.K.O 实例占用的端口键
 DEFAULT_PORTS = {
     "MAIN_SERVER_PORT": MAIN_SERVER_PORT,
+    "LAN_PROXY_PORT": LAN_PROXY_PORT,
     "MEMORY_SERVER_PORT": MEMORY_SERVER_PORT,
     "TOOL_SERVER_PORT": TOOL_SERVER_PORT,
 }
@@ -321,14 +322,17 @@ INTERNAL_DEFAULT_PORTS = {
 }
 # 该区间保留给 N.E.K.O 已知默认端口，避免 fallback 与伴生服务冲突。
 AVOID_FALLBACK_PORTS = set(range(48911, 48919)) | {48961, 48962, 48963}
+AVOID_FALLBACK_PORTS.add(LAN_PROXY_PORT)
 
 # 模块名到端口键的映射（用于判断已有 N.E.K.O 实例是否占用对应端口）
 MODULE_TO_PORT_KEY: dict[str, str] = {
     "memory_server": "MEMORY_SERVER_PORT",
     "agent_server": "TOOL_SERVER_PORT",
     "main_server": "MAIN_SERVER_PORT",
+    "lan_proxy": "LAN_PROXY_PORT",
 }
 SHUTDOWN_MODULE_ORDER = (
+    "lan_proxy",
     "main_server",
     "memory_server",
     "agent_server",
@@ -368,16 +372,18 @@ def _reload_runtime_config_from_env() -> None:
     the negotiated ``NEKO_*`` environment variables gives each server process a
     fresh source of truth before importing its heavy application modules.
     """
-    global INSTANCE_ID, MAIN_SERVER_PORT, MEMORY_SERVER_PORT, TOOL_SERVER_PORT
+    global INSTANCE_ID, MAIN_SERVER_PORT, LAN_PROXY_PORT, MEMORY_SERVER_PORT, TOOL_SERVER_PORT
 
     reloaded = importlib.reload(config_module)
     INSTANCE_ID = str(reloaded.INSTANCE_ID)
     MAIN_SERVER_PORT = int(reloaded.MAIN_SERVER_PORT)
+    LAN_PROXY_PORT = int(reloaded.LAN_PROXY_PORT)
     MEMORY_SERVER_PORT = int(reloaded.MEMORY_SERVER_PORT)
     TOOL_SERVER_PORT = int(reloaded.TOOL_SERVER_PORT)
     _sync_runtime_config_globals(
         {
             "MAIN_SERVER_PORT": MAIN_SERVER_PORT,
+            "LAN_PROXY_PORT": LAN_PROXY_PORT,
             "MEMORY_SERVER_PORT": MEMORY_SERVER_PORT,
             "TOOL_SERVER_PORT": TOOL_SERVER_PORT,
         },
@@ -829,6 +835,15 @@ SERVERS = [
         'graceful_shutdown_timeout': 20,
     },
     {
+        'name': 'LAN Proxy',
+        'module': 'lan_proxy',
+        'port': LAN_PROXY_PORT,
+        'process': None,
+        'ready_event': None,
+        'shutdown_complete_event': None,
+        'graceful_shutdown_timeout': 12,
+    },
+    {
         'name': 'Agent Server',
         'module': 'agent_server',
         'port': TOOL_SERVER_PORT,
@@ -877,10 +892,10 @@ def run_merged_servers() -> int:
     # 分步 import（控制峰值内存 & 提供进度反馈）
     print("[Merged] Importing memory_server...", flush=True)
     from app import memory_server
-    print("[Merged] Importing agent_server...", flush=True)
-    from app import agent_server
     print("[Merged] Importing main_server...", flush=True)
     from app import main_server
+    print("[Merged] Importing agent_server...", flush=True)
+    from app import agent_server
 
     _apps = [
         (memory_server.app, MEMORY_SERVER_PORT, "Memory"),
@@ -1165,6 +1180,38 @@ def run_agent_server(
         server.run()
     except Exception as e:
         print(f"Agent Server error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if shutdown_complete_event is not None:
+            shutdown_complete_event.set()
+
+def run_lan_proxy(
+    ready_event: Event,
+    import_event: Event | None = None,
+    shutdown_event: Event | None = None,
+    shutdown_complete_event: Event | None = None,
+):
+    """运行 LAN Proxy"""
+    try:
+        _detach_child_process_session()
+        _reload_runtime_config_from_env()
+        if IS_FROZEN:
+            if hasattr(sys, '_MEIPASS'):
+                os.chdir(sys._MEIPASS)
+            else:
+                os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+        print("[LAN Proxy] Importing lan_proxy module...")
+        import asyncio
+        from lan_proxy import run_lan_proxy as _run_lan_proxy
+        if import_event:
+            import_event.set()
+
+        print(f"[LAN Proxy] Starting on port {LAN_PROXY_PORT}")
+        asyncio.run(_run_lan_proxy(stop_event=shutdown_event, start_event=ready_event))
+    except Exception as e:
+        print(f"LAN Proxy error: {e}")
         import traceback
         traceback.print_exc()
     finally:
@@ -1589,6 +1636,8 @@ def start_server(server: Dict) -> bool:
             target_func = run_memory_server
         elif server['module'] == 'agent_server':
             target_func = run_agent_server
+        elif server['module'] == 'lan_proxy':
+            target_func = run_lan_proxy
         elif server['module'] == 'main_server':
             target_func = run_main_server
         else:
@@ -2095,6 +2144,7 @@ def main():
             "instance_id": INSTANCE_ID,
             "selected": {
                 "MAIN_SERVER_PORT": MAIN_SERVER_PORT,
+                "LAN_PROXY_PORT": LAN_PROXY_PORT,
                 "MEMORY_SERVER_PORT": MEMORY_SERVER_PORT,
                 "TOOL_SERVER_PORT": TOOL_SERVER_PORT,
             },

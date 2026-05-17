@@ -28,6 +28,7 @@ All environment variables use the `NEKO_` prefix.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NEKO_MAIN_SERVER_PORT` | `48911` | Main server (Web UI, API) |
+| `NEKO_LAN_PROXY_PORT` | `48920` | LAN Proxy / P2P proxy port |
 | `NEKO_MEMORY_SERVER_PORT` | `48912` | Memory server |
 | `NEKO_MONITOR_SERVER_PORT` | `48913` | Monitor server |
 | `NEKO_COMMENTER_SERVER_PORT` | `48914` | Commenter server |
@@ -35,6 +36,16 @@ All environment variables use the `NEKO_` prefix.
 | `NEKO_USER_PLUGIN_SERVER_PORT` | `48916` | User plugin server |
 | `NEKO_AGENT_MQ_PORT` | `48917` | Agent message queue |
 | `NEKO_MAIN_AGENT_EVENT_PORT` | `48918` | Agent event port |
+
+## Mobile LAN / optional P2P cloud
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEKO_ENABLE_CLOUD_REGISTRY` | `false` | Enable cloud registry for cross-network device discovery |
+| `NEKO_ENABLE_STUN` | `false` | Enable STUN discovery for public NAT endpoint detection |
+| `NEKO_CLOUD_REGISTRY_URL` | none | Cloud registry URL used only when cloud registry is enabled |
+| `NEKO_STUN_SERVER` | Follows cloud registry hostname, or `stun.l.google.com` | STUN server host used only when STUN is enabled |
+| `NEKO_STUN_PORT` | `3478` / `19302` | STUN server port used only when STUN is enabled |
 
 ## Model overrides
 

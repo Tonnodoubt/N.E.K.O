@@ -611,6 +611,14 @@ def enqueue_voice_migration_notice(legacy_names: list) -> None:
 _START_LLM_CONCURRENT_ABORTED = object()
 
 
+def _console_print_best_effort(message: str, context: str) -> None:
+    """Print debug-only prompt text without letting a dead stdout break flows."""
+    try:
+        print(message)
+    except (OSError, ValueError) as exc:
+        logger.debug("%s: stdout unavailable, skipped console print: %s", context, exc)
+
+
 # --- 一个带有定期上下文压缩+在线热切换的语音会话管理器 ---
 class LLMSessionManager:
     def __init__(self, sync_message_queue, lanlan_name, lanlan_prompt):
@@ -1566,7 +1574,10 @@ class LLMSessionManager:
                 logger.debug(
                     f"[{self.lanlan_name}] response_discarded JSON 解析失败: {_parse_err} (msg_len={len(message or '')})"
                 )
-                print(f"[response_discarded parse_err] raw: {message!r}")
+                _console_print_best_effort(
+                    f"[response_discarded parse_err] raw: {message!r}",
+                    "response_discarded parse error",
+                )
 
         await self._clear_tts_pipeline()
 
@@ -3626,9 +3637,8 @@ class LLMSessionManager:
         # 同步刷新 proactive 路径 10s 抑制窗口（prepare_proactive_delivery），避免
         # session 刚起来就被立刻触发主动搭话。
         self.last_user_activity_time = time.time()
-        # CAS 落败早退标志：True 时禁止 finally 递减 guard，
-        # 防止赢家初始化期间第三个协程穿过 guard 浪费 LLM 连接。
-        _llm_concurrent_aborted = False
+        # 并发 CAS 落败仅跳过通用错误清理；本协程持有的启动 guard
+        # 仍必须在 finally 释放，否则后续显式 start_session 会被永久忽略。
         _diag_start = time.time()
         # 预创建的 /new_dialog 任务：若 start_llm_session 之前就抛异常，
         # finally 会负责 cancel + await，避免孤儿 task 残留连接。
@@ -4018,7 +4028,10 @@ class LLMSessionManager:
 
                 logger.info("✅ LLM Session 已连接")
                 logger.info(f"[语音会话诊断] LLM 连接并 connect 完成 (耗时: {time.time() - _llm_create_start:.2f}秒)")
-                print(initial_prompt)  #只在控制台显示，不输出到日志文件
+                _console_print_best_effort(
+                    initial_prompt,
+                    "start_session initial prompt",
+                )  # 只在控制台显示，不输出到日志文件
                 return True
         
             # 重置状态
@@ -4051,11 +4064,8 @@ class LLMSessionManager:
             # 并发落败分支：赢家已持有 self.session / message_handler_task，
             # 我们不能继续走 "if self.session" 分支（会覆盖 handler task、重复
             # send_session_started），也不能 raise（会误触发 cleanup 杀掉赢家）。
-            # 同时设置 _llm_concurrent_aborted=True 让 finally 跳过 guard 递减：
-            # 赢家尚未完成初始化，必须保持 guard 以阻止第三个协程穿过。
             if llm_result is _START_LLM_CONCURRENT_ABORTED:
-                logger.info("[语音会话诊断] start_session 因并发 CAS 落败早退，保持 guard 关闭")
-                _llm_concurrent_aborted = True
+                logger.info("[语音会话诊断] start_session 因并发 CAS 落败早退，释放本次 guard 后返回")
                 return
             if isinstance(llm_result, Exception):
                 raise llm_result  # LLM Session 失败是致命的
@@ -4106,13 +4116,9 @@ class LLMSessionManager:
             # 注意：except Exception 不会捕获 CancelledError，shutdown 路径保持原语义。
             await self._handle_session_start_exception(e, input_mode, _diag_start)
         finally:
-            # 例外：CAS 落败早退时不递减——赢家还在初始化，若此时放开 guard，
-            # 第三个协程会穿过并再次把入口快照当作"赢家"进而覆盖掉真正的赢家。
-            # 赢家完成（成功或异常）后会通过自己的 finally 或 cleanup 清理 guard。
-            if not _llm_concurrent_aborted:
-                self._starting_session_count = max(0, self._starting_session_count - 1)
-                if self._starting_session_count == 0:
-                    self._starting_input_mode = None
+            self._starting_session_count = max(0, self._starting_session_count - 1)
+            if self._starting_session_count == 0:
+                self._starting_input_mode = None
             # 保险：若 /new_dialog 预取任务早期异常后仍在跑（gather 没来得及
             # await 它就异常退出），这里统一 cancel + await，避免 "Task exception
             # was never retrieved" warning 和连接池泄漏。
@@ -4442,7 +4448,10 @@ class LLMSessionManager:
             if not resp.is_success:
                 raise ConnectionError(f"❌ 记忆服务热切换时返回非2xx状态 {resp.status_code}: {resp.text[:200]}")
             initial_prompt += resp.text + self._convert_cache_to_str(self.message_cache_for_new_session)
-            print(initial_prompt)
+            _console_print_best_effort(
+                initial_prompt,
+                "hot_swap initial prompt",
+            )
             self._bind_session_lifecycle_callbacks(self.pending_session)
             await self.pending_session.connect(initial_prompt, native_audio=not self.pending_use_tts)
 
@@ -4914,7 +4923,10 @@ class LLMSessionManager:
                 pass
         # proactive 原文不写 logger（隐私）；本地 print 兜底
         logger.info("[%s] Proactive stream delivered (text_len=%d)", self.lanlan_name, len(full_text or ""))
-        print(f"[{self.lanlan_name}] Proactive stream delivered: {(full_text or '')[:40]}…")
+        _console_print_best_effort(
+            f"[{self.lanlan_name}] Proactive stream delivered: {(full_text or '')[:40]}…",
+            "proactive stream delivered",
+        )
         return True
 
     async def handle_avatar_interaction(self, payload: dict) -> dict:
@@ -5353,7 +5365,10 @@ class LLMSessionManager:
             elapsed=elapsed, name=self.lanlan_name, master=self.master_name,
             time_hint=time_hint, holiday_hint=holiday_hint,
         )
-        print(f"[trigger_greeting] instruction:\n{instruction}")
+        _console_print_best_effort(
+            f"[trigger_greeting] instruction:\n{instruction}",
+            "trigger_greeting instruction",
+        )
         logger.info("[%s] trigger_greeting: gap=%.0fs elapsed=%s, delivering", self.lanlan_name, gap_seconds, elapsed)
 
         # ── 投递前最终检查：构建 instruction 期间（holiday hint 等 await）语音可能已接管 ──
@@ -5464,7 +5479,10 @@ class LLMSessionManager:
             return
 
         instruction = template.format(name=self.lanlan_name, master=self.master_name)
-        print(f"[trigger_new_character_greeting] instruction:\n{instruction}")
+        _console_print_best_effort(
+            f"[trigger_new_character_greeting] instruction:\n{instruction}",
+            "trigger_new_character_greeting instruction",
+        )
         logger.info("[%s] trigger_new_character_greeting: delivering", self.lanlan_name)
 
         if self._is_voice_session_active_or_starting():
@@ -5685,7 +5703,10 @@ class LLMSessionManager:
                     self.is_hot_swap_imminent = False
                     return
 
-            print(final_prime_text) #只在控制台显示，不输出到日志文件
+            _console_print_best_effort(
+                final_prime_text,
+                "final swap prime text",
+            )  # 只在控制台显示，不输出到日志文件
 
             # 2. Start temporary listener for PENDING session's *second* ignored response
             if self.pending_session_final_prime_complete_event:
@@ -6266,7 +6287,7 @@ class LLMSessionManager:
                         # 如果是文本模式（OmniOfflineClient），只存储图片，不立即发送
                         if isinstance(self.session, OmniOfflineClient):
                             # 只添加到待发送队列，等待与文本一起发送
-                            await self.session.stream_image(image_b64)
+                            await self.session.stream_image(image_b64, image_source=input_type)
 
                         # 如果是语音模式（OmniRealtimeClient），检查是否支持视觉并直接发送
                         elif isinstance(self.session, OmniRealtimeClient):
@@ -6276,7 +6297,7 @@ class LLMSessionManager:
                                 return
 
                             # 语音模式直接发送图片
-                            await self.session.stream_image(image_b64)
+                            await self.session.stream_image(image_b64, image_source=input_type)
                     else:
                         logger.error("💥 Stream: 屏幕数据验证失败")
                         return
@@ -6320,6 +6341,8 @@ class LLMSessionManager:
                 _inactive_early = True
                 # start_tts_if_needed 可能已启动 TTS 线程/handler，
                 # 但 is_active 尚未置 True 就失败了——快照引用以便释放锁后清理
+                _orphan_main_session = self.session
+                _orphan_message_handler_task = self.message_handler_task
                 _orphan_tts_handler = self.tts_handler_task
                 _orphan_tts_thread = self.tts_thread
                 _orphan_tts_rq = self.tts_request_queue
@@ -6340,10 +6363,28 @@ class LLMSessionManager:
                 async with self.input_cache_lock:
                     self.session_ready = False
                     self.pending_input_data.clear()
-                async with self.lock:
-                    if expected_session is None or expected_session is self.session:
+            async with self.lock:
+                if expected_session is None or expected_session is self.session:
+                    if self.session is _orphan_main_session:
+                        self.session = None
+                    if self.message_handler_task is _orphan_message_handler_task:
+                        self.message_handler_task = None
+                    if reset_starting_count:
                         self._starting_session_count = 0
                         self._starting_input_mode = None
+            if _orphan_message_handler_task and not _orphan_message_handler_task.done():
+                _orphan_message_handler_task.cancel()
+                try:
+                    await asyncio.wait_for(_orphan_message_handler_task, timeout=1.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                except Exception as e:
+                    logger.debug(f"end_session inactive cleanup: listener task already failed: {e}")
+            if _orphan_main_session:
+                try:
+                    await _orphan_main_session.close()
+                except Exception as e:
+                    logger.debug(f"end_session inactive cleanup: closing promoted session failed: {e}")
             # start_tts_if_needed 可能已启动 TTS 但 is_active 未置 True（如 LLM 启动失败），
             # 必须清理这些孤儿资源，否则线程/task 会泄漏
             await self._teardown_tts_runtime(

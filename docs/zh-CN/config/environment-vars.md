@@ -28,6 +28,7 @@
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `NEKO_MAIN_SERVER_PORT` | `48911` | 主服务器（Web UI、API） |
+| `NEKO_LAN_PROXY_PORT` | `48920` | LAN Proxy / P2P 代理端口 |
 | `NEKO_MEMORY_SERVER_PORT` | `48912` | 记忆服务器 |
 | `NEKO_MONITOR_SERVER_PORT` | `48913` | 监控服务器 |
 | `NEKO_COMMENTER_SERVER_PORT` | `48914` | 弹幕服务器 |
@@ -35,6 +36,16 @@
 | `NEKO_USER_PLUGIN_SERVER_PORT` | `48916` | 用户插件服务器 |
 | `NEKO_AGENT_MQ_PORT` | `48917` | Agent 消息队列 |
 | `NEKO_MAIN_AGENT_EVENT_PORT` | `48918` | Agent 事件端口 |
+
+## 手机端局域网 / 可选 P2P 云能力
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `NEKO_ENABLE_CLOUD_REGISTRY` | `false` | 是否启用跨网络设备发现所需的云端注册 |
+| `NEKO_ENABLE_STUN` | `false` | 是否启用公网 NAT endpoint 探测 |
+| `NEKO_CLOUD_REGISTRY_URL` | 无 | 云端注册服务地址，仅在云端注册开启时使用 |
+| `NEKO_STUN_SERVER` | 跟随云注册 hostname，或 `stun.l.google.com` | STUN 服务器地址，仅在 STUN 开启时使用 |
+| `NEKO_STUN_PORT` | `3478` / `19302` | STUN 服务器端口，仅在 STUN 开启时使用 |
 
 ## 模型覆盖
 

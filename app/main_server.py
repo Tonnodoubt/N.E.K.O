@@ -68,7 +68,7 @@ import httpx # noqa
 import time # noqa
 import signal # noqa
 from datetime import datetime, timezone # noqa
-from config import MAIN_SERVER_PORT, MONITOR_SERVER_PORT, USER_NOTIFICATION_ERROR_MAX_CHARS # noqa
+from config import MAIN_SERVER_PORT, MONITOR_SERVER_PORT, USER_NOTIFICATION_ERROR_MAX_CHARS, LAN_PROXY_PORT # noqa
 from utils.cloudsave_autocloud import get_cloudsave_manager # noqa
 from utils.cloudsave_runtime import (
     CloudsaveDeadlineExceeded,
@@ -88,6 +88,91 @@ from utils.ssl_env_diagnostics import probe_ssl_environment, write_ssl_diagnosti
 
 _main_log_level = getattr(logging, (os.environ.get("NEKO_LOG_LEVEL") or "INFO").upper(), logging.INFO)
 logger, log_config = setup_logging(service_name="Main", log_level=_main_log_level, silent=not _IS_MAIN_PROCESS)
+
+
+def _get_lan_proxy_hosts() -> list[str]:
+    """Return LAN proxy candidates for local proxying.
+
+    Main Server and LAN Proxy run on the same machine, so loopback should be
+    tried first. The status-file LAN IP is still useful when loopback is not
+    available, but it can become stale after Wi-Fi/network changes.
+    """
+    import json
+    import socket
+
+    hosts: list[str] = []
+
+    def add_host(host: str | None) -> None:
+        if host and host not in hosts:
+            hosts.append(host)
+
+    add_host("127.0.0.1")
+
+    try:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        status_file = os.path.join(repo_root, ".lan_proxy_status.json")
+        if os.path.exists(status_file):
+            with open(status_file, "r", encoding="utf-8") as f:
+                status = json.load(f)
+                lan_ip = status.get("lan_ip")
+                port = status.get("port")
+                if lan_ip and port == LAN_PROXY_PORT:
+                    add_host(lan_ip)
+    except Exception as e:
+        logger.debug("Failed to read LAN proxy status file: %s", e)
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            lan_ip = s.getsockname()[0]
+            if lan_ip and not lan_ip.startswith("127."):
+                add_host(lan_ip)
+    except Exception as e:
+        logger.debug("Failed to determine LAN proxy IP via socket: %s", e)
+
+    return hosts
+
+
+def _check_port(host: str, port: int, timeout: float = 1.0) -> bool:
+    """Check whether host:port is accepting TCP connections."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            return sock.connect_ex((host, port)) == 0
+    except Exception:
+        return False
+
+
+async def _request_lan_proxy(path: str, timeout: float = 2.0):
+    """Request a local LAN Proxy endpoint with stale-IP fallback."""
+    hosts = _get_lan_proxy_hosts()
+    last_error = None
+
+    async with httpx.AsyncClient(proxy=None, trust_env=False) as client:
+        for host in hosts:
+            if not _check_port(host, LAN_PROXY_PORT):
+                last_error = f"{host}:{LAN_PROXY_PORT} not accepting TCP"
+                continue
+
+            for attempt in range(2):
+                try:
+                    response = await client.get(f"http://{host}:{LAN_PROXY_PORT}{path}", timeout=timeout)
+                    if 500 <= response.status_code < 600 and attempt == 0:
+                        last_error = f"{host} HTTP {response.status_code}"
+                        await asyncio.sleep(0.5)
+                        continue
+                    return response, host, None
+                except (httpx.ConnectError, httpx.TimeoutException) as e:
+                    last_error = f"{host}: {e}"
+                    if attempt == 0:
+                        await asyncio.sleep(0.5)
+                    continue
+                except Exception as e:
+                    logger.error("Unexpected error requesting LAN proxy %s via %s: %s", path, host, e)
+                    return None, host, e
+
+    return None, None, last_error
 
 if _IS_MAIN_PROCESS:
     _ssl_precheck = probe_ssl_environment()
@@ -1502,6 +1587,52 @@ async def health():
     from utils.port_utils import build_health_response
     from config import INSTANCE_ID
     return build_health_response("main", instance_id=INSTANCE_ID)
+
+
+@app.get("/p2p-info")
+async def p2p_info():
+    """Proxy P2P info request to LAN proxy."""
+    from fastapi.responses import JSONResponse
+
+    response, host, error = await _request_lan_proxy("/p2p-info", timeout=2.0)
+    if response is None:
+        logger.warning("LAN proxy unavailable for /p2p-info via %s: %s", _get_lan_proxy_hosts(), error)
+        return JSONResponse(content={"error": "P2P service unavailable"}, status_code=503)
+    if response.status_code == 200:
+        return JSONResponse(content=response.json())
+    if 500 <= response.status_code < 600:
+        logger.warning("LAN proxy /p2p-info returned HTTP %s via %s", response.status_code, host)
+        return JSONResponse(content={"error": "P2P service unavailable"}, status_code=503)
+    return JSONResponse(content={"error": "P2P info not available"}, status_code=response.status_code)
+
+
+@app.get("/lanproxyqrcode")
+async def lanproxy_qrcode():
+    """Proxy QR code request to LAN proxy."""
+    from fastapi.responses import JSONResponse, Response
+
+    response, host, error = await _request_lan_proxy("/lanproxyqrcode", timeout=3.0)
+    if response is None:
+        logger.warning("LAN proxy unavailable for /lanproxyqrcode via %s: %s", _get_lan_proxy_hosts(), error)
+        return JSONResponse(content={"error": "QR code service unavailable"}, status_code=503)
+    if response.status_code == 200:
+        return Response(
+            content=response.content,
+            media_type="image/png",
+            headers={
+                "X-Lan-Ip": response.headers.get("X-Lan-Ip", ""),
+                "X-Port": response.headers.get("X-Port", ""),
+                "X-Token": response.headers.get("X-Token", ""),
+                "X-Device-Id": response.headers.get("X-Device-Id", ""),
+                "X-Pairing-Supported": response.headers.get("X-Pairing-Supported", ""),
+                "X-Pairing-Register-Path": response.headers.get("X-Pairing-Register-Path", ""),
+                "X-Pairing-Resolve-Path": response.headers.get("X-Pairing-Resolve-Path", ""),
+            },
+        )
+    if 500 <= response.status_code < 600:
+        logger.warning("LAN proxy /lanproxyqrcode returned HTTP %s via %s", response.status_code, host)
+        return JSONResponse(content={"error": "QR code service unavailable"}, status_code=503)
+    return JSONResponse(content={"error": "QR code generation failed"}, status_code=response.status_code)
 
 
 @app.post('/api/beacon/shutdown')

@@ -27,3 +27,13 @@ def test_response_discarded_visible_in_react_chat():
     )[0]
     assert "document.createElement('div')" not in response_discarded_block
     assert "appendChild(messageDiv)" not in response_discarded_block
+
+
+def test_mobile_takeover_guard_exists_for_single_websocket_desktop_yield():
+    source = APP_WEBSOCKET_PATH.read_text(encoding="utf-8")
+
+    assert "mod.setDesktopMobileTakeover = async function (enabled)" in source
+    assert "if (S.mobileTakeoverActive) {" in source
+    assert "Desktop websocket yielded to mobile" in source
+    assert "connect skipped: desktop yielded to mobile" in source
+    assert "window.__nekoSetDesktopMobileTakeover = mod.setDesktopMobileTakeover;" in source
