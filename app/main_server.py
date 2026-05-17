@@ -1647,7 +1647,24 @@ async def health():
     以区分当前服务与随机占用该端口的其他进程。"""
     from utils.port_utils import build_health_response
     from config import INSTANCE_ID
-    return build_health_response("main", instance_id=INSTANCE_ID)
+    lan_hosts = _get_lan_proxy_hosts()
+    lan_available = any(
+        _check_port(host, LAN_PROXY_PORT, timeout=0.2)
+        for host in lan_hosts
+    )
+    return build_health_response(
+        "main",
+        instance_id=INSTANCE_ID,
+        extra={
+            "mobile_backend": True,
+            "mobile_api_version": 1,
+            "lan_proxy": {
+                "available": lan_available,
+                "port": LAN_PROXY_PORT,
+                "hosts": lan_hosts,
+            },
+        },
+    )
 
 
 @app.get("/p2p-info")
@@ -1660,7 +1677,12 @@ async def p2p_info():
         logger.warning("LAN proxy unavailable for /p2p-info via %s: %s", _get_lan_proxy_hosts(), error)
         return JSONResponse(content={"error": "P2P service unavailable"}, status_code=503)
     if response.status_code == 200:
-        return JSONResponse(content=response.json())
+        payload = response.json()
+        if isinstance(payload, dict):
+            payload.setdefault("mobile_backend", True)
+            payload.setdefault("mobile_api_version", 1)
+            payload.setdefault("main_proxy", {"host": host, "port": LAN_PROXY_PORT})
+        return JSONResponse(content=payload)
     if 500 <= response.status_code < 600:
         logger.warning("LAN proxy /p2p-info returned HTTP %s via %s", response.status_code, host)
         return JSONResponse(content={"error": "P2P service unavailable"}, status_code=503)

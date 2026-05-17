@@ -75,6 +75,7 @@ except ImportError:
 PROXY_PORT = LAN_PROXY_PORT
 TARGET_BASE = f"http://127.0.0.1:{MAIN_SERVER_PORT}"
 TARGET_WS_BASE = f"ws://127.0.0.1:{MAIN_SERVER_PORT}"
+MOBILE_API_VERSION = 1
 
 # 状态文件路径
 STATUS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".lan_proxy_status.json")
@@ -787,8 +788,12 @@ class LanProxy:
         self._refresh_lan_ip()
         return web.json_response({
             "status": "ok",
+            "service": "lan_proxy",
+            "mobile_backend": True,
+            "mobile_api_version": MOBILE_API_VERSION,
             "lan_ip": self.lan_ip,
             "port": PROXY_PORT,
+            "pairing_supported": True,
         })
 
     # ── P2P 连接信息 ──
@@ -1089,6 +1094,10 @@ class LanProxy:
         udp_port = self.stun_port if self.stun_port else (PROXY_PORT + 1)
 
         info = {
+            "schema": "neko.mobile.p2p.v1",
+            "service": "lan_proxy",
+            "mobile_backend": True,
+            "mobile_api_version": MOBILE_API_VERSION,
             "lan_ip": self.lan_ip,
             "port": PROXY_PORT,  # TCP HTTP 端口（供 WebSocket/HTTP 连接）
             "udp_port": udp_port,  # UDP P2P 端口（用于 UDP 打洞）

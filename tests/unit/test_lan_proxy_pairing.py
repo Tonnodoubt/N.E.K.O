@@ -23,6 +23,10 @@ def test_connection_info_exposes_device_and_pairing_metadata(monkeypatch, tmp_pa
 
     info = proxy.get_connection_info()
 
+    assert info["schema"] == "neko.mobile.p2p.v1"
+    assert info["service"] == "lan_proxy"
+    assert info["mobile_backend"] is True
+    assert info["mobile_api_version"] == lan_proxy.MOBILE_API_VERSION
     assert info["lan_ip"] == "192.168.50.10"
     assert info["port"] == lan_proxy.PROXY_PORT
     assert info["token"] == "runtime-token"
