@@ -73,7 +73,11 @@ def _build_anchor_layout(
     tile_width = origin.width + (cal.hand_offsets.width_px if cal else 0)
     tile_height = origin.height + (cal.hand_offsets.height_px if cal else 0)
     gap = max(0, int(tile_width * 0.12) + (cal.hand_offsets.gap_px if cal else 0))
-    draw_gap = max(0, int(tile_width * 0.35) + (cal.hand_offsets.draw_gap_px if cal else 0))
+    draw_gap = (
+        max(0, cal.hand_offsets.draw_gap_px)
+        if cal is not None
+        else max(0, int(tile_width * 0.35))
+    )
     hand_left = origin.left + (cal.hand_offsets.x_px if cal else 0)
     hand_top = origin.top + (cal.hand_offsets.y_px if cal else 0)
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.2 - 2026-05-17
+
+### Hand draw-slot alignment
+
+- Fixed anchor-driven hand layout so calibrated `draw_gap_px` is treated as the full draw-tile gap instead of being added on top of a default gap. This prevents the drawn tile from being cropped too far right and misread, such as `8s` being classified as `6z`.
+
 ## v1.3.1 - 2026-05-17
 
 ### Runtime data seeding

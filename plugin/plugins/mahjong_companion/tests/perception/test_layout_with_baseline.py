@@ -10,6 +10,10 @@ import pytest
 from plugin.plugins.mahjong_companion.perception.hand_baseline import (
     HandBaselineAnchor,
 )
+from plugin.plugins.mahjong_companion.perception.calibration import (
+    CalibrationOffsets,
+    CalibrationProfile,
+)
 from plugin.plugins.mahjong_companion.perception.hand_layout import (
     _baseline_plausible,
     build_hand_layout,
@@ -98,6 +102,26 @@ def test_build_hand_layout_uses_anchor_when_baseline_plausible():
     assert layout["hand"][0].box.top == hc["hand"][0].box.top
     assert layout["dora"][0].box.left == hc["dora"][0].box.left
     assert layout["meld"][0].box.left == hc["meld"][0].box.left
+
+
+def test_anchor_hand_layout_uses_calibrated_draw_gap_as_total():
+    calibration = CalibrationProfile(
+        screen_width=1920,
+        screen_height=1080,
+        hand_offsets=CalibrationOffsets(draw_gap_px=41),
+    )
+    layout = build_hand_layout(
+        1920,
+        1080,
+        baseline=_1080_good,
+        calibration=calibration,
+        draw_slot_index=14,
+    )
+
+    natural_left = layout["hand"][12].box.left + layout["hand"][12].box.width
+    actual_gap = layout["hand"][13].box.left - natural_left
+
+    assert actual_gap == 41 + int(layout["hand"][12].box.width * 0.12)
 
 
 def test_build_discard_layout_uses_anchor_when_baseline_plausible():
