@@ -152,6 +152,36 @@ def _read_optional_port(var_name: str) -> Optional[int]:
     return None
 
 
+def _get_mobile_public_endpoint() -> tuple[Optional[str], Optional[int]]:
+    """读取可选公网入口，用于 FRP 等反向代理二维码。"""
+    host = _read_env("MOBILE_PUBLIC_HOST") or _read_env("PUBLIC_MOBILE_HOST")
+    port = _read_optional_port("MOBILE_PUBLIC_PORT") or _read_optional_port("PUBLIC_MOBILE_PORT")
+    return host, port
+
+
+def _public_endpoint_from_request(request: web.Request) -> tuple[Optional[str], Optional[int]]:
+    """本机请求可临时指定公网入口，供桌面端生成 FRP 二维码。"""
+    peer = request.transport.get_extra_info("peername") if request.transport else None
+    host = peer[0] if isinstance(peer, tuple) and peer else request.remote
+    if host not in {"127.0.0.1", "::1", "localhost"}:
+        return None, None
+
+    public_host = (request.query.get("public_host") or "").strip()
+    public_port_raw = (request.query.get("public_port") or "").strip()
+    if not public_host or not public_port_raw:
+        return None, None
+
+    try:
+        public_port = int(public_port_raw)
+    except ValueError:
+        return None, None
+
+    if 1 <= public_port <= 65535:
+        return public_host, public_port
+
+    return None, None
+
+
 def _get_cloud_registry_url() -> Optional[str]:
     value = _read_env("CLOUD_REGISTRY_URL")
     return value.rstrip("/") if value else None
@@ -799,7 +829,8 @@ class LanProxy:
     # ── P2P 连接信息 ──
     async def handle_p2p_info(self, request: web.Request) -> web.Response:
         """返回 P2P 连接信息（用于生成二维码）"""
-        info = self.get_connection_info()
+        public_host, public_port = _public_endpoint_from_request(request)
+        info = self.get_connection_info(public_host=public_host, public_port=public_port)
         return web.json_response(info)
 
     # ── P2P 二维码图片 ──
@@ -813,7 +844,8 @@ class LanProxy:
 
         try:
             # 获取连接信息
-            info = self.get_connection_info()
+            public_host, public_port = _public_endpoint_from_request(request)
+            info = self.get_connection_info(public_host=public_host, public_port=public_port)
 
             # 生成二维码
             import io
@@ -1086,9 +1118,18 @@ class LanProxy:
 
         self._cloud_refresh_task = asyncio.create_task(refresh_loop())
 
-    def get_connection_info(self) -> dict:
+    def get_connection_info(
+        self,
+        public_host: Optional[str] = None,
+        public_port: Optional[int] = None,
+    ) -> dict:
         """获取连接信息（用于生成二维码）"""
         self._refresh_lan_ip()
+        env_public_host, env_public_port = _get_mobile_public_endpoint()
+        public_host = public_host or env_public_host
+        public_port = public_port or env_public_port
+        connect_host = public_host or self.lan_ip
+        connect_port = public_port or PROXY_PORT
 
         # 计算 UDP 端口（与启动时使用的相同逻辑）
         udp_port = self.stun_port if self.stun_port else (PROXY_PORT + 1)
@@ -1098,8 +1139,8 @@ class LanProxy:
             "service": "lan_proxy",
             "mobile_backend": True,
             "mobile_api_version": MOBILE_API_VERSION,
-            "lan_ip": self.lan_ip,
-            "port": PROXY_PORT,  # TCP HTTP 端口（供 WebSocket/HTTP 连接）
+            "lan_ip": connect_host,
+            "port": connect_port,  # TCP HTTP 端口（供 WebSocket/HTTP 连接）
             "udp_port": udp_port,  # UDP P2P 端口（用于 UDP 打洞）
             "token": self.token,
             "character": self.character,
@@ -1107,6 +1148,10 @@ class LanProxy:
             "pairing_supported": True,
             "pairing_register_path": "/pairing/register",
             "pairing_resolve_path": "/pairing/resolve",
+            "main_proxy": {
+                "host": connect_host,
+                "port": connect_port,
+            },
         }
 
         # 添加 STUN 信息
