@@ -82,6 +82,14 @@ STATUS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".lan_pro
 PAIRING_STORE_VERSION = 1
 MAX_PERSISTED_PAIRINGS = 16
 
+try:
+    QR_TOKEN_TTL_SECONDS = max(
+        30,
+        int(os.getenv("NEKO_MOBILE_QR_TOKEN_TTL_SECONDS", "120") or "120"),
+    )
+except ValueError:
+    QR_TOKEN_TTL_SECONDS = 120
+
 
 def _neko_state_dir() -> Path:
     return Path.home() / ".neko"
@@ -264,6 +272,9 @@ class LanProxy:
             character: 角色名称
         """
         self.token: str = secrets.token_urlsafe(32)
+        self._qr_token: str = ""
+        self._qr_token_expires_at: int = 0
+        self._qr_token_used_at: int = 0
         self.bind_host: Optional[str] = bind_host
         self.lan_ip: str = bind_host or self._get_lan_ip()
         self.character: str = character
@@ -516,6 +527,44 @@ class LanProxy:
             },
         )
 
+    def _issue_qr_token(self, now: Optional[int] = None) -> str:
+        now = int(now or time.time())
+        self._qr_token = secrets.token_urlsafe(32)
+        self._qr_token_expires_at = now + QR_TOKEN_TTL_SECONDS
+        self._qr_token_used_at = 0
+        return self._qr_token
+
+    def _get_active_qr_token(self) -> str:
+        now = int(time.time())
+        if (
+            self._qr_token
+            and self._qr_token_used_at == 0
+            and now < self._qr_token_expires_at
+        ):
+            return self._qr_token
+        return self._issue_qr_token(now)
+
+    def _extract_request_token(self, request: web.Request) -> str:
+        return request.query.get('token') or request.headers.get('X-Proxy-Token') or ""
+
+    def _validate_qr_token(self, token: str, now: Optional[int] = None) -> tuple[bool, str]:
+        if not token:
+            return False, "qr_missing"
+        if not self._qr_token or not hmac.compare_digest(str(token), self._qr_token):
+            return False, "qr_invalid"
+        if self._qr_token_used_at > 0:
+            return False, "qr_used"
+        if int(now or time.time()) >= self._qr_token_expires_at:
+            return False, "qr_expired"
+        return True, ""
+
+    def _consume_qr_token(self, token: str) -> tuple[bool, str]:
+        ok, code = self._validate_qr_token(token)
+        if not ok:
+            return False, code
+        self._qr_token_used_at = int(time.time())
+        return True, ""
+
     def create_mobile_pairing(
         self,
         client_name: str = "",
@@ -578,10 +627,24 @@ class LanProxy:
             entry["user_agent"] = str(user_agent)[:256]
         self._save_mobile_pairings(payload)
 
-        return self.get_connection_info()
+        return self.get_connection_info(token=self.token)
 
     async def handle_pairing_register(self, request: web.Request) -> web.Response:
         """Register a durable mobile pairing after the first QR/token bootstrap."""
+        ok, code = self._consume_qr_token(self._extract_request_token(request))
+        if not ok:
+            status = 410 if code in {"qr_used", "qr_expired"} else 403
+            messages = {
+                "qr_missing": "Missing QR token",
+                "qr_invalid": "Invalid QR token",
+                "qr_used": "QR code already used",
+                "qr_expired": "QR code expired",
+            }
+            return web.json_response(
+                {"success": False, "error": messages.get(code, "Invalid QR token"), "code": code},
+                status=status,
+            )
+
         payload = {}
         if request.can_read_body:
             try:
@@ -597,7 +660,7 @@ class LanProxy:
 
         return web.json_response({
             "success": True,
-            **self.get_connection_info(),
+            **self.get_connection_info(token=self.token),
             "pairing": pairing,
         })
 
@@ -665,8 +728,8 @@ class LanProxy:
         if request.path == '/health':
             return await handler(request)
 
-        # 扫过一次码后，移动端后续只靠 durable pairing secret 换新 token。
-        if request.path == '/pairing/resolve':
+        # register 在 handler 内消费一次性 QR token；resolve 只靠 durable pairing secret 换新 token。
+        if request.path in {'/pairing/register', '/pairing/resolve'}:
             return await handler(request)
 
         local_pairing_paths = {'/p2p-info', '/lanproxyqrcode'}
@@ -674,9 +737,7 @@ class LanProxy:
             return await handler(request)
 
         # 获取 token（优先 query，其次 header）
-        token = request.query.get('token')
-        if not token:
-            token = request.headers.get('X-Proxy-Token')
+        token = self._extract_request_token(request)
 
         if token != self.token:
             raise web.HTTPForbidden(text='Invalid token')
@@ -1122,6 +1183,7 @@ class LanProxy:
         self,
         public_host: Optional[str] = None,
         public_port: Optional[int] = None,
+        token: Optional[str] = None,
     ) -> dict:
         """获取连接信息（用于生成二维码）"""
         self._refresh_lan_ip()
@@ -1142,9 +1204,12 @@ class LanProxy:
             "lan_ip": connect_host,
             "port": connect_port,  # TCP HTTP 端口（供 WebSocket/HTTP 连接）
             "udp_port": udp_port,  # UDP P2P 端口（用于 UDP 打洞）
-            "token": self.token,
+            "token": token or self._get_active_qr_token(),
             "character": self.character,
             "device_id": self._get_device_id(),
+            "qr_one_time": token is None,
+            "qr_token_ttl_seconds": QR_TOKEN_TTL_SECONDS,
+            "qr_expires_at": self._qr_token_expires_at if token is None else 0,
             "pairing_supported": True,
             "pairing_register_path": "/pairing/register",
             "pairing_resolve_path": "/pairing/resolve",

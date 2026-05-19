@@ -29,12 +29,20 @@ def test_connection_info_exposes_device_and_pairing_metadata(monkeypatch, tmp_pa
     assert info["mobile_api_version"] == lan_proxy.MOBILE_API_VERSION
     assert info["lan_ip"] == "192.168.50.10"
     assert info["port"] == lan_proxy.PROXY_PORT
-    assert info["token"] == "runtime-token"
+    assert info["token"] != "runtime-token"
     assert info["character"] == "momo"
     assert info["device_id"].startswith("neko-")
+    assert info["qr_one_time"] is True
+    assert info["qr_token_ttl_seconds"] == lan_proxy.QR_TOKEN_TTL_SECONDS
+    assert info["qr_expires_at"] > 0
     assert info["pairing_supported"] is True
     assert info["pairing_register_path"] == "/pairing/register"
     assert info["pairing_resolve_path"] == "/pairing/resolve"
+
+    runtime_info = proxy.get_connection_info(token=proxy.token)
+    assert runtime_info["token"] == "runtime-token"
+    assert runtime_info["qr_one_time"] is False
+    assert runtime_info["qr_expires_at"] == 0
 
 
 def test_mobile_pairing_persists_and_resolves_fresh_runtime_token(monkeypatch, tmp_path):
@@ -105,3 +113,41 @@ def test_mobile_pairing_rejects_wrong_secret(monkeypatch, tmp_path):
     )
 
     assert resolved is None
+
+
+def test_qr_token_is_consumed_once(monkeypatch, tmp_path):
+    _patch_pairing_paths(monkeypatch, tmp_path)
+
+    proxy = lan_proxy.LanProxy(
+        bind_host="192.168.50.10",
+        enable_cloud=False,
+        enable_stun=False,
+        character="momo",
+    )
+    token = proxy.get_connection_info()["token"]
+
+    assert proxy._validate_qr_token(token) == (True, "")
+    assert proxy._consume_qr_token(token) == (True, "")
+    assert proxy._validate_qr_token(token) == (False, "qr_used")
+
+    next_token = proxy.get_connection_info()["token"]
+    assert next_token != token
+    assert proxy._validate_qr_token(next_token) == (True, "")
+
+
+def test_qr_token_expires(monkeypatch, tmp_path):
+    _patch_pairing_paths(monkeypatch, tmp_path)
+
+    proxy = lan_proxy.LanProxy(
+        bind_host="192.168.50.10",
+        enable_cloud=False,
+        enable_stun=False,
+        character="momo",
+    )
+    token = proxy._issue_qr_token(now=100)
+
+    assert proxy._validate_qr_token(token, now=100) == (True, "")
+    assert proxy._validate_qr_token(token, now=100 + lan_proxy.QR_TOKEN_TTL_SECONDS) == (
+        False,
+        "qr_expired",
+    )
