@@ -15,6 +15,8 @@ RIVER_ORIENTATIONS = {
     "top_opponent": "top",
     "right_opponent": "right",
 }
+MIN_SIDE_CLASSIFICATION_CANDIDATE_CONFIDENCE = 0.45
+MIN_RIVER_TILE_CLASSIFICATION_CONFIDENCE = 0.50
 Quad = tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]]
 SurfaceBox = tuple[int, int, int, int, float, Quad | None]
 
@@ -144,6 +146,7 @@ def detect_river_tiles_v2(
             all_candidates.append(_candidate_from_box(roi.player, index, box))
 
     candidates = _dedupe_candidates(all_candidates, iou_threshold=p.nms_iou_threshold)
+    candidates = _suppress_self_action_panel_candidates(candidates, arr)
     candidates = _complete_side_river_candidates(candidates, rois, arr, image_area=image_area, params=p)
     candidates = _renumber_by_player(candidates, rois)
     candidates = _stabilize_lower_side_visible_quads(candidates, rois)
@@ -172,6 +175,37 @@ def crop_river_candidate(
         output_size=(max(1, width), max(1, height)),
         orientation=RIVER_ORIENTATIONS.get(candidate.player, "bottom"),
     )
+
+
+def river_candidate_looks_blank(image: Image.Image, candidate: RiverTileCandidate) -> bool:
+    crop = image.crop(candidate.bbox).convert("RGB")
+    if crop.size[0] <= 0 or crop.size[1] <= 0:
+        return False
+    arr = np.asarray(crop, dtype=np.int16)
+    height, width = arr.shape[:2]
+    inner = arr[
+        int(round(height * 0.18)): int(round(height * 0.82)),
+        int(round(width * 0.12)): int(round(width * 0.88)),
+    ]
+    if inner.size == 0:
+        return False
+    r = inner[..., 0]
+    g = inner[..., 1]
+    b = inner[..., 2]
+    blue_face = (r <= 170) & (g >= 120) & (b >= 135) & (b >= r + 8) & (g >= r + 4)
+    dark_ink = (r <= 85) & (g <= 85) & (b <= 85)
+    red_ink = (r >= 135) & (g <= 90) & (b <= 90) & (r >= g + 35)
+    blue_ratio = float(blue_face.sum()) / max(1, blue_face.size)
+    ink_ratio = float((dark_ink | red_ink).sum()) / max(1, blue_face.size)
+    return blue_ratio >= 0.45 and ink_ratio <= 0.035
+
+
+def river_candidate_classification_rejection_reason(image: Image.Image, candidate: RiverTileCandidate) -> str:
+    if river_candidate_looks_blank(image, candidate):
+        return "blank_river_candidate"
+    if candidate.player in {"left_opponent", "right_opponent"} and candidate.confidence < MIN_SIDE_CLASSIFICATION_CANDIDATE_CONFIDENCE:
+        return "low_side_candidate_confidence"
+    return ""
 
 
 def expand_candidate_quad_for_classification(
@@ -356,6 +390,38 @@ def _candidate_duplicate(
         tile_height = max(1, min(candidate.height, other.height))
         return _same_grid_cell(candidate.center, other.center, tile_width=tile_width, tile_height=tile_height)
     return _box_iou(candidate.bbox, other.bbox) >= iou_threshold
+
+
+def _suppress_self_action_panel_candidates(
+    candidates: list[RiverTileCandidate],
+    arr: np.ndarray,
+) -> list[RiverTileCandidate]:
+    panel_top = _self_action_panel_top(arr)
+    if panel_top is None:
+        return candidates
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.player != "self" or candidate.center[1] < panel_top
+    ]
+
+
+def _self_action_panel_top(arr: np.ndarray) -> int | None:
+    height, width = arr.shape[:2]
+    crop = arr[
+        int(round(height * 0.66)): int(round(height * 0.80)),
+        int(round(width * 0.35)): int(round(width * 0.66)),
+    ]
+    if crop.size == 0:
+        return None
+    rgb = crop.astype(np.int16)
+    r = rgb[..., 0]
+    g = rgb[..., 1]
+    b = rgb[..., 2]
+    red_brown = (r >= 75) & (r <= 190) & (g <= 125) & (b <= 125) & (r >= g + 5)
+    if float(red_brown.sum()) / max(1, red_brown.size) < 0.12:
+        return None
+    return int(round(height * 0.64))
 
 
 def _renumber_by_player(
@@ -557,7 +623,7 @@ def _side_player_grid_additions(
     image_area: float,
     params: RiverDetectorParams,
 ) -> list[RiverTileCandidate]:
-    if len(candidates) < 6:
+    if len(candidates) < 5:
         return []
     rows = _cluster_candidates_by_y(candidates, tolerance=max(8, min(36, int(roi.height * 0.11))))
     if len(rows) < 2:
@@ -586,6 +652,20 @@ def _side_player_grid_additions(
 
     additions: list[RiverTileCandidate] = []
     occupied = list(candidates)
+    additions.extend(
+        _fill_side_column_gaps(
+            rows,
+            occupied=occupied,
+            player=player,
+            roi=roi,
+            arr=arr,
+            image_area=image_area,
+            params=params,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            row_step=row_step,
+        )
+    )
     for row in rows:
         additions.extend(
             _fill_side_row_gaps(
@@ -616,9 +696,13 @@ def _side_player_grid_additions(
             )
         )
 
+    extension_rows = _cluster_candidates_by_y(
+        occupied + additions,
+        tolerance=max(8, min(36, int(roi.height * 0.11))),
+    )
     additions.extend(
         _extend_side_rows_downward(
-            rows,
+            extension_rows,
             occupied=occupied + additions,
             player=player,
             roi=roi,
@@ -630,6 +714,57 @@ def _side_player_grid_additions(
             row_step=row_step,
         )
     )
+    return additions
+
+
+def _fill_side_column_gaps(
+    rows: list[list[RiverTileCandidate]],
+    *,
+    occupied: list[RiverTileCandidate],
+    player: str,
+    roi: RiverRoi,
+    arr: np.ndarray,
+    image_area: float,
+    params: RiverDetectorParams,
+    tile_width: int,
+    tile_height: int,
+    row_step: int,
+) -> list[RiverTileCandidate]:
+    if len(rows) < 2:
+        return []
+    additions: list[RiverTileCandidate] = []
+    row_centers = [
+        (
+            int(round(_median_center(row, axis="x"))),
+            int(round(_median_center(row, axis="y"))),
+        )
+        for row in rows
+    ]
+    for (left_x, upper_y), (right_x, lower_y) in zip(row_centers, row_centers[1:], strict=False):
+        if abs(left_x - right_x) > tile_width * 0.45:
+            continue
+        gap = lower_y - upper_y
+        if gap <= row_step * 1.45:
+            continue
+        missing_count = max(1, int(round(gap / row_step)) - 1)
+        for offset in range(1, missing_count + 1):
+            center = (
+                int(round(left_x + (right_x - left_x) * offset / (missing_count + 1))),
+                int(round(upper_y + gap * offset / (missing_count + 1))),
+            )
+            candidate = _completion_candidate_at(
+                player,
+                center=center,
+                tile_width=tile_width,
+                tile_height=tile_height,
+                roi=roi,
+                arr=arr,
+                image_area=image_area,
+                params=params,
+                occupied=occupied + additions,
+            )
+            if candidate is not None:
+                additions.append(candidate)
     return additions
 
 
@@ -1021,7 +1156,7 @@ def _bbox_from_quad(quad: Quad) -> tuple[int, int, int, int]:
 def _classification_padding_px(candidate: RiverTileCandidate) -> int:
     base = max(2, int(round(min(candidate.width, candidate.height) * 0.10)))
     if candidate.player in {"left_opponent", "right_opponent"}:
-        base = max(base, int(round(min(candidate.width, candidate.height) * 0.16)))
+        base = max(2, int(round(min(candidate.width, candidate.height) * 0.06)))
     if candidate.source == "river_detector_v2_completion":
         base = max(base, int(round(min(candidate.width, candidate.height) * 0.20)))
     return base

@@ -10,6 +10,7 @@ from typing import Any
 from PIL import Image
 
 from ..contracts import PerceivedGameState
+from .bottom_hand_detector import detect_bottom_hand_tiles
 from .calibration import CalibrationProfile, resolve_calibration_profile
 from .discard_layout import DiscardSlot, build_discard_layout
 from .discard_parser import parse_discards_from_image
@@ -142,6 +143,7 @@ def parse_tiles_from_image(
             "hand_slot_count": len(layout["hand"]),
         },
     )
+    result = _with_bottom_hand_detector_result(result, image=image)
     result = _with_visual_riichi_result(result, image=image)
     return _with_external_discard_result(result, image_path=image_path, image=image)
 
@@ -455,10 +457,16 @@ def _with_external_discard_result(
         ),
     )
     result.analysis_hints["visible_tiles"] = list(result.visible_tiles)
-    result.analysis_hints["discard_parser_source"] = "external_discard_recognizer"
+    result.analysis_hints["discard_parser_source"] = str(
+        hints.get("discard_parser_source") or "external_discard_recognizer"
+    )
     result.analysis_hints["recognized_discard_tile_count"] = len(result.visible_tiles)
     if result.visible_tiles:
-        result.analysis_hints["deck_state_complete"] = True
+        unknown_count = _coerce_int(result.analysis_hints.get("model_river_unknown_count"), default=0)
+        result.analysis_hints["deck_state_complete"] = unknown_count == 0
+        if unknown_count > 0:
+            result.analysis_hints["deck_state_partial"] = True
+            result.analysis_hints["deck_state_unknown_tile_count"] = unknown_count
         result.analysis_hints["deck_state_source"] = "external_discard_recognizer"
     return result
 
@@ -472,6 +480,60 @@ def _with_visual_riichi_result(result: TileParseResult, *, image: Image.Image) -
         result.raw_detections.extend(detections)
     if players and not result.riichi_players:
         result.riichi_players = players
+    return result
+
+
+def _with_bottom_hand_detector_result(result: TileParseResult, *, image: Image.Image) -> TileParseResult:
+    if result.hand_tiles:
+        return result
+
+    detection = detect_bottom_hand_tiles(image)
+    result.analysis_hints["bottom_hand_detector_source"] = detection.source
+    result.analysis_hints["bottom_hand_raw_slots"] = [slot.to_dict() for slot in detection.slots]
+    if detection.anchor is not None:
+        result.analysis_hints["bottom_hand_anchor"] = detection.anchor.to_dict()
+    if not detection.hand_tiles:
+        return result
+
+    hand_count = len(detection.hand_tiles)
+    result.analysis_hints["bottom_hand_recognized_tile_count"] = hand_count
+    if hand_count not in DISCARD_TURN_HAND_COUNTS and hand_count not in WAITING_HAND_COUNTS:
+        result.analysis_hints["bottom_hand_unsupported_count"] = hand_count
+        return result
+
+    result.hand_tiles = list(detection.hand_tiles)
+    result.raw_detections.extend(
+        {
+            "slot_id": slot.slot_id,
+            "group": "hand",
+            "candidate_tile": slot.tile,
+            "confidence": slot.confidence,
+            "box": {
+                "left": slot.bbox[0],
+                "top": slot.bbox[1],
+                "right": slot.bbox[2],
+                "bottom": slot.bbox[3],
+            },
+            "accepted": slot.accepted,
+            "source": detection.source,
+        }
+        for slot in detection.slots
+        if slot.accepted and slot.tile
+    )
+    inferred_meld_count = _infer_meld_count_from_hand_count(hand_count)
+    result.analysis_hints.update(
+        {
+            "tile_level_state": "tile_level_reliable" if detection.confidence >= 0.55 else "tile_level_partial",
+            "tile_level_available": True,
+            "analysis_confidence": detection.confidence,
+            "tile_parser_source": detection.source,
+            "recognized_hand_tile_count": hand_count,
+            "hand_tile_slots": _hand_tile_slots_from_detections(result.raw_detections, result.hand_tiles),
+        }
+    )
+    if inferred_meld_count:
+        result.analysis_hints["recognized_meld_group_count"] = inferred_meld_count
+        result.analysis_hints["post_meld_hand_shape"] = _hand_shape_from_count(hand_count)
     return result
 
 

@@ -47,7 +47,7 @@ def _advice_view(status: dict[str, Any]) -> dict[str, str]:
         if tile:
             return {
                 "primary": format_tile_label(tile) or tile,
-                "reason": _reason_line(reason or "保留更连贯的块，只给这一张出牌建议。"),
+                "reason": _reason_line(_strength_reason(candidate, reason or "保留更连贯的块，只给这一张出牌建议。")),
             }
 
     analysis = decision.get("mahjong_analysis") if isinstance(decision.get("mahjong_analysis"), dict) else {}
@@ -60,7 +60,7 @@ def _advice_view(status: dict[str, Any]) -> dict[str, str]:
             reason = str(decision.get("detail") or decision.get("suggestion") or "").strip()
         return {
             "primary": format_tile_label(tile) or tile,
-            "reason": _reason_line(reason or "保留更连贯的块，先处理改善较弱的牌。"),
+            "reason": _reason_line(_strength_reason(top_candidate, reason or "保留更连贯的块，先处理改善较弱的牌。")),
         }
 
     return _fallback_advice_view(status, fallback)
@@ -133,6 +133,21 @@ def _reason_line(text: str, *, limit: int = 54) -> str:
     return f"{value[:limit - 1]}..."
 
 
+def _strength_reason(candidate: dict[str, Any], reason: str) -> str:
+    prefix = _strength_action_label(str(candidate.get("recommendation_strength", "")))
+    value = str(reason or "").strip()
+    return f"{prefix}：{value}" if value else prefix
+
+
+def _strength_action_label(strength: str) -> str:
+    labels = {
+        "strong": "优先考虑",
+        "medium": "可以考虑",
+        "weak": "仅作参考",
+    }
+    return labels.get(str(strength or "").strip(), "可以考虑")
+
+
 def _primary_font_size(text: str) -> int:
     length = len(str(text or ""))
     if length <= 3:
@@ -172,7 +187,8 @@ def _advice_text(status: dict[str, Any]) -> str:
         tile_label = format_tile_label(tile)
         ukeire_text = f" · 进张约 {ukeire}" if ukeire is not None else ""
         reason_text = replace_tile_codes_in_text(reason)
-        return f"建议优先考虑：{tile_label}{ukeire_text}" + (f"\n{reason_text}" if reason_text else "")
+        action_label = _strength_action_label(str(top_candidate.get("recommendation_strength", "")))
+        return f"{action_label}：{tile_label}{ukeire_text}" + (f"\n{reason_text}" if reason_text else "")
 
     suggestion = str(decision.get("suggestion") or status.get("last_narration_text") or "").strip()
     if suggestion:

@@ -9,17 +9,21 @@ import numpy as np
 
 from plugin.plugins.mahjong_companion.perception.river_detector_v2 import (
     RIVER_PLAYERS,
+    RiverDetectorParams,
     RiverRoi,
     RiverTileCandidate,
     _calibrate_right_river_template,
     _looks_like_overlap_tail_only,
     _perspective_quad,
     _renumber_by_player,
+    _side_player_grid_additions,
     _stabilize_lower_side_visible_quads,
     build_river_rois,
     crop_river_candidate,
     expand_candidate_quad_for_classification,
     detect_river_tiles_v2,
+    river_candidate_classification_rejection_reason,
+    river_candidate_looks_blank,
 )
 from plugin.plugins.mahjong_companion.scripts.experiment_sam_river_masks import build_point_prompts, build_prompt_boxes, mask_to_quad
 
@@ -57,6 +61,28 @@ def test_detect_river_tiles_ignores_bottom_hand_area():
     for player in RIVER_PLAYERS:
         if player != "self":
             assert result.by_player[player] == []
+
+
+def test_self_action_panel_tiles_are_not_counted_as_river():
+    image = Image.new("RGB", (1920, 1080), (35, 70, 110))
+    draw = ImageDraw.Draw(image)
+
+    # Real self river tiles sit above the action-selection panel.
+    for left in (760, 825, 890):
+        draw.rounded_rectangle((left, 560, left + 52, 632), radius=5, fill=(218, 214, 198))
+        draw.rectangle((left + 8, 580, left + 44, 610), fill=(30, 30, 30))
+
+    # Mahjong Soul's call/kan selection panel can show selectable hand tiles
+    # inside the broad self river ROI; these must not become discard candidates.
+    draw.rounded_rectangle((670, 715, 1265, 860), radius=12, fill=(116, 50, 54))
+    for left in (760, 850, 940, 1030):
+        draw.rounded_rectangle((left, 730, left + 70, 830), radius=5, fill=(218, 214, 198))
+        draw.rectangle((left + 10, 760, left + 60, 805), fill=(30, 30, 30))
+
+    result = detect_river_tiles_v2(image)
+
+    assert len(result.by_player["self"]) == 3
+    assert all(candidate.center[1] < 1080 * 0.64 for candidate in result.by_player["self"])
 
 
 def test_opponent_candidates_use_perspective_quads():
@@ -102,6 +128,134 @@ def test_classification_crop_expands_side_completion_quad():
     assert expanded_height > original_height
     assert min(x for x, _y in expanded) <= candidate.bbox[0]
     assert max(x for x, _y in expanded) >= candidate.bbox[2]
+
+
+def test_blank_river_candidate_is_flagged_unknown():
+    image = Image.new("RGB", (220, 220), (35, 70, 110))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((60, 60, 140, 150), radius=6, fill=(137, 188, 214))
+    candidate = RiverTileCandidate(
+        player="self",
+        order_index=1,
+        bbox=(60, 60, 140, 150),
+        quad=((60, 60), (60, 150), (140, 150), (140, 60)),
+        center=(100, 105),
+        confidence=0.8,
+    )
+
+    assert river_candidate_looks_blank(image, candidate)
+
+
+def test_text_river_candidate_is_not_flagged_blank():
+    image = Image.new("RGB", (220, 220), (35, 70, 110))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((60, 60, 140, 150), radius=6, fill=(218, 214, 198))
+    draw.rectangle((78, 86, 122, 124), fill=(170, 30, 30))
+    candidate = RiverTileCandidate(
+        player="self",
+        order_index=1,
+        bbox=(60, 60, 140, 150),
+        quad=((60, 60), (60, 150), (140, 150), (140, 60)),
+        center=(100, 105),
+        confidence=0.8,
+    )
+
+    assert not river_candidate_looks_blank(image, candidate)
+
+
+def test_very_low_confidence_side_candidate_is_not_classified():
+    image = Image.new("RGB", (220, 220), (35, 70, 110))
+    candidate = RiverTileCandidate(
+        player="left_opponent",
+        order_index=1,
+        bbox=(60, 60, 140, 150),
+        quad=((60, 60), (60, 150), (140, 150), (140, 60)),
+        center=(100, 105),
+        confidence=0.44,
+    )
+
+    assert river_candidate_classification_rejection_reason(image, candidate) == "low_side_candidate_confidence"
+
+
+def test_moderate_confidence_side_candidate_can_be_classified():
+    image = Image.new("RGB", (220, 220), (35, 70, 110))
+    candidate = RiverTileCandidate(
+        player="left_opponent",
+        order_index=1,
+        bbox=(60, 60, 140, 150),
+        quad=((60, 60), (60, 150), (140, 150), (140, 60)),
+        center=(100, 105),
+        confidence=0.51,
+    )
+
+    assert river_candidate_classification_rejection_reason(image, candidate) == ""
+
+
+def test_side_completion_extends_after_reference_fill():
+    image = Image.new("RGB", (360, 360), (35, 70, 110))
+    draw = ImageDraw.Draw(image)
+    roi = RiverRoi("left_opponent", 40, 40, 320, 320, "row_major")
+    candidates: list[RiverTileCandidate] = []
+    for row_index, y in enumerate((60, 105, 150, 195, 240)):
+        xs = (100, 190) if row_index == 0 else (190,)
+        for x in xs:
+            bbox = (x - 40, y - 28, x + 40, y + 28)
+            draw.rectangle(bbox, fill=(218, 214, 198))
+            candidates.append(
+                RiverTileCandidate(
+                    player="left_opponent",
+                    order_index=len(candidates) + 1,
+                    bbox=bbox,
+                    quad=((bbox[0], bbox[1]), (bbox[0], bbox[3]), (bbox[2], bbox[3]), (bbox[2], bbox[1])),
+                    center=(x, y),
+                    confidence=0.8,
+                )
+            )
+    draw.rectangle((60, 257, 140, 313), fill=(218, 214, 198))
+    draw.rectangle((150, 257, 230, 313), fill=(218, 214, 198))
+
+    additions = _side_player_grid_additions(
+        candidates,
+        player="left_opponent",
+        roi=roi,
+        arr=np.asarray(image),
+        image_area=360 * 360,
+        params=RiverDetectorParams(),
+    )
+
+    assert any(candidate.center[1] > 260 for candidate in additions)
+
+
+def test_side_completion_fills_vertical_single_column_gap():
+    image = Image.new("RGB", (360, 360), (35, 70, 110))
+    draw = ImageDraw.Draw(image)
+    roi = RiverRoi("right_opponent", 40, 40, 320, 320, "row_major")
+    candidates: list[RiverTileCandidate] = []
+    for y in (70, 170, 220, 270, 315):
+        bbox = (130, y - 32, 230, y + 32)
+        draw.rectangle(bbox, fill=(218, 214, 198))
+        candidates.append(
+            RiverTileCandidate(
+                player="right_opponent",
+                order_index=len(candidates) + 1,
+                bbox=bbox,
+                quad=((bbox[0], bbox[1]), (bbox[0], bbox[3]), (bbox[2], bbox[3]), (bbox[2], bbox[1])),
+                center=(180, y),
+                confidence=0.8,
+            )
+        )
+    draw.rectangle((130, 88, 230, 152), fill=(218, 214, 198))
+
+    additions = _side_player_grid_additions(
+        candidates,
+        player="right_opponent",
+        roi=roi,
+        arr=np.asarray(image),
+        image_area=360 * 360,
+        params=RiverDetectorParams(),
+    )
+
+    assert any(105 <= candidate.center[1] <= 135 for candidate in additions)
 
 
 def test_overlap_tail_completion_gate_keeps_real_lower_tile():

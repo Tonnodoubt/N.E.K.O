@@ -10,6 +10,8 @@ from urllib import request
 
 from PIL import Image
 
+from .model_river_adapter import ModelRiverConfig, parse_model_river_from_json
+
 
 PLAYER_ORIENTATIONS = {
     "self": "bottom",
@@ -20,12 +22,22 @@ PLAYER_ORIENTATIONS = {
 ENV_COMMAND = "MAHJONG_COMPANION_DISCARD_RECOGNIZER_CMD"
 ENV_ENDPOINT = "MAHJONG_COMPANION_DISCARD_RECOGNIZER_URL"
 ENV_TIMEOUT = "MAHJONG_COMPANION_DISCARD_RECOGNIZER_TIMEOUT_SEC"
+ENV_MODEL_JSON = "MAHJONG_COMPANION_MODEL_RIVER_JSON"
+ENV_MODEL_JSON_DIR = "MAHJONG_COMPANION_MODEL_RIVER_JSON_DIR"
+ENV_MODEL_FUSE_V2 = "MAHJONG_COMPANION_MODEL_RIVER_FUSE_V2"
+ENV_MODEL_UNKNOWN_CROP_DIR = "MAHJONG_COMPANION_MODEL_RIVER_UNKNOWN_CROP_DIR"
+ENV_MODEL_MANUAL_LABELS = "MAHJONG_COMPANION_MODEL_RIVER_MANUAL_LABELS"
 
 
 def load_external_discard_result(
     image_path: Path,
     image: Image.Image,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+    model_json = os.environ.get(ENV_MODEL_JSON, "").strip()
+    model_json_dir = os.environ.get(ENV_MODEL_JSON_DIR, "").strip()
+    if model_json or model_json_dir:
+        return _load_model_river_result(image_path, image, model_json=model_json, model_json_dir=model_json_dir)
+
     command = os.environ.get(ENV_COMMAND, "").strip()
     endpoint = os.environ.get(ENV_ENDPOINT, "").strip()
     if not command and not endpoint:
@@ -81,6 +93,43 @@ def normalize_external_discard_payload(payload: Any) -> dict[str, list[dict[str,
     for pile in piles.values():
         pile.sort(key=lambda item: int(item["turn_index"]))
     return piles
+
+
+def _load_model_river_result(
+    image_path: Path,
+    image: Image.Image,
+    *,
+    model_json: str,
+    model_json_dir: str,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+    try:
+        unknown_crop_dir = os.environ.get(ENV_MODEL_UNKNOWN_CROP_DIR, "").strip()
+        manual_labels = os.environ.get(ENV_MODEL_MANUAL_LABELS, "").strip()
+        result = parse_model_river_from_json(
+            image,
+            image_path,
+            config=ModelRiverConfig(
+                detector_json=Path(model_json) if model_json else None,
+                detector_json_dir=Path(model_json_dir) if model_json_dir else None,
+                classify_crops=True,
+                fuse_v2_gaps=_env_flag(ENV_MODEL_FUSE_V2, default=True),
+                unknown_crop_dir=Path(unknown_crop_dir) if unknown_crop_dir else None,
+                manual_labels_path=Path(manual_labels) if manual_labels else None,
+            ),
+        )
+        hints = {
+            "external_discard_recognizer_enabled": True,
+            "external_discard_recognizer_source": "model_river_adapter",
+            "external_discard_recognizer_count": sum(len(items) for items in result.discard_piles.values()),
+            **result.analysis_hints,
+        }
+        return result.discard_piles, hints
+    except Exception as exc:
+        return {}, {
+            "external_discard_recognizer_enabled": True,
+            "external_discard_recognizer_source": "model_river_adapter",
+            "external_discard_recognizer_error": str(exc),
+        }
 
 
 def _run_command(command: str, *, image_path: Path, image: Image.Image, timeout: float) -> Any:
@@ -201,3 +250,10 @@ def _timeout_seconds() -> float:
         return max(0.1, float(os.environ.get(ENV_TIMEOUT, "1.5")))
     except (TypeError, ValueError):
         return 1.5
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}

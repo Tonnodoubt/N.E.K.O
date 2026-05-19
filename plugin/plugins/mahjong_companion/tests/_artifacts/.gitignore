@@ -1,1 +1,4 @@
 *.html
+/live_river_v2_eval/
+/river_model_spike/
+/runtime_strategy_smoke/

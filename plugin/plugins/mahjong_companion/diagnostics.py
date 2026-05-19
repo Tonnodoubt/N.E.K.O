@@ -11,7 +11,15 @@ from utils.logger_config import get_module_logger
 from .action.action_registry import ActionRegistry
 from .perception.calibration import load_calibration_profile
 from .perception.discard_parser import ONNX_OCCUPANCY_CONFIDENCE
-from .perception.external_discard_recognizer import ENV_COMMAND, ENV_ENDPOINT, ENV_TIMEOUT
+from .perception.external_discard_recognizer import (
+    ENV_COMMAND,
+    ENV_ENDPOINT,
+    ENV_MODEL_JSON,
+    ENV_MODEL_JSON_DIR,
+    ENV_MODEL_MANUAL_LABELS,
+    ENV_MODEL_UNKNOWN_CROP_DIR,
+    ENV_TIMEOUT,
+)
 from .perception.vit_tile_classifier_onnx import REQUIRED_FILES
 
 logger = get_module_logger(__name__)
@@ -284,17 +292,27 @@ def _check_button_templates(template_dir: Path) -> dict[str, Any]:
 def _check_external_discard_recognizer() -> dict[str, Any]:
     command = os.environ.get(ENV_COMMAND, "").strip()
     endpoint = os.environ.get(ENV_ENDPOINT, "").strip()
+    model_json = os.environ.get(ENV_MODEL_JSON, "").strip()
+    model_json_dir = os.environ.get(ENV_MODEL_JSON_DIR, "").strip()
+    manual_labels = os.environ.get(ENV_MODEL_MANUAL_LABELS, "").strip()
+    unknown_crop_dir = os.environ.get(ENV_MODEL_UNKNOWN_CROP_DIR, "").strip()
     timeout = os.environ.get(ENV_TIMEOUT, "").strip()
     mode = "off"
-    if command:
+    if model_json or model_json_dir:
+        mode = "model_json"
+    elif command:
         mode = "command"
     elif endpoint:
         mode = "http"
     return {
         "check_id": "external_discard_recognizer",
         "ok": True,
-        "enabled": bool(command or endpoint),
+        "enabled": bool(command or endpoint or model_json or model_json_dir),
         "mode": mode,
+        "model_json_configured": bool(model_json),
+        "model_json_dir_configured": bool(model_json_dir),
+        "model_manual_labels_configured": bool(manual_labels),
+        "model_unknown_crop_dir_configured": bool(unknown_crop_dir),
         "command_configured": bool(command),
         "endpoint_configured": bool(endpoint),
         "timeout_sec": timeout or "2.5",

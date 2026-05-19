@@ -28,6 +28,7 @@ _SAFETY_SORT_VALUE = {
     "low": 0.0,
     "unknown": 0.0,
 }
+_RECOMMENDATION_STRENGTHS = {"strong", "medium", "weak"}
 
 
 def build_mahjong_analysis(
@@ -125,6 +126,7 @@ def _build_structured_analysis(
         attack_defense_bias=bias,
         hints=hints,
     )
+    defense_alerts = _dedupe([*defense_alerts, *_build_river_defense_alerts(state, candidate_discards, hints)])[:3]
 
     hand_shape_confidence = _coerce_float(hints.get("hand_shape_confidence"))
     if hand_shape_confidence is None:
@@ -238,6 +240,9 @@ def _normalize_candidate_discards(value: Any) -> list[dict[str, Any]]:
         source = str(item.get("source", "")).strip()
         if source:
             candidate["source"] = source
+        recommendation_strength = _normalize_recommendation_strength(item.get("recommendation_strength"))
+        if recommendation_strength:
+            candidate["recommendation_strength"] = recommendation_strength
         normalized.append(candidate)
     return normalized[:5]
 
@@ -337,7 +342,7 @@ def _estimate_candidate_discards(
     lowest = min(_candidate_recommendation_score(item) for item in candidates)
     span = highest - lowest
     normalized: list[dict[str, Any]] = []
-    for item in candidates[:3]:
+    for index, item in enumerate(candidates[:3]):
         strategy_score = _candidate_output_score(item)
         recommendation_score = _candidate_recommendation_score(item)
         score = 0.0 if span <= 0 else (recommendation_score - lowest) / span
@@ -354,6 +359,12 @@ def _estimate_candidate_discards(
                 "defense_score": round(_coerce_float(item.get("defense_score")) or 0.0, 3),
                 "dora_value": round(_coerce_float(item.get("dora_value")) or 0.0, 3),
                 "strategy_mode": item["strategy_mode"],
+                "recommendation_strength": _candidate_recommendation_strength(
+                    item,
+                    normalized_score=score,
+                    rank_index=index,
+                    tied=span <= 0,
+                ),
                 "wait_quality_bonus": item["wait_quality_bonus"],
                 "ukeire_estimate": item["ukeire_estimate"],
                 "current_shanten": item["current_shanten"],
@@ -500,7 +511,7 @@ def build_incremental_draw_candidates(
     lowest = min(_candidate_recommendation_score(item) for item in candidates)
     span = highest - lowest
     normalized: list[dict[str, Any]] = []
-    for item in candidates[: max(1, max_candidates)]:
+    for index, item in enumerate(candidates[: max(1, max_candidates)]):
         strategy_score = _candidate_output_score(item)
         recommendation_score = _candidate_recommendation_score(item)
         score = 0.0 if span <= 0 else (recommendation_score - lowest) / span
@@ -517,6 +528,12 @@ def build_incremental_draw_candidates(
                 "defense_score": round(_coerce_float(item.get("defense_score")) or 0.0, 3),
                 "dora_value": round(_coerce_float(item.get("dora_value")) or 0.0, 3),
                 "strategy_mode": item["strategy_mode"],
+                "recommendation_strength": _candidate_recommendation_strength(
+                    item,
+                    normalized_score=score,
+                    rank_index=index,
+                    tied=span <= 0,
+                ),
                 "wait_quality_bonus": item["wait_quality_bonus"],
                 "ukeire_estimate": item["ukeire_estimate"],
                 "current_shanten": item["current_shanten"],
@@ -836,6 +853,42 @@ def _candidate_recommendation_score(item: dict[str, Any]) -> float:
     return _candidate_output_score(item) - shanten_rank * 100.0
 
 
+def _candidate_recommendation_strength(
+    item: dict[str, Any],
+    *,
+    normalized_score: float,
+    rank_index: int,
+    tied: bool,
+) -> str:
+    current_shanten = coerce_int(item.get("current_shanten"))
+    post_discard_shanten = coerce_int(item.get("post_discard_shanten"))
+    shape_loss = (
+        current_shanten is not None
+        and post_discard_shanten is not None
+        and post_discard_shanten > current_shanten
+    )
+    strategy_mode = str(item.get("strategy_mode", "")).strip()
+    safety_hint = str(item.get("safety_hint", "unknown")).strip() or "unknown"
+    defensive_unsafe = strategy_mode in {"defense", "guarded_push"} and safety_hint in {"low", "unknown"}
+
+    if shape_loss or defensive_unsafe:
+        return "medium" if rank_index == 0 and normalized_score >= 0.85 else "weak"
+    if rank_index == 0:
+        if tied:
+            return "medium"
+        if normalized_score >= 0.72:
+            return "strong"
+        if normalized_score >= 0.35:
+            return "medium"
+        return "weak"
+    return "medium" if normalized_score >= 0.65 else "weak"
+
+
+def _normalize_recommendation_strength(value: Any) -> str:
+    strength = str(value or "").strip()
+    return strength if strength in _RECOMMENDATION_STRENGTHS else ""
+
+
 def _discard_strategy_mode(
     *,
     has_riichi_pressure: bool,
@@ -994,6 +1047,19 @@ def _build_teaching_points(
     elif recommended_focus == "turn_observe":
         teaching_points.append("虽然轮到你关注了，但当前牌理输入还不够完整，先别把轻量建议当成精算答案。")
 
+    overflow_point = _model_river_overflow_teaching_point(hints)
+    if overflow_point:
+        teaching_points.append(overflow_point)
+    unknown_point = _model_river_unknown_teaching_point(hints)
+    if unknown_point:
+        teaching_points.append(unknown_point)
+    river_health_point = _model_river_health_teaching_point(hints)
+    if river_health_point:
+        teaching_points.append(river_health_point)
+    river_safety_point = _river_safety_teaching_point(state, candidate_discards, hints)
+    if river_safety_point:
+        teaching_points.append(river_safety_point)
+
     if shanten_estimate is not None:
         if shanten_estimate <= 1:
             teaching_points.append("当前已经接近成型，优先别打散已经连起来的块。")
@@ -1026,7 +1092,118 @@ def _build_teaching_points(
     if "low_confidence" in set(review_tags) or state.confidence < 0.45:
         teaching_points.append("当前识别置信度仍偏低，最好把这类建议和截图一起看。")
 
-    return _dedupe(teaching_points)[:4]
+    return _dedupe(teaching_points)[:5]
+
+
+def _model_river_overflow_teaching_point(hints: dict[str, Any]) -> str:
+    value = hints.get("model_river_tile_overflow_counts")
+    if not isinstance(value, dict) or not value:
+        return ""
+    parts = []
+    for tile, count in sorted(value.items()):
+        normalized = _normalize_tile(str(tile))
+        if not normalized:
+            continue
+        try:
+            parsed_count = int(count)
+        except (TypeError, ValueError):
+            continue
+        if parsed_count <= 4:
+            continue
+        parts.append(f"{format_tile_label(normalized)}×{parsed_count}")
+    if not parts:
+        return ""
+    return f"牌河识别出现超过四张的牌（{'、'.join(parts[:3])}），这帧牌河结果先降权看待。"
+
+
+def _model_river_unknown_teaching_point(hints: dict[str, Any]) -> str:
+    unknown_count = coerce_int(hints.get("model_river_unknown_count")) or 0
+    if unknown_count <= 0:
+        unknown_count = coerce_int(hints.get("deck_state_unknown_tile_count")) or 0
+    if unknown_count <= 0:
+        return ""
+    if unknown_count >= 3:
+        return f"牌河里还有 {unknown_count} 张未知牌，防守和现物判断先按保守口径看。"
+    return f"牌河里还有 {unknown_count} 张未知牌，剩余牌估计会保留一点余量。"
+
+
+def _model_river_health_teaching_point(hints: dict[str, Any]) -> str:
+    if str(hints.get("discard_parser_source", "")).strip() not in {
+        "model_river_adapter",
+        "external_discard_recognizer",
+    }:
+        return ""
+    known_count = coerce_int(hints.get("model_river_known_count") or hints.get("recognized_discard_tile_count")) or 0
+    candidate_count = coerce_int(hints.get("model_river_candidate_count")) or 0
+    unknown_count = coerce_int(hints.get("model_river_unknown_count")) or 0
+    if known_count <= 0:
+        return ""
+    if candidate_count <= 0:
+        candidate_count = known_count + unknown_count
+    unknown_rate = unknown_count / max(1, candidate_count)
+    if unknown_count <= 2 and unknown_rate <= 0.08:
+        return f"这帧牌河识别健康度够用：已识别 {known_count} 张，未知 {unknown_count} 张，可以进入轻量牌河判断。"
+    return f"这帧牌河已识别 {known_count} 张，但未知 {unknown_count} 张，牌河策略先保守使用。"
+
+
+def _river_safety_teaching_point(
+    state: PerceivedGameState,
+    candidate_discards: list[dict[str, Any]],
+    hints: dict[str, Any],
+) -> str:
+    visible_tiles = _normalize_tile_list(
+        hints.get("visible_tiles")
+        or hints.get("dead_tiles")
+        or hints.get("known_visible_tiles")
+        or state.visible_tiles,
+    )
+    if not visible_tiles:
+        return ""
+    visible_counts = Counter(visible_tiles)
+    dead_tiles = {tile for tile, count in visible_counts.items() if count >= 4}
+    candidate_tiles = [_normalize_tile(item.get("tile")) for item in candidate_discards]
+    candidate_tiles = [tile for tile in candidate_tiles if tile]
+    dead_candidate = next((tile for tile in candidate_tiles if tile in dead_tiles), "")
+    if dead_candidate:
+        return f"牌河里已经看完 {format_tile_label(dead_candidate)}，它作为弃牌更接近绝张/安全候选。"
+    hand_dead_tiles = [tile for tile in (_normalize_tile(tile) for tile in state.hand_tiles) if tile in dead_tiles]
+    if hand_dead_tiles:
+        return f"你手里的 {format_tile_label(hand_dead_tiles[0])} 已经在可见牌里接近见完，后续价值偏低。"
+    return ""
+
+
+def _build_river_defense_alerts(
+    state: PerceivedGameState,
+    candidate_discards: list[dict[str, Any]],
+    hints: dict[str, Any],
+) -> list[str]:
+    alerts: list[str] = []
+    if not _opponent_riichi_players(state):
+        return alerts
+    top = candidate_discards[0] if candidate_discards else None
+    if not top:
+        return alerts
+    tile = _normalize_tile(top.get("tile"))
+    safety_hint = str(top.get("safety_hint", "")).strip()
+    if not tile:
+        return alerts
+    if safety_hint in {"genbutsu", "dead", "suji", "high"}:
+        alerts.append(f"牌河策略：{format_tile_label(tile)} 的安全线索是{_format_safety_hint(safety_hint)}，立直压力下可以优先复核它。")
+    elif safety_hint in {"low", "unknown"}:
+        alerts.append(f"牌河策略：{format_tile_label(tile)} 目前没有明确安全线索，立直压力下别只按牌效率硬推。")
+    return alerts
+
+
+def _format_safety_hint(value: str) -> str:
+    return {
+        "genbutsu": "现物",
+        "dead": "绝张/壁牌",
+        "suji": "筋",
+        "high": "相对安全",
+        "medium": "中等",
+        "low": "偏危险",
+        "unknown": "未知",
+    }.get(str(value).strip(), str(value).strip() or "未知")
 
 
 _SHAPE_PENALTY = {
@@ -1224,6 +1401,7 @@ def _visible_tile_candidate_reason(item: dict[str, Any], *, visible_tile_count: 
 
 
 def _candidate_metrics_reason(item: dict[str, Any], reason: str) -> str:
+    current_shanten = coerce_int(item.get("current_shanten"))
     post_discard_shanten = coerce_int(item.get("post_discard_shanten"))
     ukeire = coerce_int(item.get("ukeire_estimate"))
     parts: list[str] = []
@@ -1234,7 +1412,24 @@ def _candidate_metrics_reason(item: dict[str, Any], reason: str) -> str:
     if not parts:
         return reason
     metrics = "，".join(parts)
+    if _shape_reason_discourages_discard(reason):
+        if current_shanten is None or post_discard_shanten is None or post_discard_shanten <= current_shanten:
+            return f"{metrics}；虽然这张连着已有形状，但打出后不退向听，这里按向听数和剩余有效牌优先排序"
+        return f"{metrics}；这张连着已有形状，打出会有形状损失；这里是综合向听数、剩余有效牌和安全度后的相对候选"
     return f"{metrics}；{reason}" if reason else metrics
+
+
+def _shape_reason_discourages_discard(reason: str) -> bool:
+    return any(
+        marker in str(reason)
+        for marker in (
+            "不建议优先拆",
+            "不倾向拆掉",
+            "更想先保留",
+            "保留下来的改善空间偏大",
+            "直接破坏成型结构",
+        )
+    )
 
 
 def _defensive_safety_hint(
