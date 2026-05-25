@@ -23,7 +23,10 @@
 
       <section class="strategy-board" aria-label="Strategy board">
         <div class="plan-panel primary-panel">
-          <span class="panel-label">主攻方向</span>
+          <div class="panel-heading">
+            <span class="panel-label">主攻方向</span>
+            <span id="analysisSource" class="source-badge">Heuristic</span>
+          </div>
           <strong id="mainPlan">等待手牌</strong>
           <p id="planDetail">-</p>
         </div>
@@ -86,6 +89,14 @@
             <span id="handCount">0 张</span>
           </div>
           <div id="handTiles" class="tile-rail"></div>
+        </section>
+
+        <section class="coach-panel wide" aria-label="River tiles">
+          <div class="section-head">
+            <h2>牌河</h2>
+            <span id="riverCount">0 张</span>
+          </div>
+          <div id="riverTiles" class="river-grid"></div>
         </section>
 
         <section class="coach-panel wide" aria-label="Frame analysis">

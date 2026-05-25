@@ -15,6 +15,7 @@ const forceCheckpointInput = document.getElementById('forceCheckpointInput');
 const keywordsInput = document.getElementById('keywordsInput');
 const intervalInput = document.getElementById('intervalInput');
 const overlayInput = document.getElementById('overlayInput');
+const analysisSource = document.getElementById('analysisSource');
 const mainPlan = document.getElementById('mainPlan');
 const planDetail = document.getElementById('planDetail');
 const biasValue = document.getElementById('biasValue');
@@ -25,6 +26,8 @@ const targetList = document.getElementById('targetList');
 const cautionList = document.getElementById('cautionList');
 const handTiles = document.getElementById('handTiles');
 const handCount = document.getElementById('handCount');
+const riverTiles = document.getElementById('riverTiles');
+const riverCount = document.getElementById('riverCount');
 const decisionType = document.getElementById('decisionType');
 const decisionOutput = document.getElementById('decisionOutput');
 const liveState = document.getElementById('liveState');
@@ -133,14 +136,50 @@ function renderHand(tiles) {
   });
 }
 
+function renderRiver(piles = {}) {
+  riverTiles.replaceChildren();
+  const entries = Object.entries(piles || {});
+  const total = entries.reduce((count, [, items]) => count + (Array.isArray(items) ? items.length : 0), 0);
+  riverCount.textContent = `${total} 张`;
+  if (!total) {
+    const empty = document.createElement('span');
+    empty.className = 'empty-text';
+    empty.textContent = '暂无牌河';
+    riverTiles.appendChild(empty);
+    return;
+  }
+  entries.forEach(([player, items]) => {
+    const row = document.createElement('div');
+    row.className = 'river-row';
+    const label = document.createElement('span');
+    label.className = 'river-player';
+    label.textContent = player;
+    row.appendChild(label);
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const tile = String(item?.tile || '').trim();
+      if (!tile) {
+        return;
+      }
+      const node = document.createElement('span');
+      node.className = `tile tile-small tile-${tile.slice(-1)}`;
+      node.textContent = tile;
+      row.appendChild(node);
+    });
+    riverTiles.appendChild(row);
+  });
+}
+
 function renderDashboard(data = {}) {
   const state = data.round_state || data.coach_state || data || {};
   const decision = data.last_decision || data;
   const detail = decision.detail || state.opening_plan || '';
   const live = data.live || {};
+  const source = decision.analysis_source || decision.engine_meta?.analysis_source || 'heuristic';
 
   mainPlan.textContent = compact(state.current_plan || state.opening_plan || decision.suggestion, '等待手牌');
   planDetail.textContent = compact(detail, '还没有稳定手牌输入');
+  analysisSource.textContent = source === 'llm' ? 'AI' : 'Heuristic';
+  analysisSource.classList.toggle('is-ai', source === 'llm');
   biasValue.textContent = compact(state.attack_defense_bias, 'neutral');
   lastReason.textContent = compact(state.last_update_reason || decision.decision_type, '-');
   confidenceValue.textContent = percent(state.last_hand_confidence);
@@ -149,6 +188,7 @@ function renderDashboard(data = {}) {
   renderList(targetList, state.target_shapes, '暂无目标形状', 'tag');
   renderList(cautionList, state.caution_points, '暂无风险点', 'note');
   renderHand(state.last_hand_tiles || decision.hand_tiles || []);
+  renderRiver(state.last_discard_piles || decision.perception?.river?.discard_piles || {});
   decisionOutput.textContent = JSON.stringify(decision && Object.keys(decision).length ? decision : state, null, 2);
   renderLive(live);
 }

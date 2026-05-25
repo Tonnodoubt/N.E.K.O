@@ -8,6 +8,7 @@ from typing import Any
 from .models import CoachDecision, MahjongCoachConfig, RoundCoachState
 from .perception.action_detector import detect_action_buttons_fast
 from .perception.fast_hand_path import FastHandResult, detect_fast_hand_path
+from .perception.river_state import RiverStateResult, detect_river_state_path
 from .tile_labels import hand_signature, is_honor, is_simple, is_terminal, normalize_tile, tile_rank, tile_suit
 
 
@@ -44,32 +45,67 @@ class RoundCoachEngine:
     ) -> CoachDecision:
         started = time.perf_counter()
         path = Path(image_path) if image_path else None
-        buttons, action_meta = self._resolve_buttons(path, observed_buttons)
         riichi_players = [str(item) for item in (riichi_players or []) if str(item).strip()]
 
+        if not self.state.opening_emitted:
+            hand_result = self._detect_hand(path)
+            if hand_result.ok:
+                self._remember_hand(hand_result)
+            action_meta = {"source": "opening_hand_scan", "skipped": True}
+            river_result = self._river_result_from_state("opening_skips_river_scan", ok_if_cached=False)
+            if hand_result.ok:
+                return self._opening_decision(hand_result, river_result, started, action_meta=action_meta)
+            return self._observe_decision(hand_result, action_meta, river_result, started, phase="opening_hand_scan")
+
+        buttons, action_meta = self._resolve_buttons(path, observed_buttons)
         critical = [button for button in buttons if button in CRITICAL_BUTTONS]
-        must_interrupt = [button for button in critical if button in WIN_BUTTONS or button == "riichi"]
-        if self.config.critical_action_interrupts and must_interrupt:
-            return self._critical_decision(must_interrupt, action_meta, started)
+        win_buttons = [button for button in critical if button in WIN_BUTTONS]
+        if self.config.critical_action_interrupts and win_buttons:
+            river_result = self._river_result_from_state("action_window_uses_cached_river")
+            return self._critical_decision(win_buttons, action_meta, started, river_result=river_result)
 
         hand_result = self._detect_hand(path)
         if hand_result.ok:
             self._remember_hand(hand_result)
 
         call_buttons = [button for button in critical if button in CALL_BUTTONS]
-        if self.config.critical_action_interrupts and call_buttons:
-            return self._critical_decision(call_buttons, action_meta, started, hand_result=hand_result)
+        riichi_buttons = [button for button in critical if button == "riichi"]
+        if self.config.critical_action_interrupts and (call_buttons or riichi_buttons):
+            river_result = self._river_result_from_state("action_window_uses_cached_river")
+            return self._critical_decision(
+                [*call_buttons, *riichi_buttons],
+                action_meta,
+                started,
+                hand_result=hand_result,
+                river_result=river_result,
+            )
 
         if riichi_players:
-            return self._defense_decision(riichi_players, hand_result, started)
+            river_result = self._detect_river(path)
+            if river_result.ok:
+                self._remember_river(river_result)
+            return self._defense_decision(riichi_players, hand_result, river_result, started)
 
         turn_number = _coerce_turn(self_turn_index)
-        if hand_result.ok and not self.state.opening_emitted:
-            return self._opening_decision(hand_result, started)
-
         if hand_result.ok and self._checkpoint_due(turn_number, force_checkpoint=force_checkpoint):
-            return self._checkpoint_decision(hand_result, turn_number, force_checkpoint, started)
+            river_result = self._detect_river(path)
+            if river_result.ok:
+                self._remember_river(river_result)
+            return self._checkpoint_decision(hand_result, river_result, turn_number, force_checkpoint, started)
 
+        river_result = self._river_result_from_state("river_scan_not_due")
+        return self._observe_decision(hand_result, action_meta, river_result, started, phase="normal_tracking")
+
+    def _observe_decision(
+        self,
+        hand_result: FastHandResult,
+        action_meta: dict[str, Any],
+        river_result: RiverStateResult,
+        started: float,
+        *,
+        phase: str,
+    ) -> CoachDecision:
+        self.state.round_phase = phase
         summary, detail, reason_codes = self._observe_message(hand_result)
         return CoachDecision(
             decision_type="observe",
@@ -81,7 +117,7 @@ class RoundCoachEngine:
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=reason_codes,
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict(), "action": action_meta},
+            perception={"hand": hand_result.to_dict(), "action": action_meta, "river": river_result.to_dict()},
             engine_meta=self._meta(started, "observe"),
         )
 
@@ -105,6 +141,30 @@ class RoundCoachEngine:
         if path is None:
             return FastHandResult(reason="image_path_missing")
         return detect_fast_hand_path(path, calibration_dir=self.calibration_dir)
+
+    def _detect_river(self, path: Path | None) -> RiverStateResult:
+        if not self.config.river_recognition_enabled:
+            return RiverStateResult(reason="river_recognition_disabled")
+        if path is None:
+            return RiverStateResult(reason="image_path_missing")
+        return detect_river_state_path(
+            path,
+            calibration_dir=self.calibration_dir,
+            min_confidence=self.config.river_min_confidence,
+        )
+
+    def _river_result_from_state(self, reason: str, *, ok_if_cached: bool = True) -> RiverStateResult:
+        has_cached = bool(self.state.last_discard_piles or self.state.last_visible_discards)
+        return RiverStateResult(
+            ok=ok_if_cached and has_cached,
+            discard_piles={
+                player: [dict(item) for item in items]
+                for player, items in self.state.last_discard_piles.items()
+            },
+            visible_tiles=list(self.state.last_visible_discards),
+            confidence=float(self.state.last_river_confidence),
+            reason=reason,
+        )
 
     def _observe_message(self, hand_result: FastHandResult) -> tuple[str, str, list[str]]:
         if hand_result.ok:
@@ -141,33 +201,43 @@ class RoundCoachEngine:
         self.state.last_hand_tiles = tiles
         self.state.last_hand_confidence = float(hand_result.confidence)
 
+    def _remember_river(self, river_result: RiverStateResult) -> None:
+        self.state.last_discard_piles = {
+            player: [dict(item) for item in items]
+            for player, items in river_result.discard_piles.items()
+        }
+        self.state.last_visible_discards = list(river_result.visible_tiles)
+        self.state.last_river_confidence = float(river_result.confidence)
+
     def _critical_decision(
         self,
         buttons: list[str],
         action_meta: dict[str, Any],
         started: float,
         hand_result: FastHandResult | None = None,
+        river_result: RiverStateResult | None = None,
     ) -> CoachDecision:
         if any(button in WIN_BUTTONS for button in buttons):
-            summary = "Winning window detected"
-            suggestion = "Check ron/tsumo first."
+            summary = "和牌窗口"
+            suggestion = "看到荣和/自摸直接点，不需要等待策略分析。"
             decision_type = "win_window"
             priority = 100
         elif any(button in CALL_BUTTONS for button in buttons):
-            summary = "Call window detected"
+            summary = "吃碰杠窗口"
             suggestion = self._call_suggestion(hand_result)
             decision_type = "call_window"
             priority = 95
         elif "riichi" in buttons:
-            summary = "Riichi option detected"
-            suggestion = "Riichi is available; confirm wait quality before declaring."
+            summary = "立直窗口"
+            suggestion = "可立直：用当前主线快速确认待牌和打点；不等待 LLM。"
             decision_type = "riichi_window"
             priority = 90
         else:
-            summary = "Action window detected"
-            suggestion = "Resolve the visible action window before normal coaching."
+            summary = "操作窗口"
+            suggestion = "先处理当前按钮，再回到局面策略。"
             decision_type = "action_window"
             priority = 80
+        self.state.round_phase = "action_window"
         self.state.last_update_reason = decision_type
         self.state.update_count += 1
         return CoachDecision(
@@ -175,13 +245,17 @@ class RoundCoachEngine:
             priority=priority,
             action_required=True,
             summary=summary,
-            detail="Critical action interrupts do not wait for hand or river analysis.",
+            detail="动作窗口不等待 LLM；吃碰杠和立直只使用当前策略与本地快判。",
             suggestion=suggestion,
             buttons=list(buttons),
             hand_tiles=list(hand_result.hand_tiles) if hand_result else [],
             reason_codes=["critical_action_interrupt"],
             coach_state=self.state.to_dict(),
-            perception={"action": action_meta, "hand": hand_result.to_dict() if hand_result else {}},
+            perception={
+                "action": action_meta,
+                "hand": hand_result.to_dict() if hand_result else {},
+                "river": river_result.to_dict() if river_result else {},
+            },
             engine_meta=self._meta(started, decision_type),
         )
 
@@ -191,18 +265,27 @@ class RoundCoachEngine:
             built = build_round_plan(hand_result.hand_tiles)
             plan = built["summary"]
             self.state.opening_emitted = True
+            self.state.round_phase = "opening_strategy"
             self.state.opening_plan = plan
             self.state.current_plan = plan
             self.state.attack_defense_bias = built["bias"]
             self.state.target_shapes = list(built["targets"])
             self.state.caution_points = list(built["cautions"])
         if plan:
-            return f"Default skip unless the call clearly advances this plan: {plan}"
-        return "Default skip unless it is a clear value-pair pon, guaranteed tenpai improvement, or a safe win/kan."
+            return f"默认跳过，除非鸣牌能明确推进当前主线：{plan}"
+        return "默认跳过；只有役牌对子、直接进听、明显加速主线或安全和牌时才吃碰杠。"
 
-    def _opening_decision(self, hand_result: FastHandResult, started: float) -> CoachDecision:
+    def _opening_decision(
+        self,
+        hand_result: FastHandResult,
+        river_result: RiverStateResult,
+        started: float,
+        *,
+        action_meta: dict[str, Any] | None = None,
+    ) -> CoachDecision:
         plan = build_round_plan(hand_result.hand_tiles)
         self.state.opening_emitted = True
+        self.state.round_phase = "opening_strategy"
         self.state.opening_plan = plan["summary"]
         self.state.current_plan = plan["summary"]
         self.state.attack_defense_bias = plan["bias"]
@@ -219,7 +302,7 @@ class RoundCoachEngine:
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=["first_stable_hand"],
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict()},
+            perception={"hand": hand_result.to_dict(), "action": action_meta or {}, "river": river_result.to_dict()},
             engine_meta=self._meta(started, "opening_plan"),
         )
 
@@ -235,6 +318,7 @@ class RoundCoachEngine:
     def _checkpoint_decision(
         self,
         hand_result: FastHandResult,
+        river_result: RiverStateResult,
         turn_number: int | None,
         force_checkpoint: bool,
         started: float,
@@ -242,6 +326,7 @@ class RoundCoachEngine:
         plan = build_round_plan(hand_result.hand_tiles)
         if turn_number is not None:
             self.state.last_checkpoint_self_turn = turn_number
+        self.state.round_phase = "checkpoint_strategy"
         self.state.current_plan = plan["summary"]
         self.state.attack_defense_bias = plan["bias"]
         self.state.target_shapes = list(plan["targets"])
@@ -257,7 +342,7 @@ class RoundCoachEngine:
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=[self.state.last_update_reason],
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict()},
+            perception={"hand": hand_result.to_dict(), "river": river_result.to_dict()},
             engine_meta=self._meta(started, "coach_checkpoint"),
         )
 
@@ -265,8 +350,10 @@ class RoundCoachEngine:
         self,
         riichi_players: list[str],
         hand_result: FastHandResult,
+        river_result: RiverStateResult,
         started: float,
     ) -> CoachDecision:
+        self.state.round_phase = "defense_mode"
         self.state.attack_defense_bias = "defense"
         self.state.last_update_reason = "riichi_defense"
         self.state.update_count += 1
@@ -276,11 +363,11 @@ class RoundCoachEngine:
             action_required=True,
             summary="Defense checkpoint",
             detail=f"Riichi pressure from {', '.join(riichi_players)}.",
-            suggestion="Slow down and prefer safe tiles from visible information.",
+            suggestion=self._defense_suggestion(riichi_players, river_result),
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=["riichi_players_present"],
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict()},
+            perception={"hand": hand_result.to_dict(), "river": river_result.to_dict()},
             engine_meta=self._meta(started, "defense_alert"),
         )
 
@@ -292,7 +379,25 @@ class RoundCoachEngine:
             "per_turn_discard_prompt": self.config.per_turn_discard_prompt,
             "hand_recognition_backend": self.config.hand_recognition_backend,
             "onnx_hand_enabled": self.config.onnx_hand_enabled,
+            "river_recognition_enabled": self.config.river_recognition_enabled,
+            "river_recognition_backend": "onnx_discard_model",
         }
+
+    def _defense_suggestion(self, riichi_players: list[str], river_result: RiverStateResult) -> str:
+        piles = river_result.discard_piles if river_result.ok else self.state.last_discard_piles
+        safe_tiles: list[str] = []
+        for player in riichi_players:
+            key = _player_key(player)
+            if not key:
+                continue
+            safe_tiles.extend(str(item.get("tile") or "") for item in piles.get(key, []))
+        if safe_tiles:
+            safe_text = _tile_list_in_order([tile for tile in safe_tiles if tile][-8:])
+            return f"防守优先：先看立直家现物 {safe_text}；没有现物再考虑筋/壁，宝牌周边先保守。"
+        if river_result.ok and river_result.visible_tiles:
+            visible_text = _tile_list_in_order(river_result.visible_tiles[-10:])
+            return f"牌河已识别，可见弃牌参考 {visible_text}；未标定立直家座位时先保守找现物。"
+        return "Slow down and prefer safe tiles from visible information."
 
 
 def build_round_plan(hand_tiles: list[str]) -> dict[str, Any]:
@@ -416,6 +521,24 @@ def _tile_sort_key(tile: str) -> tuple[int, int, str]:
     normalized = normalize_tile(tile)
     rank = tile_rank(normalized)
     return (suit_order.get(tile_suit(normalized), 9), int(rank) if rank.isdigit() else 0, normalized)
+
+
+def _player_key(value: Any) -> str:
+    raw = str(value or "").strip()
+    lowered = raw.lower()
+    aliases = {
+        "self": "self",
+        "left": "left_opponent",
+        "left_opponent": "left_opponent",
+        "kamicha": "left_opponent",
+        "top": "top_opponent",
+        "top_opponent": "top_opponent",
+        "toimen": "top_opponent",
+        "right": "right_opponent",
+        "right_opponent": "right_opponent",
+        "shimocha": "right_opponent",
+    }
+    return aliases.get(lowered, raw if raw in {"self", "left_opponent", "top_opponent", "right_opponent"} else "")
 
 
 def _suit_shape(tiles: list[str], suit: str) -> str:

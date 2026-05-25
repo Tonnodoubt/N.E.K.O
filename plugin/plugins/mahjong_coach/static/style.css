@@ -116,9 +116,33 @@ input {
 
 .panel-label {
   display: block;
-  margin-bottom: 10px;
   color: #9fb2ac;
   font-size: 13px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.source-badge {
+  min-width: 74px;
+  border: 1px solid #50615c;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #b8c4c0;
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
+}
+
+.source-badge.is-ai {
+  border-color: #86b99b;
+  background: #203328;
+  color: #c6f0d4;
 }
 
 .plan-panel strong {
@@ -170,7 +194,8 @@ input {
 
 .tag-list,
 .note-list,
-.tile-rail {
+.tile-rail,
+.river-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -232,6 +257,32 @@ input {
 
 .tile-z {
   color: #1c2020;
+}
+
+.tile-small {
+  width: 32px;
+  height: 42px;
+  font-size: 12px;
+}
+
+.river-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+}
+
+.river-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 48px;
+}
+
+.river-player {
+  width: 104px;
+  color: #aeb8b5;
+  font-size: 12px;
 }
 
 .input-grid {
@@ -301,6 +352,10 @@ pre {
   .workspace-grid,
   .input-grid,
   .live-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .river-grid {
     grid-template-columns: 1fr;
   }
 
