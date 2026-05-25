@@ -1,0 +1,45 @@
+[plugin]
+id = "mahjong_coach"
+name = "Mahjong Coach"
+description = "A screenshot-only Mahjong Soul coach that gives opening plans, periodic checkpoints, and critical action alerts without per-turn discard prompts."
+short_description = "Quiet Mahjong Soul round coach."
+keywords = ["mahjong", "majsoul", "coach", "screenshot"]
+version = "0.1.0"
+type = "plugin"
+entry = "plugin.plugins.mahjong_coach:MahjongCoachPlugin"
+
+[plugin.author]
+name = "N.E.K.O Team"
+
+[plugin.sdk]
+recommended = ">=0.1.0,<0.2.0"
+supported = ">=0.1.0,<0.3.0"
+
+[plugin.store]
+enabled = false
+
+[plugin.ui]
+enabled = true
+
+[plugin_runtime]
+enabled = true
+auto_start = false
+
+[decision]
+live_advice_mode = "coach"
+coach_checkpoint_self_turns = 3
+critical_action_interrupts = true
+per_turn_discard_prompt = false
+
+[perception]
+hand_recognition_backend = "legacy_templates"
+onnx_hand_enabled = false
+
+[live]
+window_keywords = ["雀魂", "Mahjong Soul"]
+interval_ms = 1200
+fast_interval_ms = 300
+keep_frames = 30
+checkpoint_interval_seconds = 20
+overlay_enabled = true
+save_format = "jpg"
