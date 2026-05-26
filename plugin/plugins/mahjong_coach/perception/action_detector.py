@@ -78,7 +78,7 @@ def _detect_template_buttons(image: Image.Image) -> tuple[list[str], dict[str, A
                 Image.Resampling.BILINEAR,
             )
         score = _coarse_template_score(search, template)
-        threshold = max(0.975, float(item.get("match_threshold") or payload.get("default_match_threshold") or 0.9))
+        threshold = max(0.86, min(0.99, float(item.get("match_threshold") or payload.get("default_match_threshold") or 0.9)))
         matches.append(
             {
                 "button_type": button_type,

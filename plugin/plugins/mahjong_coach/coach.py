@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,11 @@ CALL_BUTTONS = {"chi", "pon", "kan"}
 WIN_BUTTONS = {"ron", "tsumo"}
 SUIT_NAMES = {"m": "万", "p": "筒", "s": "索", "z": "字"}
 HONOR_NAMES = {"1z": "东", "2z": "南", "3z": "西", "4z": "北", "5z": "白", "6z": "发", "7z": "中"}
+TEXT_TILE_ALIASES = {"东": "1z", "南": "2z", "西": "3z", "北": "4z", "白": "5z", "发": "6z", "發": "6z", "中": "7z"}
+TILE_TYPES = [f"{rank}{suit}" for suit in ("m", "p", "s") for rank in range(1, 10)] + [
+    f"{rank}z" for rank in range(1, 8)
+]
+ORPHAN_TYPES = {"1m", "9m", "1p", "9p", "1s", "9s", "1z", "2z", "3z", "4z", "5z", "6z", "7z"}
 
 
 class RoundCoachEngine:
@@ -171,7 +177,7 @@ class RoundCoachEngine:
             if self.state.current_plan:
                 return (
                     "当前主线继续有效",
-                    "继续按当前主线推进；等三巡、手牌结构明显变化、或出现立直/和牌压力时再复盘。",
+                    "继续按当前主线推进；等三巡、手牌结构明显变化、或出现立直/和牌压力时再看主线。",
                     ["coach_observe", "current_plan_active"],
                 )
             return (
@@ -224,12 +230,12 @@ class RoundCoachEngine:
             priority = 100
         elif any(button in CALL_BUTTONS for button in buttons):
             summary = "吃碰杠窗口"
-            suggestion = self._call_suggestion(hand_result)
+            suggestion = self._call_suggestion(hand_result, buttons, river_result)
             decision_type = "call_window"
             priority = 95
         elif "riichi" in buttons:
             summary = "立直窗口"
-            suggestion = "可立直：用当前主线快速确认待牌和打点；不等待 LLM。"
+            suggestion = self._riichi_suggestion(hand_result, river_result)
             decision_type = "riichi_window"
             priority = 90
         else:
@@ -259,21 +265,39 @@ class RoundCoachEngine:
             engine_meta=self._meta(started, decision_type),
         )
 
-    def _call_suggestion(self, hand_result: FastHandResult | None) -> str:
+    def _call_suggestion(
+        self,
+        hand_result: FastHandResult | None,
+        buttons: list[str] | None = None,
+        river_result: RiverStateResult | None = None,
+    ) -> str:
         plan = self.state.current_plan or self.state.opening_plan
         if not plan and hand_result is not None and hand_result.ok:
-            built = build_round_plan(hand_result.hand_tiles)
+            built = build_round_plan(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
             plan = built["summary"]
             self.state.opening_emitted = True
             self.state.round_phase = "opening_strategy"
-            self.state.opening_plan = plan
-            self.state.current_plan = plan
-            self.state.attack_defense_bias = built["bias"]
-            self.state.target_shapes = list(built["targets"])
-            self.state.caution_points = list(built["cautions"])
+            self._remember_local_plan(built, opening=True)
+        if hand_result is not None and hand_result.ok:
+            call_policy = _call_policy(hand_result.hand_tiles, self.config, buttons or [])
+            if plan:
+                return f"{call_policy} 当前主线：{plan}"
+            return call_policy
         if plan:
             return f"默认跳过，除非鸣牌能明确推进当前主线：{plan}"
         return "默认跳过；只有役牌对子、直接进听、明显加速主线或安全和牌时才吃碰杠。"
+
+    def _riichi_suggestion(
+        self,
+        hand_result: FastHandResult | None,
+        river_result: RiverStateResult | None = None,
+    ) -> str:
+        if hand_result is None or not hand_result.ok:
+            return "可立直：未拿到稳定手牌，先按游戏给出的立直窗口谨慎确认。"
+        advice = _riichi_advice(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
+        if advice:
+            return advice
+        return "可立直：本地暂未算出明确听牌形，先确认待牌和打点；不等待 LLM。"
 
     def _opening_decision(
         self,
@@ -283,14 +307,10 @@ class RoundCoachEngine:
         *,
         action_meta: dict[str, Any] | None = None,
     ) -> CoachDecision:
-        plan = build_round_plan(hand_result.hand_tiles)
+        plan = build_round_plan(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
         self.state.opening_emitted = True
         self.state.round_phase = "opening_strategy"
-        self.state.opening_plan = plan["summary"]
-        self.state.current_plan = plan["summary"]
-        self.state.attack_defense_bias = plan["bias"]
-        self.state.target_shapes = list(plan["targets"])
-        self.state.caution_points = list(plan["cautions"])
+        self._remember_local_plan(plan, opening=True)
         self.state.last_update_reason = "opening_plan"
         self.state.update_count += 1
         return CoachDecision(
@@ -323,14 +343,11 @@ class RoundCoachEngine:
         force_checkpoint: bool,
         started: float,
     ) -> CoachDecision:
-        plan = build_round_plan(hand_result.hand_tiles)
+        plan = build_round_plan(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
         if turn_number is not None:
             self.state.last_checkpoint_self_turn = turn_number
         self.state.round_phase = "checkpoint_strategy"
-        self.state.current_plan = plan["summary"]
-        self.state.attack_defense_bias = plan["bias"]
-        self.state.target_shapes = list(plan["targets"])
-        self.state.caution_points = list(plan["cautions"])
+        self._remember_local_plan(plan)
         self.state.last_update_reason = "forced_checkpoint" if force_checkpoint else "scheduled_checkpoint"
         self.state.update_count += 1
         return CoachDecision(
@@ -345,6 +362,27 @@ class RoundCoachEngine:
             perception={"hand": hand_result.to_dict(), "river": river_result.to_dict()},
             engine_meta=self._meta(started, "coach_checkpoint"),
         )
+
+    def _remember_local_plan(self, plan: dict[str, Any], *, opening: bool = False) -> None:
+        summary = str(plan.get("summary") or "").strip()
+        detail = str(plan.get("detail") or "").strip()
+        targets = [str(item) for item in plan.get("targets", []) if str(item).strip()]
+        cautions = [str(item) for item in plan.get("cautions", []) if str(item).strip()]
+        if opening:
+            self.state.opening_plan = summary
+        self.state.current_plan = summary
+        self.state.plan_source = "heuristic"
+        self.state.local_plan = summary
+        self.state.local_detail = detail
+        self.state.local_targets = targets
+        self.state.local_cautions = cautions
+        self.state.ai_plan = ""
+        self.state.ai_detail = ""
+        self.state.ai_targets = []
+        self.state.ai_cautions = []
+        self.state.attack_defense_bias = str(plan.get("bias") or "neutral")
+        self.state.target_shapes = targets
+        self.state.caution_points = cautions
 
     def _defense_decision(
         self,
@@ -400,9 +438,29 @@ class RoundCoachEngine:
         return "Slow down and prefer safe tiles from visible information."
 
 
-def build_round_plan(hand_tiles: list[str]) -> dict[str, Any]:
+def _visible_tiles_for_plan(river_result: RiverStateResult | None) -> list[str]:
+    if river_result is None or not river_result.ok:
+        return []
+    tiles = list(river_result.visible_tiles)
+    if tiles:
+        return tiles
+    result: list[str] = []
+    for items in river_result.discard_piles.values():
+        result.extend(str(item.get("tile") or "") for item in items if isinstance(item, dict))
+    return result
+
+
+def build_round_plan(
+    hand_tiles: list[str],
+    config: MahjongCoachConfig | None = None,
+    *,
+    visible_tiles: list[str] | None = None,
+) -> dict[str, Any]:
     tiles = [normalize_tile(tile) for tile in hand_tiles if normalize_tile(tile)]
     counts = Counter(tiles)
+    visible_counts = _visible_counts(visible_tiles or [])
+    value_honors = _value_honor_tiles(config)
+    dora_tiles = _dora_tiles(config)
     suit_counts = Counter(tile_suit(tile) for tile in tiles if tile_suit(tile))
     honor_count = sum(1 for tile in tiles if is_honor(tile))
     terminal_count = sum(1 for tile in tiles if is_terminal(tile))
@@ -414,9 +472,15 @@ def build_round_plan(hand_tiles: list[str]) -> dict[str, Any]:
         best_suit, best_suit_count = max(suited.items(), key=lambda item: item[1])
     second_suit_count = max((count for suit, count in suited.items() if suit != best_suit), default=0)
     pair_tiles = [tile for tile, value in counts.items() if value >= 2]
-    cleanup_tiles = _cleanup_candidates(tiles, counts, best_suit)
-    keep_tiles = _keep_candidates(tiles, counts, best_suit)
-    discard_tiles = _discard_candidates(tiles, counts, best_suit, cleanup_tiles, keep_tiles)
+    value_pair_tiles = [tile for tile in pair_tiles if tile in value_honors]
+    pair_route = pair_count >= 4 and best_suit_count < 8
+    cleanup_tiles = _cleanup_candidates(tiles, counts, best_suit, value_honors, dora_tiles)
+    keep_tiles = pair_tiles if pair_route else _keep_candidates(tiles, counts, best_suit, dora_tiles)
+    discard_tiles = _discard_candidates(tiles, counts, best_suit, cleanup_tiles, keep_tiles, value_honors, dora_tiles)
+    efficiency = _efficiency_analysis(tiles, discard_tiles, counts, visible_counts, best_suit, value_honors, dora_tiles)
+    best_efficiency_discard = _best_efficiency_discard(efficiency)
+    if best_efficiency_discard:
+        discard_tiles = _merge_unique_tiles([best_efficiency_discard, *discard_tiles])
     discard_text = _tile_list_in_order(discard_tiles)
     route_options = _route_discard_options(
         discard_tiles,
@@ -425,12 +489,17 @@ def build_round_plan(hand_tiles: list[str]) -> dict[str, Any]:
         best_suit_count,
         second_suit_count,
         pair_count,
+        bool(value_pair_tiles),
         honor_count,
         terminal_count,
         simple_count,
     )
     route_text = _route_options_text(route_options)
     cleanup_text = _tile_list_in_order(cleanup_tiles) or discard_text or "孤张字牌和远张"
+    primary_discard_text = _tile_name(best_efficiency_discard) if best_efficiency_discard else _first_tile_name(
+        discard_tiles or cleanup_tiles
+    )
+    primary_discard_text = primary_discard_text or cleanup_text
     keep_text = _tile_list(keep_tiles) or "连续搭子和中张"
     suit_text = _suit_breakdown(tiles)
     best_shape = _suit_shape(tiles, best_suit) if best_suit else ""
@@ -439,27 +508,35 @@ def build_round_plan(hand_tiles: list[str]) -> dict[str, Any]:
     cautions: list[str] = []
     if best_suit_count >= 8:
         targets.append(f"主线：{SUIT_NAMES.get(best_suit, best_suit)}子清一色/混一色倾向")
-        summary = f"主线：{SUIT_NAMES.get(best_suit, best_suit)}子占比很高，保留同色块，先清{cleanup_text}。"
+        summary = f"主线：{SUIT_NAMES.get(best_suit, best_suit)}子多，保留同色，先打{primary_discard_text}。"
+    elif pair_route:
+        targets.append(f"主线：七对子胚子，已有对子 {_tile_list(pair_tiles)}")
+        summary = f"主线：七对子，保留对子，先打{primary_discard_text}。"
+    elif value_pair_tiles:
+        targets.append(f"主线：役牌速度，保留/可碰 {_tile_list(value_pair_tiles)}")
+        summary = f"主线：役牌速度，{_tile_list(value_pair_tiles)}可碰，先打{primary_discard_text}。"
     elif best_suit_count >= 5 and best_suit_count >= second_suit_count + 2:
         targets.append(f"主线：围绕{SUIT_NAMES.get(best_suit, best_suit)}子 {best_shape} 推进")
-        summary = f"主线：围绕{SUIT_NAMES.get(best_suit, best_suit)}子 {best_shape} 做搭子，先清{cleanup_text}。"
+        summary = f"主线：围绕{SUIT_NAMES.get(best_suit, best_suit)}子 {best_shape} 找顺子，先打{primary_discard_text}。"
     elif simple_count >= 9 and honor_count + terminal_count <= 3:
         targets.extend(["主线：断幺/平和速度", f"保留：{keep_text}"])
-        summary = f"主线：断幺/平和速度手，保留{keep_text}，别贪孤张字牌。"
-    elif pair_count >= 4:
-        targets.append(f"副线：七对子，已有对子 {_tile_list(pair_tiles)}")
-        summary = f"主线：对子价值不错，保留对子；如果后续继续成对再转七对。"
+        summary = f"主线：断幺/平和速度，保留{keep_text}，先打{primary_discard_text}。"
     elif honor_count >= 4:
         targets.append("主线：先清孤字牌")
-        summary = f"主线：字牌偏多，未成对的先清；只保留役牌对子或安全价值。"
+        summary = f"主线：字牌偏多，先打{primary_discard_text}，只留役牌对子。"
     else:
         targets.append("主线：牌效推进")
-        summary = f"主线：牌效推进，保留{keep_text}，先清{cleanup_text}。"
+        summary = f"主线：牌效推进，先打{primary_discard_text}，保留{keep_text}。"
 
-    if keep_text:
+    if keep_text and not any(item.startswith("保留：") for item in targets):
         targets.append(f"保留：{keep_text}")
     if pair_tiles:
         targets.append(f"对子：{_tile_list(pair_tiles)}")
+    if value_pair_tiles:
+        targets.append(f"役牌对子：{_tile_list(value_pair_tiles)}")
+    dora_text = _tile_list([tile for tile in tiles if _is_dora(tile, dora_tiles)])
+    if dora_text:
+        targets.append(f"宝牌/红5：{dora_text}")
 
     if honor_count >= 3:
         cautions.append("孤字牌不要久留，除非成对或有役牌价值。")
@@ -469,16 +546,20 @@ def build_round_plan(hand_tiles: list[str]) -> dict[str, Any]:
         cautions.append("有染手分支，但摸到强中张时不要硬染。")
     if route_text:
         cautions.append(f"路线选择：{route_text}")
+    efficiency_note = _efficiency_note(efficiency)
+    if efficiency_note:
+        cautions.append(efficiency_note)
     if cleanup_tiles:
-        cautions.append(f"优先清理：{cleanup_text}")
-    cautions.append("吃碰杠：默认跳过；只有役牌对子、直接进听、或明显加速主线才开口。")
+        cautions.append(f"优先清理：{discard_text or cleanup_text}")
+    cautions.append(_open_policy_line(counts, value_honors, best_suit_count, simple_count, honor_count, terminal_count, pair_route))
     if not cautions:
-        cautions.append("三巡后复盘，不要每摸一张就推翻主线。")
+        cautions.append("三巡后再看主线，不要每摸一张就推翻主线。")
 
-    bias = "attack" if simple_count >= 8 or best_suit_count >= 5 else "neutral"
+    bias = "attack" if simple_count >= 8 or best_suit_count >= 5 or value_pair_tiles else "neutral"
     detail = (
         f"结构：{suit_text}；对子 {pair_count} 组。"
         f" 当前先保留 {keep_text}，{('路线选择：' + route_text) if route_text else ('候选打牌 ' + (discard_text or cleanup_text))}。"
+        f" {_efficiency_detail(efficiency)}"
     )
     return {
         "summary": summary,
@@ -486,6 +567,8 @@ def build_round_plan(hand_tiles: list[str]) -> dict[str, Any]:
         "bias": bias,
         "targets": targets,
         "cautions": cautions,
+        "discard_priority": list(discard_tiles),
+        "efficiency": efficiency,
     }
 
 
@@ -555,11 +638,11 @@ def _suit_breakdown(tiles: list[str]) -> str:
     return " / ".join(parts) if parts else "暂无稳定手牌"
 
 
-def _keep_candidates(tiles: list[str], counts: Counter[str], best_suit: str) -> list[str]:
+def _keep_candidates(tiles: list[str], counts: Counter[str], best_suit: str, dora_tiles: set[str]) -> list[str]:
     keep: list[str] = []
     for tile in tiles:
         normalized = normalize_tile(tile)
-        if counts[normalized] >= 2 or normalized in {"0m", "0p", "0s"}:
+        if counts[normalized] >= 2 or normalized in {"0m", "0p", "0s"} or _is_dora(normalized, dora_tiles):
             keep.append(normalized)
             continue
         if tile_suit(normalized) == best_suit and _has_neighbor(normalized, counts, distance=2):
@@ -567,10 +650,16 @@ def _keep_candidates(tiles: list[str], counts: Counter[str], best_suit: str) -> 
     return keep
 
 
-def _cleanup_candidates(tiles: list[str], counts: Counter[str], best_suit: str) -> list[str]:
+def _cleanup_candidates(
+    tiles: list[str],
+    counts: Counter[str],
+    best_suit: str,
+    value_honors: set[str],
+    dora_tiles: set[str],
+) -> list[str]:
     cleanup: list[str] = []
     for tile in sorted((normalize_tile(tile) for tile in tiles if normalize_tile(tile)), key=_tile_sort_key):
-        if counts[tile] >= 2 or tile in {"0m", "0p", "0s"}:
+        if counts[tile] >= 2 or tile in {"0m", "0p", "0s"} or _is_dora(tile, dora_tiles):
             continue
         suit = tile_suit(tile)
         if suit == "z":
@@ -579,14 +668,16 @@ def _cleanup_candidates(tiles: list[str], counts: Counter[str], best_suit: str) 
             cleanup.append(tile)
         elif suit == best_suit and is_terminal(tile) and not _has_neighbor(tile, counts, distance=1):
             cleanup.append(tile)
-    return sorted(cleanup, key=lambda tile: _cleanup_score(tile, counts, best_suit))[:5]
+    return sorted(cleanup, key=lambda tile: _cleanup_score(tile, counts, best_suit, value_honors))[:5]
 
 
-def _cleanup_score(tile: str, counts: Counter[str], best_suit: str) -> tuple[int, int, str]:
+def _cleanup_score(tile: str, counts: Counter[str], best_suit: str, value_honors: set[str]) -> tuple[int, int, str]:
     suit = tile_suit(tile)
     rank = tile_rank(tile)
     rank_value = int(rank) if rank.isdigit() else 0
     if suit == "z":
+        if tile in value_honors:
+            return (3, rank_value, tile)
         return (0, rank_value, tile)
     if best_suit and suit != best_suit and not _has_neighbor(tile, counts, distance=1):
         return (1 if is_terminal(tile) else 2, rank_value, tile)
@@ -601,28 +692,459 @@ def _discard_candidates(
     best_suit: str,
     cleanup_tiles: list[str],
     keep_tiles: list[str],
+    value_honors: set[str],
+    dora_tiles: set[str],
 ) -> list[str]:
     selected: list[str] = []
     keep_set = set(keep_tiles)
-    for tile in sorted(cleanup_tiles, key=lambda tile: _discard_score(tile, counts, best_suit, keep_set)):
+    for tile in sorted(cleanup_tiles, key=lambda tile: _discard_score(tile, counts, best_suit, keep_set, value_honors, dora_tiles)):
         if tile not in selected:
             selected.append(tile)
 
     pool: list[str] = []
     for tile in tiles:
         normalized = normalize_tile(tile)
-        if not normalized or normalized in selected or normalized in {"0m", "0p", "0s"}:
+        if not normalized or normalized in selected or normalized in {"0m", "0p", "0s"} or _is_dora(normalized, dora_tiles):
             continue
         if counts[normalized] >= 2:
             continue
         pool.append(normalized)
 
-    pool = sorted(set(pool), key=lambda tile: _discard_score(tile, counts, best_suit, keep_set))
+    pool = sorted(set(pool), key=lambda tile: _discard_score(tile, counts, best_suit, keep_set, value_honors, dora_tiles))
     for tile in pool:
         if len(selected) >= 5:
             break
         selected.append(tile)
     return selected[:4]
+
+
+def _efficiency_analysis(
+    tiles: list[str],
+    initial_discards: list[str],
+    counts: Counter[str],
+    visible_counts: Counter[str],
+    best_suit: str,
+    value_honors: set[str],
+    dora_tiles: set[str],
+) -> dict[str, Any]:
+    canonical_tiles = [_canonical_tile(tile) for tile in tiles if _canonical_tile(tile) in TILE_TYPES]
+    if not canonical_tiles:
+        return {
+            "current_shanten": 8,
+            "best_path": "standard",
+            "discard_options": [],
+        }
+
+    current = _best_hand_shanten(canonical_tiles)
+    candidates = _efficiency_discard_candidates(tiles, initial_discards, counts, best_suit, value_honors, dora_tiles)
+    options: list[dict[str, Any]] = []
+    visible_total = sum(visible_counts.values())
+
+    if len(canonical_tiles) % 3 == 2:
+        hand_counts = Counter(canonical_tiles)
+        for tile in candidates:
+            canonical = _canonical_tile(tile)
+            if canonical not in hand_counts:
+                continue
+            remaining = list(canonical_tiles)
+            remaining.remove(canonical)
+            post_discard = _best_hand_shanten(remaining)["shanten"]
+            effective_tiles: list[str] = []
+            effective_count = 0
+            for draw in TILE_TYPES:
+                available = max(0, 4 - hand_counts.get(draw, 0) - visible_counts.get(draw, 0))
+                if available <= 0:
+                    continue
+                if _best_hand_shanten([*remaining, draw])["shanten"] < post_discard:
+                    effective_tiles.append(draw)
+                    effective_count += available
+            options.append(
+                {
+                    "tile": tile,
+                    "shanten": post_discard,
+                    "effective_types": len(effective_tiles),
+                    "effective_count": effective_count,
+                    "effective_tiles": sorted(effective_tiles, key=_tile_sort_key)[:10],
+                    "heuristic_score": _discard_score(tile, counts, best_suit, set(), value_honors, dora_tiles),
+                }
+            )
+
+    options.sort(
+        key=lambda item: (
+            int(item["shanten"]),
+            -int(item["effective_count"]),
+            -int(item["effective_types"]),
+            item["heuristic_score"],
+        )
+    )
+    return {
+        "current_shanten": current["shanten"],
+        "best_path": current["path"],
+        "discard_options": [
+            {
+                "tile": str(item["tile"]),
+                "shanten": int(item["shanten"]),
+                "effective_types": int(item["effective_types"]),
+                "effective_count": int(item["effective_count"]),
+                "effective_tiles": list(item["effective_tiles"]),
+            }
+            for item in options[:5]
+        ],
+        "visible_tile_count": visible_total,
+    }
+
+
+def _efficiency_discard_candidates(
+    tiles: list[str],
+    initial_discards: list[str],
+    counts: Counter[str],
+    best_suit: str,
+    value_honors: set[str],
+    dora_tiles: set[str],
+) -> list[str]:
+    candidates = _merge_unique_tiles(initial_discards)
+    keep_set: set[str] = set()
+    for tile in sorted(
+        {normalize_tile(tile) for tile in tiles if normalize_tile(tile)},
+        key=lambda item: _discard_score(item, counts, best_suit, keep_set, value_honors, dora_tiles),
+    ):
+        if tile in {"0m", "0p", "0s"} or _is_dora(tile, dora_tiles):
+            continue
+        if tile not in candidates:
+            candidates.append(tile)
+    return candidates[:12]
+
+
+def _best_hand_shanten(tiles: list[str]) -> dict[str, Any]:
+    counts = _shanten_counts(tiles)
+    standard = _standard_shanten(tuple(counts))
+    seven_pairs = _seven_pairs_shanten(counts)
+    thirteen_orphans = _thirteen_orphans_shanten(counts)
+    options = [
+        ("standard", standard),
+        ("seven_pairs", seven_pairs),
+        ("thirteen_orphans", thirteen_orphans),
+    ]
+    path, shanten = min(options, key=lambda item: item[1])
+    return {"path": path, "shanten": int(shanten)}
+
+
+def _shanten_counts(tiles: list[str]) -> list[int]:
+    counts = [0] * len(TILE_TYPES)
+    for tile in tiles:
+        index = _tile_index(_canonical_tile(tile))
+        if index is not None:
+            counts[index] += 1
+    return counts
+
+
+def _visible_counts(tiles: list[str]) -> Counter[str]:
+    return Counter(_canonical_tile(tile) for tile in tiles if _canonical_tile(tile) in TILE_TYPES)
+
+
+@lru_cache(maxsize=4096)
+def _standard_shanten(counts_tuple: tuple[int, ...]) -> int:
+    @lru_cache(maxsize=None)
+    def walk(counts_state: tuple[int, ...], melds: int, taatsu: int, pair: int) -> int:
+        counts = list(counts_state)
+        capped_taatsu = min(taatsu, max(0, 4 - melds))
+        best = 8 - (2 * melds) - capped_taatsu - pair
+        index = next((offset for offset, value in enumerate(counts) if value > 0), -1)
+        if index < 0:
+            return best
+
+        counts[index] -= 1
+        best = min(best, walk(tuple(counts), melds, taatsu, pair))
+        counts[index] += 1
+
+        if melds < 4 and counts[index] >= 3:
+            counts[index] -= 3
+            best = min(best, walk(tuple(counts), melds + 1, taatsu, pair))
+            counts[index] += 3
+
+        if melds < 4 and _can_start_sequence(index) and counts[index + 1] > 0 and counts[index + 2] > 0:
+            counts[index] -= 1
+            counts[index + 1] -= 1
+            counts[index + 2] -= 1
+            best = min(best, walk(tuple(counts), melds + 1, taatsu, pair))
+            counts[index] += 1
+            counts[index + 1] += 1
+            counts[index + 2] += 1
+
+        if pair == 0 and counts[index] >= 2:
+            counts[index] -= 2
+            best = min(best, walk(tuple(counts), melds, taatsu, 1))
+            counts[index] += 2
+
+        if taatsu < 4 and counts[index] >= 2:
+            counts[index] -= 2
+            best = min(best, walk(tuple(counts), melds, taatsu + 1, pair))
+            counts[index] += 2
+
+        if taatsu < 4 and _can_start_sequence(index) and counts[index + 1] > 0:
+            counts[index] -= 1
+            counts[index + 1] -= 1
+            best = min(best, walk(tuple(counts), melds, taatsu + 1, pair))
+            counts[index] += 1
+            counts[index + 1] += 1
+
+        if taatsu < 4 and _can_skip_sequence(index) and counts[index + 2] > 0:
+            counts[index] -= 1
+            counts[index + 2] -= 1
+            best = min(best, walk(tuple(counts), melds, taatsu + 1, pair))
+            counts[index] += 1
+            counts[index + 2] += 1
+
+        return best
+
+    return walk(counts_tuple, 0, 0, 0)
+
+
+def _seven_pairs_shanten(counts: list[int]) -> int:
+    pairs = sum(1 for count in counts if count >= 2)
+    unique = sum(1 for count in counts if count > 0)
+    return 6 - pairs + max(0, 7 - unique)
+
+
+def _thirteen_orphans_shanten(counts: list[int]) -> int:
+    orphan_indexes = [_tile_index(tile) for tile in ORPHAN_TYPES]
+    present = sum(1 for index in orphan_indexes if index is not None and counts[index] > 0)
+    has_pair = any(index is not None and counts[index] >= 2 for index in orphan_indexes)
+    return 13 - present - int(has_pair)
+
+
+def _can_start_sequence(index: int) -> bool:
+    return 0 <= index < 27 and index % 9 <= 6
+
+
+def _can_skip_sequence(index: int) -> bool:
+    return 0 <= index < 27 and index % 9 <= 6
+
+
+def _tile_index(tile: str) -> int | None:
+    canonical = _canonical_tile(tile)
+    try:
+        return TILE_TYPES.index(canonical)
+    except ValueError:
+        return None
+
+
+def _canonical_tile(tile: str) -> str:
+    normalized = normalize_tile(tile)
+    if normalized in {"0m", "0p", "0s"}:
+        return f"5{normalized[1]}"
+    return normalized
+
+
+def _best_efficiency_discard(efficiency: dict[str, Any]) -> str:
+    options = efficiency.get("discard_options")
+    if isinstance(options, list) and options:
+        first = options[0]
+        if isinstance(first, dict):
+            return str(first.get("tile") or "")
+    return ""
+
+
+def _efficiency_note(efficiency: dict[str, Any]) -> str:
+    current = _shanten_text(int(efficiency.get("current_shanten", 8)))
+    options = efficiency.get("discard_options")
+    if isinstance(options, list) and options:
+        best = options[0]
+        if isinstance(best, dict):
+            tile = _tile_name(str(best.get("tile") or ""))
+            shanten = _shanten_text(int(best.get("shanten", 8)))
+            effective_types = int(best.get("effective_types", 0))
+            effective_count = int(best.get("effective_count", 0))
+            waits = _tile_list_in_order([str(tile) for tile in best.get("effective_tiles", [])])
+            wait_text = f"（{waits}）" if waits else ""
+            visible_count = int(efficiency.get("visible_tile_count", 0))
+            visible_text = "，已扣可见牌" if visible_count else ""
+            return f"牌效：当前{current}；打{tile}后{shanten}，有效{effective_types}种{effective_count}枚{visible_text}{wait_text}。"
+    return f"牌效：当前{current}；未到出牌手数，先按主线保留结构。"
+
+
+def _efficiency_detail(efficiency: dict[str, Any]) -> str:
+    path_names = {"standard": "面子手", "seven_pairs": "七对子", "thirteen_orphans": "国士"}
+    path = path_names.get(str(efficiency.get("best_path") or "standard"), "面子手")
+    return f"牌效按{path}估算，{_efficiency_note(efficiency)}"
+
+
+def _shanten_text(value: int) -> str:
+    if value <= -1:
+        return "和牌形"
+    if value == 0:
+        return "听牌"
+    return f"{value}向听"
+
+
+def _merge_unique_tiles(tiles: list[str]) -> list[str]:
+    result: list[str] = []
+    for tile in tiles:
+        normalized = normalize_tile(tile)
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
+
+
+def _first_tile_name(tiles: list[str]) -> str:
+    first = _first_tile(tiles)
+    return _tile_name(first) if first else ""
+
+
+def _value_honor_tiles(config: MahjongCoachConfig | None) -> set[str]:
+    values = {"5z", "6z", "7z"}
+    if config is None:
+        return values
+    for tile in (config.round_wind, config.seat_wind):
+        normalized = _context_tile(tile)
+        if tile_suit(normalized) == "z":
+            values.add(normalized)
+    return values
+
+
+def _dora_tiles(config: MahjongCoachConfig | None) -> set[str]:
+    if config is None:
+        return set()
+    return {
+        _canonical_tile(_context_tile(tile))
+        for tile in config.dora_tiles
+        if _canonical_tile(_context_tile(tile)) in TILE_TYPES
+    }
+
+
+def _is_dora(tile: str, dora_tiles: set[str]) -> bool:
+    return _canonical_tile(tile) in dora_tiles
+
+
+def _context_tile(tile: str) -> str:
+    raw = str(tile or "").strip()
+    return normalize_tile(TEXT_TILE_ALIASES.get(raw, raw))
+
+
+def _open_policy_line(
+    counts: Counter[str],
+    value_honors: set[str],
+    best_suit_count: int,
+    simple_count: int,
+    honor_count: int,
+    terminal_count: int,
+    pair_route: bool,
+) -> str:
+    value_pairs = _tile_list([tile for tile, value in counts.items() if value >= 2 and tile in value_honors])
+    if value_pairs:
+        return f"鸣牌：{value_pairs}对子可以碰；其余仍要能听牌或明显加速。"
+    if pair_route:
+        return "鸣牌：七对子胚子一般不鸣，除非役牌刻子直接成型。"
+    if best_suit_count >= 7:
+        return "鸣牌：染手主线可开同色/役牌，非主线牌默认跳过。"
+    if simple_count >= 9 and honor_count + terminal_count <= 3:
+        return "鸣牌：断幺速度手只开中张，能进听或好形加速才吃碰。"
+    return "鸣牌：默认跳过，只有役牌、直接听牌、或明显加速主线才开。"
+
+
+def _call_policy(hand_tiles: list[str], config: MahjongCoachConfig, buttons: list[str]) -> str:
+    tiles = [normalize_tile(tile) for tile in hand_tiles if normalize_tile(tile)]
+    counts = Counter(tiles)
+    value_honors = _value_honor_tiles(config)
+    suit_counts = Counter(tile_suit(tile) for tile in tiles if tile_suit(tile))
+    suited = {suit: count for suit, count in suit_counts.items() if suit in {"m", "p", "s"}}
+    best_suit_count = max(suited.values(), default=0)
+    honor_count = sum(1 for tile in tiles if is_honor(tile))
+    terminal_count = sum(1 for tile in tiles if is_terminal(tile))
+    simple_count = sum(1 for tile in tiles if is_simple(tile))
+    pair_count = sum(1 for value in counts.values() if value >= 2)
+    value_pairs = _tile_list([tile for tile, value in counts.items() if value >= 2 and tile in value_honors])
+    call_buttons = set(_normalize_buttons(buttons))
+
+    if value_pairs and (not call_buttons or call_buttons & {"pon", "kan"}):
+        return f"役牌对子{value_pairs}，碰到可以开；没碰到役牌就默认跳过。"
+    if pair_count >= 4 and best_suit_count < 8:
+        return "七对子胚子一般不鸣；只有役牌碰成刻子，或直接听牌才开。"
+    if best_suit_count >= 7:
+        return "染手主线可开：同色牌/役牌能明显推进才吃碰，杂色牌跳过。"
+    if simple_count >= 9 and honor_count + terminal_count <= 3:
+        return "断幺速度手可开中张；不能进听或破坏好形就跳过。"
+    return "默认跳过；只有役牌、直接进听、明显加速主线或安全和牌时才吃碰杠。"
+
+
+def _riichi_advice(
+    hand_tiles: list[str],
+    config: MahjongCoachConfig | None = None,
+    *,
+    visible_tiles: list[str] | None = None,
+) -> str:
+    plan = build_round_plan(hand_tiles, config, visible_tiles=visible_tiles)
+    options = plan.get("efficiency", {}).get("discard_options")
+    if not isinstance(options, list):
+        return ""
+    tenpai_options = [item for item in options if isinstance(item, dict) and int(item.get("shanten", 8)) == 0]
+    if not tenpai_options:
+        return ""
+    best = tenpai_options[0]
+    discard_tile = str(best.get("tile") or "")
+    discard = _tile_name(discard_tile)
+    wait_tiles, wait_count = _riichi_waits_after_discard(
+        hand_tiles,
+        [str(tile) for tile in best.get("effective_tiles", [])],
+        discard_tile,
+        visible_tiles or [],
+    )
+    wait_text = _tile_list_in_order(wait_tiles) or "待牌未明"
+    effective_types = len(wait_tiles) or int(best.get("effective_types", 0))
+    effective_count = wait_count if wait_tiles else int(best.get("effective_count", 0))
+    quality = _wait_quality(effective_types, effective_count)
+    value_text = _riichi_value_text(hand_tiles, config)
+    visible_text = "，已扣可见牌" if int(plan.get("efficiency", {}).get("visible_tile_count", 0)) else ""
+    if quality == "good":
+        action = "推荐立直"
+        reason = "好形/枚数够"
+    elif quality == "medium":
+        action = "可以立直"
+        reason = "待牌尚可"
+    else:
+        action = "谨慎立直"
+        reason = "愚形或枚数少"
+    return f"{action}：打{discard}听{wait_text}，有效{effective_types}种{effective_count}枚{visible_text}；{reason}{value_text}；本地快判，不等待 LLM。"
+
+
+def _riichi_waits_after_discard(
+    hand_tiles: list[str],
+    effective_tiles: list[str],
+    discard_tile: str,
+    visible_tiles: list[str],
+) -> tuple[list[str], int]:
+    hand_counts = Counter(_canonical_tile(tile) for tile in hand_tiles if _canonical_tile(tile) in TILE_TYPES)
+    visible_counts = _visible_counts(visible_tiles)
+    discarded = _canonical_tile(discard_tile)
+    waits = [
+        _canonical_tile(tile)
+        for tile in effective_tiles
+        if _canonical_tile(tile) in TILE_TYPES and _canonical_tile(tile) != discarded
+    ]
+    wait_count = sum(max(0, 4 - hand_counts.get(tile, 0) - visible_counts.get(tile, 0)) for tile in waits)
+    return waits, wait_count
+
+
+def _wait_quality(effective_types: int, effective_count: int) -> str:
+    if effective_types >= 2 and effective_count >= 6:
+        return "good"
+    if effective_count >= 5:
+        return "medium"
+    return "poor"
+
+
+def _riichi_value_text(hand_tiles: list[str], config: MahjongCoachConfig | None) -> str:
+    tiles = [normalize_tile(tile) for tile in hand_tiles if normalize_tile(tile)]
+    counts = Counter(tiles)
+    value_pairs = _tile_list([tile for tile, value in counts.items() if value >= 2 and tile in _value_honor_tiles(config)])
+    dora_tiles = _dora_tiles(config)
+    dora_count = sum(1 for tile in tiles if tile in {"0m", "0p", "0s"} or _is_dora(tile, dora_tiles))
+    parts: list[str] = []
+    if dora_count:
+        parts.append(f"有宝牌/红5 {dora_count}张")
+    if value_pairs:
+        parts.append(f"有役牌对子{value_pairs}")
+    return f"，{'，'.join(parts)}" if parts else ""
 
 
 def _route_discard_options(
@@ -632,6 +1154,7 @@ def _route_discard_options(
     best_suit_count: int,
     second_suit_count: int,
     pair_count: int,
+    has_value_pair: bool,
     honor_count: int,
     terminal_count: int,
     simple_count: int,
@@ -643,14 +1166,16 @@ def _route_discard_options(
 
     if best_suit_count >= 8:
         primary_label = f"{SUIT_NAMES.get(best_suit, best_suit)}染"
+    elif pair_count >= 4:
+        primary_label = "七对"
+    elif has_value_pair:
+        primary_label = "役牌"
     elif best_suit_count >= 5 and best_suit_count >= second_suit_count + 2:
         primary_label = "主线"
     elif simple_count >= 9 and honor_count + terminal_count <= 3:
         primary_label = "断幺"
     elif honor_count >= 4:
         primary_label = "孤字先"
-    elif pair_count >= 4:
-        primary_label = "七对"
     else:
         primary_label = "牌效"
     options.append((primary_label, primary))
@@ -660,7 +1185,7 @@ def _route_discard_options(
         if best_suit_count >= 7:
             alternate_label = "不硬染"
         elif pair_count >= 4:
-            alternate_label = "牌效"
+            alternate_label = "面子手"
         else:
             alternate_label = "保守"
         options.append((alternate_label, alternate))
@@ -687,9 +1212,6 @@ def _first_tile(tiles: list[str]) -> str:
 def _alternate_route_tile(discard_tiles: list[str], primary: str, counts: Counter[str], best_suit: str) -> str:
     normalized = [normalize_tile(tile) for tile in discard_tiles if normalize_tile(tile)]
     for tile in normalized:
-        if tile != primary and tile_suit(tile) != "z":
-            return tile
-    for tile in normalized:
         if tile != primary:
             return tile
 
@@ -702,14 +1224,23 @@ def _alternate_route_tile(discard_tiles: list[str], primary: str, counts: Counte
     return ""
 
 
-def _discard_score(tile: str, counts: Counter[str], best_suit: str, keep_set: set[str]) -> tuple[int, int, str]:
+def _discard_score(
+    tile: str,
+    counts: Counter[str],
+    best_suit: str,
+    keep_set: set[str],
+    value_honors: set[str],
+    dora_tiles: set[str],
+) -> tuple[int, int, str]:
     suit = tile_suit(tile)
     rank = tile_rank(tile)
     rank_value = int(rank) if rank.isdigit() else 0
     keep_penalty = 20 if tile in keep_set else 0
     pair_penalty = 50 if counts[tile] >= 2 else 0
+    dora_penalty = 35 if _is_dora(tile, dora_tiles) else 0
+    value_penalty = 8 if tile in value_honors else 0
     if suit == "z":
-        return (pair_penalty + keep_penalty, rank_value, tile)
+        return (pair_penalty + keep_penalty + dora_penalty + value_penalty, rank_value, tile)
 
     connected = _has_neighbor(tile, counts, distance=1)
     near = _has_neighbor(tile, counts, distance=2)
@@ -725,7 +1256,7 @@ def _discard_score(tile: str, counts: Counter[str], best_suit: str, keep_set: se
         base -= 1
     if best_suit and suit == best_suit:
         base += 2
-    return (pair_penalty + keep_penalty + base, rank_value, tile)
+    return (pair_penalty + keep_penalty + dora_penalty + base, rank_value, tile)
 
 
 def _has_neighbor(tile: str, counts: Counter[str], *, distance: int) -> bool:

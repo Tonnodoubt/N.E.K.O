@@ -92,7 +92,7 @@ input {
 
 .strategy-board {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.35fr) minmax(150px, 0.75fr) minmax(150px, 0.75fr);
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -109,9 +109,18 @@ input {
   padding: 16px;
 }
 
+.plan-panel p {
+  white-space: pre-line;
+}
+
 .primary-panel {
   background: #1c2623;
   border-color: #456053;
+}
+
+.ai-panel {
+  background: #1d2428;
+  border-color: #4e5f70;
 }
 
 .panel-label {

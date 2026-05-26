@@ -52,9 +52,24 @@ class DecisionCoordinator:
             return True
         return (
             str(payload.get("round_id") or "") != round_id
-            or str(payload.get("hand_signature") or "") != current_hand_signature
-            or int(payload.get("update_count") or -1) != update_count
         )
+
+    def token_hand_signature(self, token: str) -> str:
+        try:
+            payload = json.loads(token)
+        except Exception:
+            return ""
+        return str(payload.get("hand_signature") or "")
+
+    def token_update_count(self, token: str) -> int | None:
+        try:
+            payload = json.loads(token)
+        except Exception:
+            return None
+        try:
+            return int(payload.get("update_count"))
+        except Exception:
+            return None
 
     def apply_llm_plan(self, decision: CoachDecision, heuristic_plan: dict[str, Any], llm_plan: dict[str, Any]) -> CoachDecision:
         plan = merge_heuristic_and_llm(heuristic_plan, llm_plan)

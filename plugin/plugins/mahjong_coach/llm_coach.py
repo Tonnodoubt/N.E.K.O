@@ -24,8 +24,10 @@ async def build_round_plan_llm(
     turn_number: int | None = None,
     heuristic_plan: dict[str, Any] | None = None,
     timeout: float = 8.0,
+    diagnostics: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """Return a summary-tier strategy plan, or None when the LLM cannot help."""
+    _set_diagnostics(diagnostics, "pending")
     try:
         from utils.config_manager import get_config_manager
 
@@ -34,6 +36,7 @@ async def build_round_plan_llm(
         base_url = str(api_config.get("base_url") or "").strip()
         api_key = str(api_config.get("api_key") or "").strip()
         if not model or not base_url:
+            _set_diagnostics(diagnostics, "error", "summary 模型或 base_url 未配置")
             return None
 
         llm = create_chat_llm(
@@ -50,8 +53,17 @@ async def build_round_plan_llm(
             )
         finally:
             await llm.aclose()
-        return parse_llm_plan_response(str(getattr(response, "content", "") or response))
-    except Exception:
+        plan = parse_llm_plan_response(str(getattr(response, "content", "") or response))
+        if plan is None:
+            _set_diagnostics(diagnostics, "empty", "模型返回内容不是可解析的策略 JSON")
+            return None
+        _set_diagnostics(diagnostics, "ready")
+        return plan
+    except asyncio.TimeoutError:
+        _set_diagnostics(diagnostics, "timeout", "模型请求超时")
+        return None
+    except Exception as exc:
+        _set_diagnostics(diagnostics, "error", f"模型请求失败：{type(exc).__name__}")
         return None
 
 
@@ -162,3 +174,10 @@ def _strip_code_fence(text: str) -> str:
         value = re.sub(r"^```(?:json)?", "", value, flags=re.IGNORECASE).strip()
         value = re.sub(r"```$", "", value).strip()
     return value
+
+
+def _set_diagnostics(diagnostics: dict[str, str] | None, status: str, error: str = "") -> None:
+    if diagnostics is None:
+        return
+    diagnostics["status"] = status
+    diagnostics["error"] = error

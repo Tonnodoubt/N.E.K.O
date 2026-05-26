@@ -15,9 +15,18 @@ const forceCheckpointInput = document.getElementById('forceCheckpointInput');
 const keywordsInput = document.getElementById('keywordsInput');
 const intervalInput = document.getElementById('intervalInput');
 const overlayInput = document.getElementById('overlayInput');
+const roundWindInput = document.getElementById('roundWindInput');
+const seatWindInput = document.getElementById('seatWindInput');
+const doraTilesInput = document.getElementById('doraTilesInput');
+const analysisRoundWindInput = document.getElementById('analysisRoundWindInput');
+const analysisSeatWindInput = document.getElementById('analysisSeatWindInput');
+const analysisDoraTilesInput = document.getElementById('analysisDoraTilesInput');
 const analysisSource = document.getElementById('analysisSource');
 const mainPlan = document.getElementById('mainPlan');
 const planDetail = document.getElementById('planDetail');
+const aiSource = document.getElementById('aiSource');
+const aiPlan = document.getElementById('aiPlan');
+const aiPlanDetail = document.getElementById('aiPlanDetail');
 const biasValue = document.getElementById('biasValue');
 const lastReason = document.getElementById('lastReason');
 const confidenceValue = document.getElementById('confidenceValue');
@@ -47,6 +56,103 @@ function sleep(ms) {
 function compact(value, fallback = '-') {
   const text = String(value || '').trim();
   return text || fallback;
+}
+
+function cleanStrategyText(value) {
+  let text = String(value || '').replace(/\s+/g, ' ').trim();
+  [
+    ['主线：', ''],
+    ['保留：', ''],
+    ['对子：', ''],
+    ['路线选择：', ''],
+    ['筒子占比很高', '筒子多'],
+    ['万子占比很高', '万子多'],
+    ['索子占比很高', '索子多'],
+    ['保留同色块', '保留同色'],
+    ['同色块', '同色'],
+    ['做搭子', '找顺子'],
+    ['先清', '先打'],
+    ['不硬染', '别强做清一色'],
+    ['吃碰杠', '鸣牌'],
+    ['进听', '听牌'],
+  ].forEach(([from, to]) => {
+    text = text.replaceAll(from, to);
+  });
+  return text.trim();
+}
+
+function firstSentence(value) {
+  const text = cleanStrategyText(value);
+  const cutAt = ['，', '；', ';', '。'].map((mark) => text.indexOf(mark)).filter((index) => index >= 0);
+  return cutAt.length ? text.slice(0, Math.min(...cutAt)).trim() : text;
+}
+
+function firstPrefixedValue(values, prefix) {
+  const items = Array.isArray(values) ? values : [];
+  const match = items.find((item) => String(item || '').startsWith(prefix));
+  return match ? String(match).slice(prefix.length).trim() : '';
+}
+
+function listValues(value) {
+  return Array.isArray(value) ? value.filter((item) => String(item || '').trim()) : [];
+}
+
+function extractAfter(value, keywords, stopMarkers) {
+  const text = String(value || '');
+  let start = -1;
+  let keywordLength = 0;
+  keywords.forEach((keyword) => {
+    const index = text.indexOf(keyword);
+    if (index >= 0 && (start < 0 || index < start)) {
+      start = index;
+      keywordLength = keyword.length;
+    }
+  });
+  if (start < 0) {
+    return '';
+  }
+  let tail = text.slice(start + keywordLength).replace(/^[\s：:]+/, '');
+  const stopAt = stopMarkers.map((mark) => tail.indexOf(mark)).filter((index) => index >= 0);
+  if (stopAt.length) {
+    tail = tail.slice(0, Math.min(...stopAt));
+  }
+  return tail.trim();
+}
+
+function briefItems(value, limit = 4) {
+  const text = cleanStrategyText(value).replace(/^[，、\s]+|[，、\s]+$/g, '');
+  if (!text) {
+    return '';
+  }
+  const items = text.split(/[、，,\s]+/).map((item) => item.trim()).filter(Boolean);
+  if (items.length <= limit) {
+    return items.length ? items.join('、') : text;
+  }
+  return `${items.slice(0, limit).join('、')}等${items.length}张`;
+}
+
+function strategyHeadline(plan, targets, fallback) {
+  const targetItems = Array.isArray(targets) ? targets : [];
+  const mainTarget = targetItems.find((item) => String(item || '').startsWith('主线：'));
+  return firstSentence(mainTarget || plan) || fallback;
+}
+
+function strategyBrief(plan, detail, targets, cautions, fallback) {
+  const targetItems = Array.isArray(targets) ? targets : [];
+  const cautionItems = Array.isArray(cautions) ? cautions : [];
+  const keep = briefItems(firstPrefixedValue(targetItems, '保留：') || extractAfter(plan, ['保留'], ['，先', '；', '。']), 4);
+  const discard = briefItems(
+    firstPrefixedValue(cautionItems, '优先清理：') || extractAfter(`${plan}。${detail}`, ['先打', '先清', '打：'], ['，', '；', '。']),
+    4,
+  );
+  const lines = [];
+  if (keep) {
+    lines.push(`留：${keep}`);
+  }
+  if (discard) {
+    lines.push(`打：${discard}`);
+  }
+  return lines.join('\n') || firstSentence(detail) || fallback;
 }
 
 function percent(value) {
@@ -174,12 +280,33 @@ function renderDashboard(data = {}) {
   const decision = data.last_decision || data;
   const detail = decision.detail || state.opening_plan || '';
   const live = data.live || {};
-  const source = decision.analysis_source || decision.engine_meta?.analysis_source || 'heuristic';
+  const source = decision.analysis_source || decision.engine_meta?.analysis_source || state.plan_source || 'heuristic';
+  const localPlan = state.local_plan || (source === 'llm' ? state.opening_plan : state.current_plan) || decision.suggestion;
+  const localDetail = state.local_detail || (source === 'llm' ? '' : detail);
+  const localTargets = listValues(state.local_targets).length ? listValues(state.local_targets) : listValues(state.target_shapes);
+  const localCautions = listValues(state.local_cautions).length ? listValues(state.local_cautions) : listValues(state.caution_points);
+  const aiPlanText = state.ai_plan || (source === 'llm' ? state.current_plan || decision.suggestion : '');
+  const aiDetailText = state.ai_detail || (source === 'llm' ? detail : '');
+  const aiTargets = listValues(state.ai_targets);
+  const aiCautions = listValues(state.ai_cautions);
+  const llmStatus = String(state.llm_status || '').toLowerCase();
+  const llmError = String(state.llm_error || '').trim();
+  const aiPending = Number(data.llm_pending || 0) > 0 || llmStatus === 'pending';
+  const aiFailed = ['timeout', 'error', 'empty'].includes(llmStatus);
 
-  mainPlan.textContent = compact(state.current_plan || state.opening_plan || decision.suggestion, '等待手牌');
-  planDetail.textContent = compact(detail, '还没有稳定手牌输入');
-  analysisSource.textContent = source === 'llm' ? 'AI' : 'Heuristic';
-  analysisSource.classList.toggle('is-ai', source === 'llm');
+  mainPlan.textContent = strategyHeadline(localPlan, localTargets, '等待手牌');
+  planDetail.textContent = strategyBrief(localPlan, localDetail, localTargets, localCautions, '还没有稳定手牌输入');
+  analysisSource.textContent = 'Heuristic';
+  analysisSource.classList.remove('is-ai');
+  aiPlan.textContent = aiPlanText
+    ? strategyHeadline(aiPlanText, aiTargets, llmStatus === 'ready_previous_hand' ? 'AI参考' : 'AI策略')
+    : compact('', aiPending ? 'AI 思考中' : (aiFailed ? 'AI 未返回' : '等待 AI'));
+  aiPlanDetail.textContent = compact(
+    aiPlanText ? strategyBrief(aiPlanText, aiDetailText, aiTargets, aiCautions, 'AI 已更新策略') : '',
+    aiPending ? '模型请求已发出，返回后会更新这里' : (aiFailed ? llmError || '模型没有返回可用策略' : 'AI 只在开局/阶段更新后异步生成'),
+  );
+  aiSource.textContent = llmStatus === 'ready_previous_hand' ? 'AI参考' : 'AI';
+  aiSource.classList.toggle('is-ai', Boolean(aiPlanText));
   biasValue.textContent = compact(state.attack_defense_bias, 'neutral');
   lastReason.textContent = compact(state.last_update_reason || decision.decision_type, '-');
   confidenceValue.textContent = percent(state.last_hand_confidence);
@@ -237,6 +364,13 @@ function keywordValues() {
     .filter(Boolean);
 }
 
+function tileValues(text) {
+  return String(text || '')
+    .split(/[,，、\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 async function resetRound() {
   setStatus('重置中');
   const data = await callPlugin('mahjong_coach_reset_round', { round_id: `round-${Date.now()}` }, 15000);
@@ -255,6 +389,9 @@ async function analyzeFrame() {
     observed_buttons: observedButtons,
     self_turn_index: Number(turnInput.value || 0),
     force_checkpoint: Boolean(forceCheckpointInput.checked),
+    round_wind: analysisRoundWindInput.value.trim(),
+    seat_wind: analysisSeatWindInput.value.trim(),
+    dora_tiles: tileValues(analysisDoraTilesInput.value),
   }, 30000);
   renderDashboard(data);
   setStatus(data.summary || 'ready');
@@ -266,6 +403,9 @@ async function startLive() {
     keywords: keywordValues(),
     interval_ms: Number(intervalInput.value || 1200),
     overlay: Boolean(overlayInput.checked),
+    round_wind: roundWindInput.value.trim(),
+    seat_wind: seatWindInput.value.trim(),
+    dora_tiles: tileValues(doraTilesInput.value),
   }, 15000);
   renderLive(data.live || {});
   await refreshStatus();

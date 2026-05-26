@@ -83,6 +83,26 @@ def test_action_button_template_scan_detects_pon(tmp_path: Path) -> None:
     assert meta["templates"]["available"] is True
 
 
+def test_action_button_template_scan_detects_riichi(tmp_path: Path) -> None:
+    template_path = (
+        Path(__file__).resolve().parents[1]
+        / "perception"
+        / "templates"
+        / "1440x900"
+        / "riichi.png"
+    )
+    template = Image.open(template_path).convert("RGB")
+    image = Image.new("RGB", (1440, 900), (20, 30, 40))
+    image.paste(template, (640, 560))
+    frame_path = tmp_path / "riichi_frame.png"
+    image.save(frame_path)
+
+    buttons, meta = detect_action_buttons_fast(frame_path)
+
+    assert "riichi" in buttons
+    assert meta["templates"]["available"] is True
+
+
 def test_action_detector_rejects_conflicting_button_sets(tmp_path: Path, monkeypatch) -> None:
     image = Image.new("RGB", (1920, 1080), (40, 120, 210))
     frame_path = tmp_path / "desktop_like.png"

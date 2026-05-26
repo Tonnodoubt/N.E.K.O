@@ -129,4 +129,21 @@ async def test_build_round_plan_llm_timeout_returns_none(monkeypatch: pytest.Mon
     monkeypatch.setattr(config_manager_module, "get_config_manager", lambda: FakeConfig())
     monkeypatch.setattr(llm_coach, "create_chat_llm", lambda **_kwargs: FakeLLM())
 
-    assert await build_round_plan_llm(["1m", "2m", "3m"], timeout=0.01) is None
+    diagnostics: dict[str, str] = {}
+    assert await build_round_plan_llm(["1m", "2m", "3m"], timeout=0.01, diagnostics=diagnostics) is None
+    assert diagnostics == {"status": "timeout", "error": "模型请求超时"}
+
+
+@pytest.mark.asyncio
+async def test_build_round_plan_llm_reports_missing_summary_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeConfig:
+        def get_model_api_config(self, _tier: str) -> dict[str, str]:
+            return {"model": "", "base_url": "", "api_key": ""}
+
+    import utils.config_manager as config_manager_module
+
+    monkeypatch.setattr(config_manager_module, "get_config_manager", lambda: FakeConfig())
+
+    diagnostics: dict[str, str] = {}
+    assert await build_round_plan_llm(["1m", "2m", "3m"], timeout=0.01, diagnostics=diagnostics) is None
+    assert diagnostics == {"status": "error", "error": "summary 模型或 base_url 未配置"}

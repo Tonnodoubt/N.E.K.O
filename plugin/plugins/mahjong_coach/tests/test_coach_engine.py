@@ -9,7 +9,7 @@ from plugin.plugins.mahjong_coach import MahjongCoachPlugin
 from plugin.plugins.mahjong_coach.coach import RoundCoachEngine, build_round_plan
 from plugin.plugins.mahjong_coach.decision_coordinator import DecisionCoordinator
 from plugin.plugins.mahjong_coach.models import LiveSessionState, MahjongCoachConfig
-from plugin.plugins.mahjong_coach.overlay import overlay_text_from_payload
+from plugin.plugins.mahjong_coach.overlay import _overlay_geometry, overlay_text_from_payload
 from plugin.plugins.mahjong_coach.perception.fast_hand_path import FastHandResult
 from plugin.plugins.mahjong_coach.perception.river_state import RiverStateResult
 from plugin.plugins.mahjong_coach.tile_labels import hand_signature
@@ -149,6 +149,40 @@ def test_riichi_window_uses_local_fast_path_without_river(monkeypatch: pytest.Mo
     assert "不等待 LLM" in decision.suggestion
 
 
+def test_riichi_window_recommends_good_wait() -> None:
+    engine = RoundCoachEngine(MahjongCoachConfig())
+    hand = ["1m", "2m", "3m", "4p", "5p", "6p", "2s", "3s", "4s", "5s", "6s", "7s", "1z", "1z"]
+
+    decision = engine._critical_decision(
+        ["riichi"],
+        {"source": "test"},
+        0.0,
+        hand_result=FastHandResult(ok=True, hand_tiles=hand, confidence=0.91, reason="test_hand"),
+    )
+
+    assert decision.decision_type == "riichi_window"
+    assert "推荐立直" in decision.suggestion
+    assert "听5索、8索" in decision.suggestion
+    assert "好形" in decision.suggestion
+
+
+def test_riichi_window_warns_on_poor_wait() -> None:
+    engine = RoundCoachEngine(MahjongCoachConfig())
+    hand = ["1m", "1m", "1m", "2p", "3p", "4p", "5p", "6p", "7p", "2s", "3s", "4s", "7s", "9s"]
+
+    decision = engine._critical_decision(
+        ["riichi"],
+        {"source": "test"},
+        0.0,
+        hand_result=FastHandResult(ok=True, hand_tiles=hand, confidence=0.91, reason="test_hand"),
+    )
+
+    assert decision.decision_type == "riichi_window"
+    assert "谨慎立直" in decision.suggestion
+    assert "听8索" in decision.suggestion
+    assert "愚形" in decision.suggestion
+
+
 def test_round_plan_gives_concrete_keep_and_cleanup_guidance() -> None:
     plan = build_round_plan(["2m", "7m", "0p", "8p", "1s", "2s", "2s", "3s", "3s", "4s", "3z", "4z", "5z"])
 
@@ -156,7 +190,7 @@ def test_round_plan_gives_concrete_keep_and_cleanup_guidance() -> None:
     assert any("保留" in item and "2索" in item for item in plan["targets"])
     assert any("路线选择" in item and "打" in item for item in plan["cautions"])
     assert any("优先清理" in item and "西" in item for item in plan["cautions"])
-    assert "吃碰杠" in plan["cautions"][-1]
+    assert "鸣牌" in plan["cautions"][-1]
 
 
 def test_round_plan_names_honor_cleanup_route() -> None:
@@ -164,6 +198,69 @@ def test_round_plan_names_honor_cleanup_route() -> None:
 
     assert any("路线选择" in item and "孤字先打" in item for item in plan["cautions"])
     assert any(name in " ".join(plan["cautions"]) for name in ["东", "南", "白", "发", "中"])
+
+
+def test_round_plan_keeps_dora_out_of_discard_priority() -> None:
+    plan = build_round_plan(
+        ["2m", "7m", "0p", "8p", "1s", "2s", "2s", "3s", "3s", "4s", "3z", "4z", "5z"],
+        MahjongCoachConfig(dora_tiles=["7m"]),
+    )
+
+    assert "7m" not in plan["discard_priority"]
+    assert any("宝牌/红5" in item and "7万" in item for item in plan["targets"])
+
+
+def test_call_window_opens_value_honor_pair() -> None:
+    engine = RoundCoachEngine(MahjongCoachConfig())
+    engine.state.opening_emitted = True
+    hand = ["1m", "2m", "3m", "4p", "5p", "6p", "2s", "3s", "4s", "5s", "6s", "5z", "5z", "7m"]
+
+    decision = engine._critical_decision(
+        ["pon"],
+        {"source": "test"},
+        0.0,
+        hand_result=FastHandResult(ok=True, hand_tiles=hand, confidence=0.91, reason="test_hand"),
+    )
+
+    assert decision.decision_type == "call_window"
+    assert "役牌对子白" in decision.suggestion
+    assert "可以开" in decision.suggestion
+
+
+def test_round_plan_includes_local_shanten_and_ukeire() -> None:
+    plan = build_round_plan(["1m", "2m", "3m", "4p", "5p", "6p", "2s", "3s", "4s", "5s", "6s", "8s", "1z", "5z"])
+
+    efficiency = plan["efficiency"]
+    best_discard = efficiency["discard_options"][0]
+    assert efficiency["best_path"] == "standard"
+    assert efficiency["current_shanten"] == 1
+    assert best_discard["tile"] in {"1z", "5z"}
+    assert best_discard["effective_types"] > 0
+    assert best_discard["effective_count"] > 0
+    assert any("牌效" in item and "有效" in item for item in plan["cautions"])
+    assert plan["discard_priority"][0] == best_discard["tile"]
+
+
+def test_round_plan_subtracts_visible_river_from_ukeire() -> None:
+    hand = ["1m", "2m", "3m", "4p", "5p", "6p", "2s", "3s", "4s", "5s", "6s", "8s", "1z", "5z"]
+    plain = build_round_plan(hand)
+    adjusted = build_round_plan(hand, visible_tiles=["1s", "2s", "4s", "5s", "7s", "8s"])
+
+    plain_best = plain["efficiency"]["discard_options"][0]
+    adjusted_best = adjusted["efficiency"]["discard_options"][0]
+    assert plain_best["tile"] == adjusted_best["tile"]
+    assert adjusted_best["effective_count"] < plain_best["effective_count"]
+    assert adjusted["efficiency"]["visible_tile_count"] == 6
+    assert any("已扣可见牌" in item for item in adjusted["cautions"])
+
+
+def test_round_plan_prefers_seven_pairs_when_pairs_are_dense() -> None:
+    plan = build_round_plan(["1m", "1m", "2p", "2p", "3s", "3s", "4m", "4m", "5p", "5p", "6s", "7s", "8s", "9s"])
+
+    assert "七对子" in plan["summary"]
+    assert plan["efficiency"]["best_path"] == "seven_pairs"
+    assert any("七对子胚子" in item for item in plan["targets"])
+    assert any(item == "保留：1万、4万、2筒、5筒、3索" for item in plan["targets"])
 
 
 def test_observe_explains_missing_stable_hand(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -232,6 +329,33 @@ def test_riichi_defense_uses_recognized_riichi_player_river(monkeypatch: pytest.
     assert "7筒" in decision.suggestion
     assert "2索" in decision.suggestion
     assert decision.coach_state["last_visible_discards"] == ["7p", "2s"]
+
+
+def test_checkpoint_plan_uses_recognized_river_for_ukeire(monkeypatch: pytest.MonkeyPatch) -> None:
+    hand = ["1m", "2m", "3m", "4p", "5p", "6p", "2s", "3s", "4s", "5s", "6s", "8s", "1z", "5z"]
+    engine = RoundCoachEngine(MahjongCoachConfig())
+    engine.state.opening_emitted = True
+    monkeypatch.setattr(
+        engine,
+        "_detect_hand",
+        lambda _path: FastHandResult(ok=True, hand_tiles=hand, confidence=0.91, reason="test_hand"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "_detect_river",
+        lambda _path: RiverStateResult(
+            ok=True,
+            visible_tiles=["1s", "2s", "4s", "5s", "7s", "8s"],
+            confidence=0.95,
+            reason="test_river",
+        ),
+    )
+
+    decision = engine.analyze_frame("frame.png", self_turn_index=3)
+
+    assert decision.decision_type == "coach_checkpoint"
+    assert "已扣可见牌" in decision.detail
+    assert any("已扣可见牌" in item for item in decision.coach_state["caution_points"])
 
 
 def test_live_config_from_payload() -> None:
@@ -310,8 +434,33 @@ def test_overlay_text_prioritizes_action_required() -> None:
         }
     )
 
-    assert "吃碰杠" in text
+    assert "本地鸣牌" in text
     assert "默认跳过" in text
+
+
+def test_overlay_text_shows_riichi_fast_judgement() -> None:
+    text = overlay_text_from_payload(
+        {
+            "last_decision": {
+                "decision_type": "riichi_window",
+                "action_required": True,
+                "summary": "立直窗口",
+                "suggestion": "推荐立直：打7索听5索、8索，有效2种8枚；好形/枚数够；本地快判，不等待 LLM。",
+            },
+            "round_state": {"current_plan": "Play inside hand"},
+        }
+    )
+
+    assert "本地立直" in text
+    assert "推荐立直：打7索听5索、8索" in text
+    assert "好形/枚数够" in text
+
+
+def test_overlay_geometry_defaults_near_self_hand() -> None:
+    x, y = _overlay_geometry(1920, 1080, 630, 138)
+
+    assert 600 <= x <= 700
+    assert 680 <= y <= 780
 
 
 def test_overlay_text_uses_strategy_when_no_action() -> None:
@@ -319,7 +468,7 @@ def test_overlay_text_uses_strategy_when_no_action() -> None:
         {
             "last_decision": {"decision_type": "observe"},
             "round_state": {
-                "current_plan": "Play a fast inside-hand route",
+                "current_plan": "主线：围绕索子 122334 推进",
                 "attack_defense_bias": "attack",
                 "last_update_reason": "opening_plan",
                 "target_shapes": ["主线：围绕索子 122334 推进"],
@@ -328,10 +477,32 @@ def test_overlay_text_uses_strategy_when_no_action() -> None:
         }
     )
 
-    assert "主线继续" in text
-    assert "围绕索子 122334 推进" in text
-    assert "主线打西；保守打7万" in text
-    assert "吃碰杠：役牌碰/进听/加速主线才开" in text
+    assert "本地" in text
+    assert "AI" in text
+    assert "方向：围绕索子 122334 推进" in text
+    assert "打：2万、7万、西等4张" in text
+    assert "…" not in text
+
+
+def test_overlay_text_marks_ai_enhanced_decision() -> None:
+    text = overlay_text_from_payload(
+        {
+            "last_decision": {"decision_type": "observe"},
+            "round_state": {
+                "plan_source": "llm",
+                "local_plan": "主线：牌效推进，先打东。",
+                "ai_plan": "主线：筒子占比很高，保留同色块，先清西。",
+                "ai_cautions": ["优先清理：西"],
+            },
+        }
+    )
+
+    assert "本地" in text
+    assert "AI" in text
+    assert "筒子多" in text
+    assert "留：同色" in text
+    assert "打：西" in text
+    assert "…" not in text
 
 
 def test_overlay_text_shows_round_idle_without_old_plan() -> None:
@@ -417,14 +588,23 @@ async def test_manual_llm_enhancement_updates_opening_state(monkeypatch: pytest.
     enhanced = await plugin._enhance_decision_with_llm(decision)
 
     assert enhanced.analysis_source == "llm"
+    assert plugin._engine.state.plan_source == "llm"
     assert plugin._engine.state.opening_plan == "AI主线：索子速度"
     assert plugin._engine.state.current_plan == "AI主线：索子速度"
     assert plugin._engine.state.target_shapes == ["保留：234索"]
+    assert plugin._engine.state.local_plan == "启发式主线"
+    assert plugin._engine.state.local_detail == "旧细节"
+    assert plugin._engine.state.local_targets == []
+    assert plugin._engine.state.local_cautions == []
+    assert plugin._engine.state.ai_plan == "AI主线：索子速度"
+    assert plugin._engine.state.ai_detail == "继续保留连续索子。"
+    assert plugin._engine.state.ai_targets == ["保留：234索"]
+    assert plugin._engine.state.ai_cautions == ["吃碰杠：默认跳过"]
     assert seen_kwargs["previous_plan"] == ""
     assert seen_kwargs["turn_number"] is None
 
 
-def test_stale_llm_result_does_not_update_state() -> None:
+def test_stale_llm_result_from_previous_round_does_not_update_state() -> None:
     from plugin.plugins.mahjong_coach.models import CoachDecision
 
     plugin = MahjongCoachPlugin.__new__(MahjongCoachPlugin)
@@ -436,7 +616,7 @@ def test_stale_llm_result_does_not_update_state() -> None:
     plugin._last_decision = {}
     decision = CoachDecision(decision_type="coach_checkpoint", suggestion="启发式", hand_tiles=list(HAND))
     token = plugin._decision_coordinator.build_enhancement_token(decision, plugin._engine.state, plugin._engine.state.last_hand_signature)
-    plugin._engine.state.last_hand_signature = "new-hand"
+    plugin._engine.state.round_id = "next-round"
 
     result = plugin._apply_llm_enhancement(
         decision,
@@ -447,3 +627,79 @@ def test_stale_llm_result_does_not_update_state() -> None:
 
     assert result is None
     assert plugin._engine.state.current_plan == ""
+
+
+def test_live_llm_result_updates_ai_box_after_hand_signature_drift() -> None:
+    from plugin.plugins.mahjong_coach.models import CoachDecision
+
+    plugin = MahjongCoachPlugin.__new__(MahjongCoachPlugin)
+    plugin._cfg = MahjongCoachConfig()
+    plugin._engine = RoundCoachEngine(plugin._cfg)
+    plugin._engine.state.last_hand_signature = hand_signature(HAND)
+    plugin._engine.state.update_count = 1
+    plugin._engine.state.current_plan = "本地新手牌"
+    plugin._engine.state.local_plan = "本地新手牌"
+    plugin._decision_coordinator = DecisionCoordinator()
+    plugin._last_decision = {}
+    decision = CoachDecision(decision_type="coach_checkpoint", suggestion="本地旧手牌", detail="旧细节", hand_tiles=list(HAND))
+    token = plugin._decision_coordinator.build_enhancement_token(decision, plugin._engine.state, plugin._engine.state.last_hand_signature)
+    plugin._engine.state.last_hand_signature = "new-hand"
+
+    result = plugin._apply_llm_enhancement(
+        decision,
+        token,
+        {"summary": "本地旧手牌", "detail": "旧细节", "bias": "neutral", "targets": [], "cautions": [], "discard_priority": []},
+        {
+            "summary": "AI旧手牌参考",
+            "detail": "手牌变化后的迟到模型结果只进 AI 框。",
+            "bias": "attack",
+            "targets": ["AI目标"],
+            "cautions": ["AI风险"],
+            "discard_priority": [],
+        },
+    )
+
+    assert result is not None
+    assert plugin._engine.state.current_plan == "本地新手牌"
+    assert plugin._engine.state.plan_source == "heuristic"
+    assert plugin._engine.state.llm_status == "ready_previous_hand"
+    assert plugin._engine.state.ai_plan == "AI旧手牌参考"
+
+
+def test_live_llm_result_updates_ai_box_after_local_checkpoint_drift() -> None:
+    from plugin.plugins.mahjong_coach.models import CoachDecision
+
+    plugin = MahjongCoachPlugin.__new__(MahjongCoachPlugin)
+    plugin._cfg = MahjongCoachConfig()
+    plugin._engine = RoundCoachEngine(plugin._cfg)
+    plugin._engine.state.last_hand_signature = hand_signature(HAND)
+    plugin._engine.state.update_count = 1
+    plugin._engine.state.current_plan = "本地新主线"
+    plugin._engine.state.local_plan = "本地新主线"
+    plugin._decision_coordinator = DecisionCoordinator()
+    plugin._last_decision = {}
+    decision = CoachDecision(decision_type="coach_checkpoint", suggestion="本地旧主线", detail="旧细节", hand_tiles=list(HAND))
+    token = plugin._decision_coordinator.build_enhancement_token(decision, plugin._engine.state, plugin._engine.state.last_hand_signature)
+    plugin._engine.state.update_count = 2
+
+    result = plugin._apply_llm_enhancement(
+        decision,
+        token,
+        {"summary": "本地旧主线", "detail": "旧细节", "bias": "neutral", "targets": [], "cautions": [], "discard_priority": []},
+        {
+            "summary": "AI延迟建议",
+            "detail": "同一手牌的迟到模型结果仍可进入 AI 框。",
+            "bias": "attack",
+            "targets": ["AI目标"],
+            "cautions": ["AI风险"],
+            "discard_priority": [],
+        },
+    )
+
+    assert result is not None
+    assert plugin._engine.state.current_plan == "本地新主线"
+    assert plugin._engine.state.plan_source == "heuristic"
+    assert plugin._engine.state.ai_plan == "AI延迟建议"
+    assert plugin._engine.state.ai_detail == "同一手牌的迟到模型结果仍可进入 AI 框。"
+    assert plugin._engine.state.ai_targets == ["AI目标"]
+    assert plugin._engine.state.ai_cautions == ["AI风险"]

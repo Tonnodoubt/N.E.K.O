@@ -21,6 +21,9 @@ class MahjongCoachConfig:
     live_checkpoint_interval_seconds: int = 20
     live_overlay_enabled: bool = True
     live_save_format: str = "jpg"
+    round_wind: str = "1z"
+    seat_wind: str = ""
+    dora_tiles: list[str] = field(default_factory=list)
     llm_enabled: bool = True
     llm_timeout: float = 8.0
     llm_opening_enabled: bool = True
@@ -32,6 +35,7 @@ class MahjongCoachConfig:
         decision = payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
         perception = payload.get("perception") if isinstance(payload.get("perception"), dict) else {}
         live = payload.get("live") if isinstance(payload.get("live"), dict) else {}
+        round_context = payload.get("round") if isinstance(payload.get("round"), dict) else {}
         llm = payload.get("llm") if isinstance(payload.get("llm"), dict) else {}
         return cls(
             live_advice_mode=str(decision.get("live_advice_mode") or "coach"),
@@ -49,6 +53,9 @@ class MahjongCoachConfig:
             live_checkpoint_interval_seconds=max(5, int(live.get("checkpoint_interval_seconds") or 20)),
             live_overlay_enabled=bool(live.get("overlay_enabled", True)),
             live_save_format=str(live.get("save_format") or "jpg"),
+            round_wind=str(round_context.get("round_wind") or "1z"),
+            seat_wind=str(round_context.get("seat_wind") or ""),
+            dora_tiles=_string_list(round_context.get("dora_tiles"), []),
             llm_enabled=bool(llm.get("enabled", True)),
             llm_timeout=max(1.0, float(llm.get("timeout") or 8.0)),
             llm_opening_enabled=bool(llm.get("opening_enabled", True)),
@@ -66,6 +73,17 @@ class RoundCoachState:
     opening_emitted: bool = False
     opening_plan: str = ""
     current_plan: str = ""
+    plan_source: str = "heuristic"
+    local_plan: str = ""
+    local_detail: str = ""
+    local_targets: list[str] = field(default_factory=list)
+    local_cautions: list[str] = field(default_factory=list)
+    ai_plan: str = ""
+    ai_detail: str = ""
+    ai_targets: list[str] = field(default_factory=list)
+    ai_cautions: list[str] = field(default_factory=list)
+    llm_status: str = "idle"
+    llm_error: str = ""
     attack_defense_bias: str = "neutral"
     target_shapes: list[str] = field(default_factory=list)
     caution_points: list[str] = field(default_factory=list)
