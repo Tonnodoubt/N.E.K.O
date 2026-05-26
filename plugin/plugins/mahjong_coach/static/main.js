@@ -281,11 +281,11 @@ function renderDashboard(data = {}) {
   const detail = decision.detail || state.opening_plan || '';
   const live = data.live || {};
   const source = decision.analysis_source || decision.engine_meta?.analysis_source || state.plan_source || 'heuristic';
-  const localPlan = state.local_plan || (source === 'llm' ? state.opening_plan : state.current_plan) || decision.suggestion;
+  const localPlan = state.local_direction || state.local_plan || (source === 'llm' ? state.opening_plan : state.current_plan) || decision.suggestion;
   const localDetail = state.local_detail || (source === 'llm' ? '' : detail);
   const localTargets = listValues(state.local_targets).length ? listValues(state.local_targets) : listValues(state.target_shapes);
   const localCautions = listValues(state.local_cautions).length ? listValues(state.local_cautions) : listValues(state.caution_points);
-  const aiPlanText = state.ai_plan || (source === 'llm' ? state.current_plan || decision.suggestion : '');
+  const aiPlanText = state.ai_direction || state.ai_plan || (source === 'llm' ? state.current_plan || decision.suggestion : '');
   const aiDetailText = state.ai_detail || (source === 'llm' ? detail : '');
   const aiTargets = listValues(state.ai_targets);
   const aiCautions = listValues(state.ai_cautions);
@@ -307,7 +307,9 @@ function renderDashboard(data = {}) {
   );
   aiSource.textContent = llmStatus === 'ready_previous_hand' ? 'AI参考' : 'AI';
   aiSource.classList.toggle('is-ai', Boolean(aiPlanText));
-  biasValue.textContent = compact(state.attack_defense_bias, 'neutral');
+  const style = state.play_style || 'riichi';
+  const styleLabel = style === 'fast' ? '快攻' : '立直';
+  biasValue.textContent = `${styleLabel} / ${compact(state.attack_defense_bias, 'neutral')}`;
   lastReason.textContent = compact(state.last_update_reason || decision.decision_type, '-');
   confidenceValue.textContent = percent(state.last_hand_confidence);
   updateCount.textContent = `${Number(state.update_count || 0)} updates`;

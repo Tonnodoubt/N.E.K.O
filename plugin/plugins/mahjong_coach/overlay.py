@@ -1,35 +1,104 @@
 from __future__ import annotations
 
+import json
+import os
 import queue
 import threading
+from pathlib import Path
 from typing import Any
 
 
 OVERLAY_BLOCK_SEPARATOR = "\n---MAHJONG_COACH_OVERLAY_BLOCK---\n"
 
-# N.E.K.O design tokens (dark mode)
-_BG = "#0f172a"
-_BG_CARD = "#1a2236"
-_ACCENT = "#409EFF"
-_ACCENT_DIM = "#2a5a9e"
-_TEXT = "#e5e7eb"
-_TEXT_MUTED = "#94a3b8"
-_TEXT_ACCENT = "#7db8f5"
-_BORDER = "#2a3a54"
-_BADGE_LOCAL_BG = "#1e3a5f"
-_BADGE_AI_BG = "#2d1f4e"
-_BADGE_AI_FG = "#c4a8ff"
-_HEADER_BG = "#2f68df"
+# N.E.K.O design system (light mode)
+_BG = "#ffffff"
+_CARD = "#f5f5f5"
+_BORDER = "#d0d0d0"
+_BORDER_FOCUS = "#2a7bc4"
+_ACCENT = "#44b7fe"
+_BTN_PRIMARY = "#2a7bc4"
+_BTN_HOVER = "#3590d9"
+_SUCCESS = "#16a34a"
+_WARNING = "#d97706"
+_DANGER = "#dc2626"
+_PURPLE = "#7c3aed"
+_TEXT = "#1e1e1e"
+_TEXT_MUTED = "#666666"
 _FONT = "Segoe UI"
-_FONT_MONO = "Consolas"
-_TRANSPARENT = "#010203"
+_FONT_SIZE = 14
+_HEADER_H = 3
+
+# Badge colors
+_BADGE_LOCAL_BG = "#2a7bc4"
+_BADGE_LOCAL_FG = "#ffffff"
+_BADGE_AI_BG = "#6366f1"
+_BADGE_AI_FG = "#ffffff"
+
+# Action badge overrides
+_ACTION_WIN = ("和牌", _SUCCESS, "#ffffff")
+_ACTION_RIICHI = ("立直", _PURPLE, "#ffffff")
+_ACTION_CALL = ("鸣牌", _WARNING, "#ffffff")
+_ACTION_DEFENSE = ("防守", _DANGER, "#ffffff")
+_ACTION_GENERIC = ("操作", _BTN_PRIMARY, "#ffffff")
+
+# Resize bounds
+_MIN_WIDTH = 320
+_MIN_HEIGHT = 80
+_MAX_WIDTH = 1200
+_MAX_HEIGHT = 400
+
+# Default size
+_DEFAULT_WIDTH = 560
+_DEFAULT_HEIGHT = 140
+
+# Prefs file
+_PREFS_FILENAME = "overlay_prefs.json"
+
+
+def _prefs_path() -> Path:
+    base = os.environ.get("LOCALAPPDATA", "")
+    if base:
+        return Path(base) / "N.E.K.O" / "plugins" / "mahjong_coach" / "data" / _PREFS_FILENAME
+    return Path(_PREFS_FILENAME)
+
+
+def _load_prefs() -> dict[str, int]:
+    try:
+        data = json.loads(_prefs_path().read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            w = int(data.get("width", _DEFAULT_WIDTH))
+            h = int(data.get("height", _DEFAULT_HEIGHT))
+            fs = int(data.get("font_size", _FONT_SIZE))
+            return {
+                "width": max(_MIN_WIDTH, min(_MAX_WIDTH, w)),
+                "height": max(_MIN_HEIGHT, min(_MAX_HEIGHT, h)),
+                "font_size": max(10, min(28, fs)),
+            }
+    except Exception:
+        pass
+    return {"width": _DEFAULT_WIDTH, "height": _DEFAULT_HEIGHT, "font_size": _FONT_SIZE}
+
+
+def _save_prefs(width: int, height: int, font_size: int) -> None:
+    try:
+        path = _prefs_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"width": width, "height": height, "font_size": font_size}), encoding="utf-8")
+    except Exception:
+        pass
 
 
 class CoachOverlayController:
-    def __init__(self) -> None:
-        self._queue: queue.Queue[str | None] = queue.Queue()
+    def __init__(
+        self,
+        on_start: Callable[[str], None] | None = None,
+        on_stop: Callable[[], None] | None = None,
+    ) -> None:
+        self._queue: queue.Queue[Any] = queue.Queue()
         self._thread: threading.Thread | None = None
         self.last_error = ""
+        self._on_start = on_start
+        self._on_stop = on_stop
 
     def start(self) -> bool:
         if self._thread is not None and self._thread.is_alive():
@@ -43,6 +112,16 @@ class CoachOverlayController:
         if self._thread is None or not self._thread.is_alive():
             return
         self._queue.put(str(text or "").strip() or "Mahjong Coach")
+
+    def show_config(self) -> None:
+        if self._thread is None or not self._thread.is_alive():
+            return
+        self._queue.put({"cmd": "show_config"})
+
+    def show_strategy(self) -> None:
+        if self._thread is None or not self._thread.is_alive():
+            return
+        self._queue.put({"cmd": "show_strategy"})
 
     def stop(self) -> None:
         if self._thread is None:
@@ -62,138 +141,280 @@ class CoachOverlayController:
             root.title("Mahjong Coach Overlay")
             root.overrideredirect(True)
             root.attributes("-topmost", True)
-            root.attributes("-alpha", 0.92)
-            root.configure(bg=_TRANSPARENT)
-            try:
-                root.attributes("-transparentcolor", _TRANSPARENT)
-            except Exception:
-                pass
+            root.configure(bg=_BG)
 
-            # --- shell (rounded feel via border padding) ---
+            # Border layer
             shell = tk.Frame(root, bg=_BORDER, padx=1, pady=1)
             shell.pack(fill="both", expand=True)
 
-            inner = tk.Frame(shell, bg=_BG, padx=0, pady=0)
+            inner = tk.Frame(shell, bg=_BG)
             inner.pack(fill="both", expand=True)
 
-            # --- header bar (blue gradient accent) ---
-            header = tk.Frame(inner, bg=_HEADER_BG, height=6)
+            # Header accent line
+            header = tk.Canvas(inner, height=_HEADER_H, bg=_BG, highlightthickness=0, bd=0)
             header.pack(fill="x", side="top")
-            header.pack_propagate(False)
 
-            # --- content row ---
-            content = tk.Frame(inner, bg=_BG, padx=8, pady=6)
-            content.pack(fill="both", expand=True)
+            def _draw_accent(_event: tk.Event | None = None) -> None:
+                header.delete("all")
+                w = header.winfo_width()
+                if w < 2:
+                    return
+                r1, g1, b1 = 0x44, 0xB7, 0xFE
+                r2, g2, b2 = 0x63, 0x66, 0xF1
+                steps = min(w, 120)
+                for i in range(steps):
+                    ratio = i / max(steps - 1, 1)
+                    r = int(r1 + (r2 - r1) * ratio)
+                    g = int(g1 + (g2 - g1) * ratio)
+                    b = int(b1 + (b2 - b1) * ratio)
+                    x0 = int(i * w / steps)
+                    x1 = int((i + 1) * w / steps)
+                    header.create_rectangle(x0, 0, x1, _HEADER_H, fill=f"#{r:02x}{g:02x}{b:02x}", outline="")
 
-            # --- panel builder ---
-            def build_panel(badge_text: str, badge_bg: str, badge_fg: str) -> tuple[tk.Frame, tk.Label, tk.Label]:
-                panel = tk.Frame(content, bg=_BG_CARD, padx=10, pady=8)
+            header.bind("<Configure>", _draw_accent)
+
+            # --- close button (top-right) ---
+            close_btn = tk.Label(
+                inner, text="✕", bg=_BG, fg=_TEXT_MUTED,
+                font=(_FONT, 10), cursor="hand2",
+            )
+            close_btn.place(relx=1.0, x=-8, y=4, anchor="ne")
+
+            def _on_close_click(_event: tk.Event) -> None:
+                try:
+                    if self._on_stop is not None:
+                        self._on_stop()
+                except Exception as exc:
+                    self.last_error = f"close click failed: {exc}"
+
+            close_btn.bind("<Button-1>", _on_close_click)
+
+            # Content + grip row
+            body = tk.Frame(inner, bg=_BG)
+            body.pack(fill="both", expand=True)
+            close_btn.lift()
+
+            content = tk.Frame(body, bg=_BG, padx=10, pady=6)
+            content.pack(side="top", fill="both", expand=True)
+
+            # Resize grip
+            grip = tk.Label(
+                body, text="⌟", bg=_BG, fg=_BORDER_FOCUS,
+                font=(_FONT, 9), anchor="se", padx=4, pady=1,
+            )
+            grip.pack(side="bottom", fill="x")
+
+            # --- layout state ---
+            prefs = _load_prefs()
+            layout = {"width": prefs["width"], "height": prefs["height"], "font_size": prefs["font_size"]}
+            drag_state = {"offset_x": 0, "offset_y": 0, "x": 0, "y": 0, "manual": False}
+
+            # ---------- Config mode UI ----------
+            config_frame = tk.Frame(content, bg=_BG)
+
+            btn_row = tk.Frame(config_frame, bg=_BG)
+            btn_row.pack(pady=(16, 8))
+
+            def _make_btn(parent, text, style):
+                btn = tk.Label(
+                    parent, text=text,
+                    bg=_BTN_PRIMARY, fg="#ffffff",
+                    font=(_FONT, 13, "bold"),
+                    padx=24, pady=10, cursor="hand2",
+                )
+                btn.pack(side="left", padx=8)
+
+                def _on_enter(_e):
+                    btn.config(bg=_BTN_HOVER)
+
+                def _on_leave(_e):
+                    btn.config(bg=_BTN_PRIMARY)
+
+                def _on_click(_e):
+                    try:
+                        if self._on_start is not None:
+                            self._on_start(style)
+                    except Exception as exc:
+                        self.last_error = f"button click failed: {exc}"
+
+                btn.bind("<Enter>", _on_enter)
+                btn.bind("<Leave>", _on_leave)
+                btn.bind("<Button-1>", _on_click)
+                return btn
+
+            _make_btn(btn_row, "立直（门清憋大牌）", "riichi")
+            _make_btn(btn_row, "快攻（积极副露）", "fast")
+
+            # ---------- Strategy mode UI ----------
+            strategy_frame = tk.Frame(content, bg=_BG)
+
+            def build_panel(parent, badge_text: str, badge_bg: str, badge_fg: str) -> tuple[tk.Frame, tk.Label, tk.Label]:
+                panel = tk.Frame(parent, bg=_CARD, padx=10, pady=8)
                 panel.pack_propagate(False)
 
-                # badge row
-                badge_frame = tk.Frame(panel, bg=_BG_CARD)
+                badge_frame = tk.Frame(panel, bg=_CARD)
                 badge_frame.pack(fill="x", pady=(0, 4))
 
                 badge = tk.Label(
-                    badge_frame,
-                    text=f"  {badge_text}  ",
-                    bg=badge_bg,
-                    fg=badge_fg,
+                    badge_frame, text=badge_text,
+                    bg=badge_bg, fg=badge_fg,
                     font=(_FONT, 9, "bold"),
-                    anchor="w",
+                    anchor="w", padx=8, pady=1,
                 )
                 badge.pack(side="left")
 
-                # main text
                 label = tk.Label(
-                    panel,
-                    text="",
-                    bg=_BG_CARD,
-                    fg=_TEXT,
-                    font=(_FONT, 13),
-                    justify="left",
-                    anchor="nw",
-                    wraplength=260,
+                    panel, text="",
+                    bg=_CARD, fg=_TEXT,
+                    font=(_FONT, layout["font_size"]),
+                    justify="left", anchor="nw",
+                    wraplength=240,
                 )
                 label.pack(fill="both", expand=True)
 
                 return panel, badge, label
 
-            local_panel, local_badge, local_label = build_panel("本地", _BADGE_LOCAL_BG, _TEXT_ACCENT)
-            local_panel.pack(side="left", fill="both", expand=True, padx=(0, 4))
+            local_panel, local_badge, local_label = build_panel(strategy_frame, "本地", _BADGE_LOCAL_BG, _BADGE_LOCAL_FG)
+            local_panel.pack(side="left", fill="both", expand=True, padx=(0, 3))
 
-            ai_panel, ai_badge, ai_label = build_panel("AI", _BADGE_AI_BG, _BADGE_AI_FG)
-            # ai_panel packed dynamically
+            ai_panel, ai_badge, ai_label = build_panel(strategy_frame, "AI", _BADGE_AI_BG, _BADGE_AI_FG)
 
-            root.update_idletasks()
-            screen_width = root.winfo_screenwidth()
-            screen_height = root.winfo_screenheight()
-            drag_state = {"offset_x": 0, "offset_y": 0, "x": 0, "y": 0, "manual": False}
+            def _recompute_panels() -> None:
+                w = layout["width"]
+                h = layout["height"]
+                padding = 30
+                panel_h = max(60, h - 40)
+                has_ai = ai_panel.winfo_ismapped()
 
-            def place_window(width: int, height: int) -> None:
+                if has_ai:
+                    panel_w = max(80, (w - padding - 6) // 2)
+                    wrap = max(40, panel_w - 24)
+                    local_panel.config(width=panel_w, height=panel_h)
+                    ai_panel.config(width=panel_w, height=panel_h)
+                    local_label.config(wraplength=wrap)
+                    ai_label.config(wraplength=wrap)
+                else:
+                    panel_w = max(80, w - padding)
+                    wrap = max(40, panel_w - 24)
+                    local_panel.config(width=panel_w, height=panel_h)
+                    local_label.config(wraplength=wrap)
+
+            def _set_geometry() -> None:
+                w, h = layout["width"], layout["height"]
                 if drag_state["manual"]:
                     x, y = drag_state["x"], drag_state["y"]
                 else:
-                    x, y = _overlay_geometry(screen_width, screen_height, width, height)
-                drag_state["x"] = x
-                drag_state["y"] = y
-                root.geometry(f"{width}x{height}+{x}+{y}")
+                    x, y = _overlay_geometry(root.winfo_screenwidth(), root.winfo_screenheight(), w, h)
+                    drag_state["x"] = x
+                    drag_state["y"] = y
+                root.geometry(f"{w}x{h}+{x}+{y}")
 
+            # --- drag to move ---
             def start_drag(event: tk.Event) -> None:
                 drag_state["offset_x"] = int(event.x_root) - root.winfo_x()
                 drag_state["offset_y"] = int(event.y_root) - root.winfo_y()
 
             def drag_window(event: tk.Event) -> None:
-                x = int(event.x_root) - drag_state["offset_x"]
-                y = int(event.y_root) - drag_state["offset_y"]
-                drag_state["x"] = x
-                drag_state["y"] = y
+                drag_state["x"] = int(event.x_root) - drag_state["offset_x"]
+                drag_state["y"] = int(event.y_root) - drag_state["offset_y"]
                 drag_state["manual"] = True
-                root.geometry(f"+{x}+{y}")
+                root.geometry(f"+{drag_state['x']}+{drag_state['y']}")
 
-            all_widgets = [shell, inner, header, content, local_panel, local_badge, local_label, ai_panel, ai_badge, ai_label]
-            for widget in all_widgets:
+            drag_widgets = [shell, inner, header, content, config_frame, strategy_frame,
+                            local_panel, local_badge, local_label, ai_panel, ai_badge, ai_label]
+            for widget in drag_widgets:
                 widget.bind("<ButtonPress-1>", start_drag)
                 widget.bind("<B1-Motion>", drag_window)
 
-            def _style_action_label(badge_label: tk.Label, text: str) -> None:
-                label_map = {
-                    "本地和牌": ("和牌", "#1b5e20", "#81c784"),
-                    "本地立直": ("立直", "#4a148c", "#ce93d8"),
-                    "本地鸣牌": ("鸣牌", "#e65100", "#ffb74d"),
-                    "本地防守": ("防守", "#b71c1c", "#ef9a9a"),
-                    "操作窗口": ("操作", _BADGE_LOCAL_BG, _TEXT_ACCENT),
-                }
-                for prefix, (label_text, bg, fg) in label_map.items():
-                    if text.startswith(prefix):
-                        badge_label.config(text=f"  {label_text}  ", bg=bg, fg=fg)
-                        return
-                badge_label.config(text="  本地  ", bg=_BADGE_LOCAL_BG, fg=_TEXT_ACCENT)
+            # --- resize grip ---
+            resize_state = {"sx": 0, "sy": 0, "sw": 0, "sh": 0}
 
+            def start_resize(event: tk.Event) -> None:
+                resize_state["sx"] = event.x_root
+                resize_state["sy"] = event.y_root
+                resize_state["sw"] = layout["width"]
+                resize_state["sh"] = layout["height"]
+
+            def do_resize(event: tk.Event) -> None:
+                dw = event.x_root - resize_state["sx"]
+                dh = event.y_root - resize_state["sy"]
+                layout["width"] = max(_MIN_WIDTH, min(_MAX_WIDTH, resize_state["sw"] + dw))
+                layout["height"] = max(_MIN_HEIGHT, min(_MAX_HEIGHT, resize_state["sh"] + dh))
+                _recompute_panels()
+                _set_geometry()
+
+            def end_resize(_event: tk.Event) -> None:
+                _save_prefs(layout["width"], layout["height"], layout["font_size"])
+
+            grip.bind("<ButtonPress-1>", start_resize)
+            grip.bind("<B1-Motion>", do_resize)
+            grip.bind("<ButtonRelease-1>", end_resize)
+
+            # --- scroll to adjust font size ---
+            def scroll_font(event: tk.Event) -> None:
+                delta = 1 if int(event.delta) > 0 else -1
+                new_fs = max(10, min(28, layout["font_size"] + delta))
+                if new_fs != layout["font_size"]:
+                    layout["font_size"] = new_fs
+                    local_label.config(font=(_FONT, new_fs))
+                    ai_label.config(font=(_FONT, new_fs))
+                    _recompute_panels()
+                    _save_prefs(layout["width"], layout["height"], layout["font_size"])
+
+            root.bind_all("<MouseWheel>", scroll_font)
+
+            # --- action badge styling ---
+            def _style_action_label(badge_label: tk.Label, text: str) -> None:
+                for prefix, cfg in [
+                    ("本地和牌", _ACTION_WIN),
+                    ("本地立直", _ACTION_RIICHI),
+                    ("本地鸣牌", _ACTION_CALL),
+                    ("本地防守", _ACTION_DEFENSE),
+                    ("操作窗口", _ACTION_GENERIC),
+                ]:
+                    if text.startswith(prefix):
+                        label_text, bg, fg = cfg
+                        badge_label.config(text=label_text, bg=bg, fg=fg)
+                        return
+                badge_label.config(text="本地", bg=_BADGE_LOCAL_BG, fg=_BADGE_LOCAL_FG)
+
+            # --- apply text ---
             def apply_text(text: str) -> None:
                 blocks = _split_overlay_blocks(text)
                 first_line = (blocks[0] if blocks else "Mahjong Coach").split("\n")[0]
 
                 if len(blocks) >= 2:
                     if not ai_panel.winfo_ismapped():
-                        ai_panel.pack(side="left", fill="both", expand=True, padx=(4, 0))
-                    local_panel.config(width=280, height=100)
-                    ai_panel.config(width=280, height=100)
+                        ai_panel.pack(side="left", fill="both", expand=True, padx=(3, 0))
                     _style_action_label(local_badge, first_line)
-                    local_label.config(text=blocks[0], wraplength=260)
-                    ai_badge.config(text="  AI  ", bg=_BADGE_AI_BG, fg=_BADGE_AI_FG)
-                    ai_label.config(text=blocks[1], wraplength=260)
-                    width, height = 610, 126
+                    local_label.config(text=blocks[0])
+                    ai_badge.config(text="AI", bg=_BADGE_AI_BG, fg=_BADGE_AI_FG)
+                    ai_label.config(text=blocks[1])
                 else:
                     ai_panel.pack_forget()
-                    local_panel.config(width=380, height=100)
                     _style_action_label(local_badge, first_line)
-                    local_label.config(text=blocks[0] if blocks else "Mahjong Coach", wraplength=360)
-                    width, height = 400, 126
-                place_window(width, height)
+                    local_label.config(text=blocks[0] if blocks else "Mahjong Coach")
+
+                _recompute_panels()
+                _set_geometry()
 
             apply_text("Mahjong Coach")
 
+            # --- mode switching ---
+            def show_config_mode() -> None:
+                strategy_frame.pack_forget()
+                config_frame.pack(fill="both", expand=True)
+                _set_geometry()
+
+            def show_strategy_mode() -> None:
+                config_frame.pack_forget()
+                strategy_frame.pack(fill="both", expand=True)
+                _recompute_panels()
+                _set_geometry()
+
+            show_config_mode()
+
+            # --- pump ---
             def pump() -> None:
                 while True:
                     try:
@@ -201,8 +422,16 @@ class CoachOverlayController:
                     except queue.Empty:
                         break
                     if item is None:
+                        _save_prefs(layout["width"], layout["height"], layout["font_size"])
                         root.destroy()
                         return
+                    if isinstance(item, dict):
+                        cmd = item.get("cmd")
+                        if cmd == "show_config":
+                            show_config_mode()
+                        elif cmd == "show_strategy":
+                            show_strategy_mode()
+                        continue
                     apply_text(item)
                 root.after(120, pump)
 
@@ -211,6 +440,8 @@ class CoachOverlayController:
         except Exception as exc:
             self.last_error = str(exc)
 
+
+# ---------- text formatting (unchanged logic) ----------
 
 def overlay_text_from_payload(payload: dict[str, Any]) -> str:
     decision = payload.get("last_decision") if isinstance(payload.get("last_decision"), dict) else payload
@@ -222,21 +453,26 @@ def overlay_text_from_payload(payload: dict[str, Any]) -> str:
         return _action_overlay_text(decision_type, decision)
     if decision_type == "round_idle":
         return _format_overlay("等待下一局", "上一局已结束", "新手牌出现后自动重开")
-    has_plan = state.get("local_plan") or state.get("ai_plan") or state.get("current_plan") or state.get("opening_plan")
+    has_plan = state.get("local_direction") or state.get("local_plan") or state.get("ai_direction") or state.get("ai_plan") or state.get("current_plan") or state.get("opening_plan")
     if not has_plan and decision.get("decision_type") == "observe":
         return _waiting_hand_overlay(decision)
+    local_direction = str(state.get("local_direction") or "").strip()
+    local_plan = str(state.get("local_plan") or state.get("current_plan") or state.get("opening_plan") or decision.get("suggestion") or "").strip()
     local_block = _strategy_overlay_block(
         "本地",
-        str(state.get("local_plan") or state.get("current_plan") or state.get("opening_plan") or decision.get("suggestion") or ""),
+        local_direction,
+        local_plan,
         _string_items(state.get("local_targets")) or _string_items(state.get("target_shapes")),
         _string_items(state.get("local_cautions")) or _string_items(state.get("caution_points")),
     )
+    ai_direction = str(state.get("ai_direction") or "").strip()
     ai_plan = str(state.get("ai_plan") or "").strip()
     llm_status = str(state.get("llm_status") or "").strip().lower()
     llm_error = str(state.get("llm_error") or "").strip()
     if ai_plan:
         ai_block = _strategy_overlay_block(
             "AI参考" if llm_status == "ready_previous_hand" else "AI",
+            ai_direction,
             ai_plan,
             _string_items(state.get("ai_targets")),
             _string_items(state.get("ai_cautions")),
@@ -257,20 +493,38 @@ def _action_overlay_text(decision_type: str, decision: dict[str, Any]) -> str:
         suggestion = str(decision.get("suggestion") or "").strip()
         return _format_overlay("本地立直", _riichi_action_line(suggestion), _riichi_reason_line(suggestion))
     if decision_type == "call_window":
-        return _format_overlay("本地鸣牌", "默认跳过", "能听牌/明显加速再开")
+        suggestion = str(decision.get("suggestion") or "").strip()
+        return _format_overlay("本地鸣牌", _call_action_line(suggestion), _call_reason_line(suggestion))
     if decision_type == "defense_alert":
         return _format_overlay("本地防守", str(decision.get("suggestion") or "有人立直，先防守"), "先看现物和安全牌")
     return _format_overlay("操作窗口", str(decision.get("suggestion") or decision.get("detail") or "先处理当前按钮"), "")
 
 
-def _strategy_overlay_block(label: str, plan: str, targets: list[str], cautions: list[str]) -> str:
-    direction = _direction_text(plan, targets)
+def _call_text(cautions: list[str]) -> str:
+    for item in cautions:
+        if item.startswith("鸣牌："):
+            return _brief_items(_plain_text(item[3:]), max_items=4)
+    return ""
+
+
+def _strategy_overlay_block(label: str, direction: str, plan: str, targets: list[str], cautions: list[str]) -> str:
+    direction = _direction_text(direction, plan, targets)
     keep = _keep_text(targets, plan)
     discard = _discard_text(cautions, plan)
-    return _format_overlay(label, f"方向：{direction}", f"留：{keep}" if keep else "", f"打：{discard}" if discard else "")
+    call = _call_text(cautions)
+    lines = [f"方向：{direction}"]
+    if keep:
+        lines.append(f"留：{keep}")
+    if call:
+        lines.append(f"开：{call}")
+    if discard:
+        lines.append(f"打：{discard}")
+    return _format_overlay(label, *lines)
 
 
-def _direction_text(plan: str, targets: list[str]) -> str:
+def _direction_text(direction: str, plan: str, targets: list[str]) -> str:
+    if direction:
+        return _plain_text(direction)
     for item in targets:
         if item.startswith("主线："):
             return _clean_line(item)
@@ -369,6 +623,25 @@ def _brief_error(value: str) -> str:
     return f"{text[:27]}..."
 
 
+def _call_action_line(value: str) -> str:
+    text = _plain_text(str(value or "").strip())
+    if not text:
+        return "默认跳过"
+    for sep in ("。", "；", " 当前主线："):
+        if sep in text:
+            text = text.split(sep, 1)[0]
+    return _brief_items(_clean_line(text), max_items=3) or "默认跳过"
+
+
+def _call_reason_line(value: str) -> str:
+    text = _plain_text(str(value or "").strip())
+    if not text:
+        return "能听牌/明显加速再开"
+    if "跳过" in text:
+        return "能听牌/明显加速再开"
+    return "快攻：能推进就开"
+
+
 def _riichi_action_line(value: str) -> str:
     text = _plain_text(str(value or "").strip())
     if not text:
@@ -437,7 +710,7 @@ def _waiting_hand_overlay(decision: dict[str, Any]) -> str:
     if hand_reason in {"image_path_missing", "image_missing"}:
         return _format_overlay("等待手牌", "截图获取失败")
     if accepted > 0:
-        return _format_overlay("等待手牌", f"已识别{accepted}张，需要13-14张", "保持牌桌无遮挡")
+        return _format_overlay("等待手牌", f"已识别{accepted}张，需要12-14张", "保持牌桌无遮挡")
     if occupied > 0:
         return _format_overlay("等待手牌", f"检测到{occupied}个牌位，识别中", "保持牌桌无遮挡")
     return _format_overlay("等待手牌", "未检测到手牌区域", "确保雀魂窗口可见")

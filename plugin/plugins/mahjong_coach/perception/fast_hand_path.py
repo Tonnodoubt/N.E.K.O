@@ -105,7 +105,7 @@ def detect_fast_hand_path(
 
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     mean_confidence = sum(confidences) / max(1, len(confidences))
-    if len(hand_tiles) not in {13, 14}:
+    if not (12 <= len(hand_tiles) <= 14):
         return FastHandResult(
             hand_tiles=hand_tiles,
             confidence=mean_confidence,
@@ -116,7 +116,7 @@ def detect_fast_hand_path(
     return FastHandResult(
         ok=True,
         hand_tiles=hand_tiles,
-        confidence=mean_confidence,
+        confidence=mean_confidence if len(hand_tiles) >= 13 else round(mean_confidence * 0.92, 4),
         reason=f"matched_{len(hand_tiles)}_hand_tiles",
         elapsed_ms=elapsed_ms,
         raw_detections=raw_detections,

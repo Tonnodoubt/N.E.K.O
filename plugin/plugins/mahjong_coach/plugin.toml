@@ -30,6 +30,7 @@ live_advice_mode = "coach"
 coach_checkpoint_self_turns = 3
 critical_action_interrupts = true
 per_turn_discard_prompt = false
+play_style = "riichi"
 
 [perception]
 hand_recognition_backend = "legacy_templates"

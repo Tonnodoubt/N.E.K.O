@@ -15,7 +15,7 @@ from .tile_labels import hand_signature, is_honor, is_simple, is_terminal, norma
 
 CRITICAL_BUTTONS = {"chi", "pon", "kan", "ron", "tsumo", "riichi"}
 CALL_BUTTONS = {"chi", "pon", "kan"}
-WIN_BUTTONS = {"ron", "tsumo"}
+WIN_BUTTONS = {"ron"}
 SUIT_NAMES = {"m": "万", "p": "筒", "s": "索", "z": "字"}
 HONOR_NAMES = {"1z": "东", "2z": "南", "3z": "西", "4z": "北", "5z": "白", "6z": "发", "7z": "中"}
 TEXT_TILE_ALIASES = {"东": "1z", "南": "2z", "西": "3z", "北": "4z", "白": "5z", "发": "6z", "發": "6z", "中": "7z"}
@@ -37,7 +37,7 @@ class RoundCoachEngine:
         self.state = RoundCoachState()
 
     def reset_round(self, round_id: str = "default") -> RoundCoachState:
-        self.state = RoundCoachState(round_id=round_id or "default")
+        self.state = RoundCoachState(round_id=round_id or "default", play_style=self.config.play_style)
         return self.state
 
     def analyze_frame(
@@ -199,7 +199,7 @@ class RoundCoachEngine:
         elif accepted == 0:
             detail = "No stable hand tiles were detected; live capture may be grabbing the desktop, menu, or a covered game window."
         else:
-            detail = f"Hand scan accepted {accepted} tiles from {occupied} occupied-looking slots; waiting for 13 or 14 stable tiles."
+            detail = f"Hand scan accepted {accepted} tiles from {occupied} occupied-looking slots; waiting for 12-14 stable tiles."
         return "Waiting for stable hand", detail, ["coach_observe", f"hand_{reason}"]
 
     def _remember_hand(self, hand_result: FastHandResult) -> None:
@@ -366,14 +366,17 @@ class RoundCoachEngine:
         )
 
     def _remember_local_plan(self, plan: dict[str, Any], *, opening: bool = False) -> None:
+        direction = str(plan.get("direction") or "").strip()
         summary = str(plan.get("summary") or "").strip()
         detail = str(plan.get("detail") or "").strip()
         targets = [str(item) for item in plan.get("targets", []) if str(item).strip()]
         cautions = [str(item) for item in plan.get("cautions", []) if str(item).strip()]
+        display = direction if direction else summary
         if opening:
-            self.state.opening_plan = summary
-        self.state.current_plan = summary
+            self.state.opening_plan = display
+        self.state.current_plan = display
         self.state.plan_source = "heuristic"
+        self.state.local_direction = direction
         self.state.local_plan = summary
         self.state.local_detail = detail
         self.state.local_targets = targets
@@ -502,29 +505,46 @@ def build_round_plan(
     suit_text = _suit_breakdown(tiles)
     best_shape = _suit_shape(tiles, best_suit) if best_suit else ""
 
+    style = _play_style(config)
+
+    direction = "牌效推进"
     targets: list[str] = []
     cautions: list[str] = []
-    if best_suit_count >= 8:
+
+    # Style-adjusted thresholds
+    suit_threshold = 7 if style == "riichi" else 9
+    pair_threshold = 4 if style == "riichi" else 5
+    simple_threshold = 10 if style == "riichi" else 8
+
+    is_pair_route = pair_count >= pair_threshold and best_suit_count < suit_threshold
+
+    if best_suit_count >= suit_threshold:
+        direction = f"染手({SUIT_NAMES.get(best_suit, best_suit)}子)"
         targets.append(f"主线：{SUIT_NAMES.get(best_suit, best_suit)}子清一色/混一色倾向")
-        summary = f"主线：{SUIT_NAMES.get(best_suit, best_suit)}子多，保留同色，先打{primary_discard_text}。"
-    elif pair_route:
+        summary = f"{SUIT_NAMES.get(best_suit, best_suit)}子多，优先保留同色，杂色牌逐步清理"
+    elif is_pair_route:
+        direction = "七对子"
         targets.append(f"主线：七对子胚子，已有对子 {_tile_list(pair_tiles)}")
-        summary = f"主线：七对子，保留对子，先打{primary_discard_text}。"
+        summary = "保留现有对子，不再做面子手"
     elif value_pair_tiles:
+        direction = "役牌速攻"
         targets.append(f"主线：役牌速度，保留/可碰 {_tile_list(value_pair_tiles)}")
-        summary = f"主线：役牌速度，{_tile_list(value_pair_tiles)}可碰，先打{primary_discard_text}。"
+        summary = f"围绕役牌 {_tile_list(value_pair_tiles)} 加速，同时保持听牌潜力"
     elif best_suit_count >= 5 and best_suit_count >= second_suit_count + 2:
+        direction = f"围绕{SUIT_NAMES.get(best_suit, best_suit)}子"
         targets.append(f"主线：围绕{SUIT_NAMES.get(best_suit, best_suit)}子 {best_shape} 推进")
-        summary = f"主线：围绕{SUIT_NAMES.get(best_suit, best_suit)}子 {best_shape} 找顺子，先打{primary_discard_text}。"
-    elif simple_count >= 9 and honor_count + terminal_count <= 3:
+        summary = f"以{SUIT_NAMES.get(best_suit, best_suit)}子为主，{best_shape} 找顺子成型"
+    elif simple_count >= simple_threshold and honor_count + terminal_count <= 3:
+        direction = "断幺九/平和"
         targets.extend(["主线：断幺/平和速度", f"保留：{keep_text}"])
-        summary = f"主线：断幺/平和速度，保留{keep_text}，先打{primary_discard_text}。"
+        summary = f"断幺九或平和速度路线，保留{keep_text}"
     elif honor_count >= 4:
+        direction = "清字牌"
         targets.append("主线：先清孤字牌")
-        summary = f"主线：字牌偏多，先打{primary_discard_text}，只留役牌对子。"
+        summary = "字牌偏多，先清孤字，只留役牌对子"
     else:
         targets.append("主线：牌效推进")
-        summary = f"主线：牌效推进，先打{primary_discard_text}，保留{keep_text}。"
+        summary = f"牌效推进，保留{keep_text}"
 
     if keep_text and not any(item.startswith("保留：") for item in targets):
         targets.append(f"保留：{keep_text}")
@@ -549,7 +569,7 @@ def build_round_plan(
         cautions.append(efficiency_note)
     if cleanup_tiles:
         cautions.append(f"优先清理：{discard_text or cleanup_text}")
-    cautions.append(_open_policy_line(counts, value_honors, best_suit_count, simple_count, honor_count, terminal_count, pair_route))
+    cautions.append(_open_policy_line(counts, value_honors, best_suit_count, simple_count, honor_count, terminal_count, is_pair_route, style))
     if not cautions:
         cautions.append("三巡后再看主线，不要每摸一张就推翻主线。")
 
@@ -560,6 +580,7 @@ def build_round_plan(
         f" {_efficiency_detail(efficiency)}"
     )
     return {
+        "direction": direction,
         "summary": summary,
         "detail": detail,
         "bias": bias,
@@ -1019,6 +1040,15 @@ def _context_tile(tile: str) -> str:
     return normalize_tile(TEXT_TILE_ALIASES.get(raw, raw))
 
 
+def _play_style(config: MahjongCoachConfig | None) -> str:
+    if config is None:
+        return "riichi"
+    style = str(config.play_style or "").strip().lower()
+    if style in ("fast", "快攻", "aggressive"):
+        return "fast"
+    return "riichi"
+
+
 def _open_policy_line(
     counts: Counter[str],
     value_honors: set[str],
@@ -1027,8 +1057,19 @@ def _open_policy_line(
     honor_count: int,
     terminal_count: int,
     pair_route: bool,
+    style: str = "riichi",
 ) -> str:
     value_pairs = _tile_list([tile for tile, value in counts.items() if value >= 2 and tile in value_honors])
+    if style == "fast":
+        if value_pairs:
+            return f"鸣牌：{value_pairs}对子可以碰；中张吃碰能加速也开。"
+        if pair_route:
+            return "鸣牌：七对子胚子一般不鸣，但役牌刻子或明显加速主线可开。"
+        if best_suit_count >= 6:
+            return "鸣牌：染手主线可开同色/役牌，能推进就吃碰。"
+        if simple_count >= 7 and honor_count + terminal_count <= 4:
+            return "鸣牌：断幺速度手积极开中张，能进听或加速就吃碰。"
+        return "鸣牌：快攻风格，能推进主线或进听就吃碰；安全牌也考虑和牌。"
     if value_pairs:
         return f"鸣牌：{value_pairs}对子可以碰；其余仍要能听牌或明显加速。"
     if pair_route:
@@ -1053,6 +1094,18 @@ def _call_policy(hand_tiles: list[str], config: MahjongCoachConfig, buttons: lis
     pair_count = sum(1 for value in counts.values() if value >= 2)
     value_pairs = _tile_list([tile for tile, value in counts.items() if value >= 2 and tile in value_honors])
     call_buttons = set(_normalize_buttons(buttons))
+    style = _play_style(config)
+
+    if style == "fast":
+        if value_pairs and (not call_buttons or call_buttons & {"pon", "kan"}):
+            return f"役牌对子{value_pairs}，碰到可以开；中张吃碰能加速也开。"
+        if pair_count >= 4 and best_suit_count < 8:
+            return "七对子胚子一般不鸣；但役牌刻子或明显加速可开。"
+        if best_suit_count >= 6:
+            return "染手主线可开：同色/役牌能吃碰就吃碰。"
+        if simple_count >= 7 and honor_count + terminal_count <= 4:
+            return "断幺速度手积极开中张；能进听或加速就吃碰。"
+        return "快攻风格，能推进主线或进听就吃碰；安全牌也考虑和牌。"
 
     if value_pairs and (not call_buttons or call_buttons & {"pon", "kan"}):
         return f"役牌对子{value_pairs}，碰到可以开；没碰到役牌就默认跳过。"
@@ -1091,17 +1144,29 @@ def _riichi_advice(
     effective_types = len(wait_tiles) or int(best.get("effective_types", 0))
     effective_count = wait_count if wait_tiles else int(best.get("effective_count", 0))
     quality = _wait_quality(effective_types, effective_count)
+    style = _play_style(config)
     value_text = _riichi_value_text(hand_tiles, config)
     visible_text = "，已扣可见牌" if int(plan.get("efficiency", {}).get("visible_tile_count", 0)) else ""
-    if quality == "good":
-        action = "推荐立直"
-        reason = "好形/枚数够"
-    elif quality == "medium":
-        action = "可以立直"
-        reason = "待牌尚可"
+    if style == "fast":
+        if quality == "good" and effective_count >= 8:
+            action = "推荐立直"
+            reason = "好形/枚数够"
+        elif quality == "good":
+            action = "可以立直"
+            reason = "待牌尚可"
+        else:
+            action = "谨慎立直"
+            reason = "愚形或枚数少"
     else:
-        action = "谨慎立直"
-        reason = "愚形或枚数少"
+        if quality == "good":
+            action = "推荐立直"
+            reason = "好形/枚数够"
+        elif quality == "medium":
+            action = "可以立直"
+            reason = "待牌尚可"
+        else:
+            action = "谨慎立直"
+            reason = "愚形或枚数少"
     return f"{action}：打{discard}听{wait_text}，有效{effective_types}种{effective_count}枚{visible_text}；{reason}{value_text}；本地快判，不等待 LLM。"
 
 

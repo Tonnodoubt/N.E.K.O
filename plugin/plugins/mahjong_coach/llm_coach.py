@@ -14,7 +14,7 @@ from .tile_labels import normalize_tile, tile_rank, tile_suit
 
 SUIT_LABELS = {"m": "万子", "p": "筒子", "s": "索子", "z": "字牌"}
 HONOR_LABELS = {"1z": "东", "2z": "南", "3z": "西", "4z": "北", "5z": "白", "6z": "发", "7z": "中"}
-PLAN_FIELDS = ("summary", "detail", "bias", "targets", "cautions", "discard_priority")
+PLAN_FIELDS = ("direction", "summary", "detail", "bias", "targets", "cautions", "discard_priority")
 
 
 async def build_round_plan_llm(
@@ -23,6 +23,7 @@ async def build_round_plan_llm(
     previous_plan: str = "",
     turn_number: int | None = None,
     heuristic_plan: dict[str, Any] | None = None,
+    play_style: str = "riichi",
     timeout: float = 8.0,
     diagnostics: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
@@ -48,7 +49,7 @@ async def build_round_plan_llm(
         )
         try:
             response = await asyncio.wait_for(
-                llm.ainvoke(_build_messages(hand_tiles, previous_plan, turn_number, heuristic_plan)),
+                llm.ainvoke(_build_messages(hand_tiles, previous_plan, turn_number, heuristic_plan, play_style)),
                 timeout=max(0.1, float(timeout)),
             )
         finally:
@@ -126,6 +127,7 @@ def _build_messages(
     previous_plan: str,
     turn_number: int | None,
     heuristic_plan: dict[str, Any] | None,
+    play_style: str = "riichi",
 ) -> list[dict[str, str]]:
     system = MAHJONG_COACH_CHECKPOINT_PROMPT if previous_plan or turn_number else MAHJONG_COACH_OPENING_PROMPT
     user = {
@@ -133,6 +135,7 @@ def _build_messages(
         "turn_number": turn_number or "",
         "previous_plan": previous_plan,
         "heuristic_plan": heuristic_plan or {},
+        "play_style": play_style,
     }
     return [
         {"role": "system", "content": system},
@@ -141,12 +144,14 @@ def _build_messages(
 
 
 def _normalize_plan(raw: dict[str, Any]) -> dict[str, Any]:
+    direction = _clean_text(raw.get("direction"))
     summary = _clean_text(raw.get("summary"))
     detail = _clean_text(raw.get("detail"))
     bias = _clean_text(raw.get("bias")).lower()
     if bias not in {"attack", "neutral", "defense"}:
         bias = "neutral"
     return {
+        "direction": direction,
         "summary": summary,
         "detail": detail,
         "bias": bias,

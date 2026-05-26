@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 from dataclasses import replace
 from pathlib import Path
+import threading
 import time
 from typing import Any
 
@@ -33,6 +34,9 @@ class MahjongCoachPlugin(NekoPluginBase):
         self._live_last_hand_signature = ""
         self._live_last_checkpoint_at = 0.0
         self._live_missing_hand_frames = 0
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._tk_loop: asyncio.AbstractEventLoop | None = None
+        self._tk_loop_thread: threading.Thread | None = None
         self._overlay = CoachOverlayController()
         self._decision_coordinator = DecisionCoordinator()
         self._llm_tasks: set[asyncio.Task] = set()
@@ -46,6 +50,13 @@ class MahjongCoachPlugin(NekoPluginBase):
                 self._cfg,
                 calibration_dir=Path(__file__).resolve().parent / "data" / "calibration" / "profiles",
             )
+            self._loop = asyncio.get_running_loop()
+            self._overlay = CoachOverlayController(
+                on_start=self._on_overlay_start_sync,
+                on_stop=self._on_overlay_stop_sync,
+            )
+            self._overlay.start()
+            self._overlay.show_config()
             self.register_static_ui("static")
             self.set_list_actions(
                 [
@@ -81,6 +92,83 @@ class MahjongCoachPlugin(NekoPluginBase):
         except Exception as exc:
             self.logger.warning("mahjong coach startup failed: {}", exc)
             return Err(SdkError("failed to start mahjong_coach"))
+
+    def _ensure_tk_loop(self) -> asyncio.AbstractEventLoop | None:
+        if self._tk_loop is not None and self._tk_loop.is_running():
+            return self._tk_loop
+        if self._tk_loop_thread is not None and self._tk_loop_thread.is_alive():
+            return self._tk_loop
+        try:
+            self._tk_loop = asyncio.new_event_loop()
+
+            def _run():
+                asyncio.set_event_loop(self._tk_loop)
+                self._tk_loop.run_forever()
+
+            self._tk_loop_thread = threading.Thread(target=_run, daemon=True)
+            self._tk_loop_thread.start()
+            import time as _time
+
+            for _ in range(100):
+                if self._tk_loop.is_running():
+                    break
+                _time.sleep(0.01)
+            if not self._tk_loop.is_running():
+                self.logger.warning("tk event loop failed to start")
+                return None
+            return self._tk_loop
+        except Exception as exc:
+            self.logger.warning("failed to start tk event loop: {}", exc)
+            return None
+
+    def _on_overlay_start_sync(self, style: str) -> None:
+        self.logger.info("_on_overlay_start_sync called style={}", style)
+        loop = None
+        if self._loop is not None and self._loop.is_running():
+            loop = self._loop
+        else:
+            loop = self._ensure_tk_loop()
+        if loop is None:
+            self.logger.warning("overlay start requested but no running event loop available")
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._overlay_start_live(play_style=style), loop
+            )
+        except Exception as exc:
+            self.logger.warning("asyncio.run_coroutine_threadsafe failed: {}", exc)
+            return
+
+        def _on_done(f):
+            exc = f.exception()
+            if exc:
+                self.logger.warning("_overlay_start_live failed: {}", exc)
+
+        future.add_done_callback(_on_done)
+
+    def _on_overlay_stop_sync(self) -> None:
+        loop = None
+        if self._loop is not None and self._loop.is_running():
+            loop = self._loop
+        else:
+            loop = self._ensure_tk_loop()
+        if loop is None:
+            self.logger.warning("overlay stop requested but no running event loop available")
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._overlay_stop_live(hide_overlay=True), loop
+            )
+        except Exception as exc:
+            self.logger.warning("asyncio.run_coroutine_threadsafe failed: {}", exc)
+            return
+
+        def _on_done(f):
+            exc = f.exception()
+            if exc:
+                self.logger.warning("_overlay_stop_live failed: {}", exc)
+
+        future.add_done_callback(_on_done)
 
     @lifecycle(id="shutdown")
     async def shutdown(self, **_):
@@ -151,6 +239,7 @@ class MahjongCoachPlugin(NekoPluginBase):
                 "round_wind": {"type": "string", "default": ""},
                 "seat_wind": {"type": "string", "default": ""},
                 "dora_tiles": {"type": "array", "items": {"type": "string"}, "default": []},
+                "play_style": {"type": "string", "default": ""},
             },
         },
         timeout=20.0,
@@ -166,11 +255,12 @@ class MahjongCoachPlugin(NekoPluginBase):
         round_wind: str = "",
         seat_wind: str = "",
         dora_tiles: list[str] | None = None,
+        play_style: str = "",
         **_,
     ):
         if self._engine is None:
             return Err(SdkError("mahjong coach is not initialized"))
-        self._apply_runtime_round_context(round_wind=round_wind, seat_wind=seat_wind, dora_tiles=dora_tiles)
+        self._apply_runtime_round_context(round_wind=round_wind, seat_wind=seat_wind, dora_tiles=dora_tiles, play_style=play_style)
         try:
             decision = await asyncio.to_thread(
                 self._engine.analyze_frame,
@@ -203,6 +293,7 @@ class MahjongCoachPlugin(NekoPluginBase):
                 "round_wind": {"type": "string", "default": ""},
                 "seat_wind": {"type": "string", "default": ""},
                 "dora_tiles": {"type": "array", "items": {"type": "string"}, "default": []},
+                "play_style": {"type": "string", "default": ""},
             },
         },
         llm_result_fields=["status", "running"],
@@ -215,16 +306,40 @@ class MahjongCoachPlugin(NekoPluginBase):
         round_wind: str = "",
         seat_wind: str = "",
         dora_tiles: list[str] | None = None,
+        play_style: str = "",
         **_,
     ):
+        return await self._overlay_start_live(
+            keywords=keywords,
+            interval_ms=interval_ms,
+            overlay=overlay,
+            round_wind=round_wind,
+            seat_wind=seat_wind,
+            dora_tiles=dora_tiles,
+            play_style=play_style,
+        )
+
+    async def _overlay_start_live(
+        self,
+        keywords: list[str] | None = None,
+        interval_ms: int | None = None,
+        overlay: bool = True,
+        round_wind: str = "",
+        seat_wind: str = "",
+        dora_tiles: list[str] | None = None,
+        play_style: str = "",
+    ):
+        self.logger.info("_overlay_start_live called play_style={}", play_style)
         if self._engine is None:
+            self.logger.warning("_overlay_start_live early return: engine is None")
             return Err(SdkError("mahjong coach is not initialized"))
         if self._live_task is not None and not self._live_task.done():
+            self.logger.warning("_overlay_start_live early return: live_task already running")
             return Ok({"status": "already_running", "running": True, "live": self._live_state.to_dict()})
         selected_keywords = [str(item).strip() for item in (keywords or []) if str(item).strip()] or list(self._cfg.live_window_keywords)
         selected_interval = max(200, int(interval_ms or self._cfg.live_interval_ms))
         overlay_enabled = bool(overlay and self._cfg.live_overlay_enabled)
-        self._apply_runtime_round_context(round_wind=round_wind, seat_wind=seat_wind, dora_tiles=dora_tiles)
+        self._apply_runtime_round_context(round_wind=round_wind, seat_wind=seat_wind, dora_tiles=dora_tiles, play_style=play_style)
         self._live_stop_event = asyncio.Event()
         self._live_missing_hand_frames = 0
         self._live_state = LiveSessionState(
@@ -234,6 +349,8 @@ class MahjongCoachPlugin(NekoPluginBase):
             updated_at=time.time(),
             overlay_enabled=overlay_enabled,
         )
+        self.logger.info("_overlay_start_live calling show_strategy")
+        self._overlay.show_strategy()
         self._live_task = asyncio.create_task(
             self._run_live_loop(
                 keywords=selected_keywords,
@@ -249,17 +366,23 @@ class MahjongCoachPlugin(NekoPluginBase):
         round_wind: str = "",
         seat_wind: str = "",
         dora_tiles: list[str] | None = None,
+        play_style: str = "",
     ) -> None:
         dora_list = None if dora_tiles is None else [str(item).strip() for item in dora_tiles if str(item).strip()]
+        style = str(play_style or "").strip().lower()
+        if style and style not in ("fast", "riichi"):
+            style = "riichi"
         updated = replace(
             self._cfg,
             round_wind=str(round_wind or self._cfg.round_wind or "").strip(),
             seat_wind=str(seat_wind or self._cfg.seat_wind or "").strip(),
             dora_tiles=dora_list if dora_list is not None else list(self._cfg.dora_tiles),
+            play_style=style or self._cfg.play_style,
         )
         self._cfg = updated
         if self._engine is not None:
             self._engine.config = updated
+            self._engine.state.play_style = updated.play_style
 
     @plugin_entry(
         id="mahjong_coach_stop_live",
@@ -269,7 +392,12 @@ class MahjongCoachPlugin(NekoPluginBase):
         llm_result_fields=["status", "running"],
     )
     async def mahjong_coach_stop_live(self, **_):
+        return await self._overlay_stop_live(hide_overlay=True)
+
+    async def _overlay_stop_live(self, hide_overlay: bool = False):
         await self._stop_live_task()
+        if hide_overlay:
+            self._overlay.stop()
         return Ok({"status": self._live_state.status, "running": self._live_state.running, "live": self._live_state.to_dict()})
 
     @plugin_entry(
@@ -351,7 +479,6 @@ class MahjongCoachPlugin(NekoPluginBase):
             self._live_state.running = False
             self._live_state.status = "stopped"
             self._live_state.updated_at = time.time()
-            self._overlay.stop()
 
     async def _stop_live_task(self) -> None:
         if self._live_stop_event is not None:
@@ -360,10 +487,14 @@ class MahjongCoachPlugin(NekoPluginBase):
         self._live_task = None
         if task is not None and not task.done():
             task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            try:
+                current_loop = asyncio.get_running_loop()
+                if task.get_loop() is current_loop:
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+            except RuntimeError:
+                pass
         await self._cancel_llm_tasks()
-        self._overlay.stop()
         self._live_state.running = False
         self._live_state.status = "stopped"
         self._live_state.updated_at = time.time()
@@ -395,11 +526,13 @@ class MahjongCoachPlugin(NekoPluginBase):
         heuristic_plan: dict[str, Any],
     ) -> None:
         diagnostics: dict[str, str] = {}
+        play_style = str(self._cfg.play_style or "").strip().lower()
         plan = await build_round_plan_llm(
             decision.hand_tiles,
             previous_plan=self._llm_previous_plan(decision),
             turn_number=self._llm_turn_number(decision),
             heuristic_plan=heuristic_plan,
+            play_style=play_style,
             timeout=self._cfg.llm_timeout,
             diagnostics=diagnostics,
         )
@@ -425,12 +558,14 @@ class MahjongCoachPlugin(NekoPluginBase):
             self._engine.state.last_hand_signature,
         )
         heuristic_plan = self._heuristic_plan_from_decision(decision)
+        play_style = str(self._cfg.play_style or "").strip().lower()
         diagnostics: dict[str, str] = {}
         plan = await build_round_plan_llm(
             decision.hand_tiles,
             previous_plan=self._llm_previous_plan(decision),
             turn_number=self._llm_turn_number(decision),
             heuristic_plan=heuristic_plan,
+            play_style=play_style,
             timeout=self._cfg.llm_timeout,
             diagnostics=diagnostics,
         )
@@ -464,16 +599,20 @@ class MahjongCoachPlugin(NekoPluginBase):
         can_promote_plan = token_update_count == state.update_count and same_hand
         state.llm_status = "ready" if same_hand else "ready_previous_hand"
         state.llm_error = ""
+        direction = str(llm_plan.get("direction") or "").strip()
         summary = str(enhanced.suggestion or "").strip()
-        if summary:
+        display = direction if direction else summary
+        if display:
             if can_promote_plan and decision.decision_type == "opening_plan":
-                state.opening_plan = summary
-            state.ai_plan = summary
+                state.opening_plan = display
+            state.ai_plan = display
+            state.ai_direction = direction
             if can_promote_plan:
-                state.current_plan = summary
+                state.current_plan = display
                 state.plan_source = "llm"
             if not state.local_plan:
                 state.local_plan = str(heuristic_plan.get("summary") or decision.suggestion or decision.summary or "").strip()
+                state.local_direction = str(heuristic_plan.get("direction") or "").strip()
                 state.local_detail = str(heuristic_plan.get("detail") or decision.detail or "").strip()
             if not state.local_targets:
                 heuristic_targets = heuristic_plan.get("targets")

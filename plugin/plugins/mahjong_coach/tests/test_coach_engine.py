@@ -257,7 +257,7 @@ def test_round_plan_subtracts_visible_river_from_ukeire() -> None:
 def test_round_plan_prefers_seven_pairs_when_pairs_are_dense() -> None:
     plan = build_round_plan(["1m", "1m", "2p", "2p", "3s", "3s", "4m", "4m", "5p", "5p", "6s", "7s", "8s", "9s"])
 
-    assert "七对子" in plan["summary"]
+    assert plan["direction"] == "七对子"
     assert plan["efficiency"]["best_path"] == "seven_pairs"
     assert any("七对子胚子" in item for item in plan["targets"])
     assert any(item == "保留：1万、4万、2筒、5筒、3索" for item in plan["targets"])
@@ -435,7 +435,7 @@ def test_overlay_text_prioritizes_action_required() -> None:
     )
 
     assert "本地鸣牌" in text
-    assert "默认跳过" in text
+    assert "Evaluate chi/pon/kan quickly" in text
 
 
 def test_overlay_text_shows_riichi_fast_judgement() -> None:

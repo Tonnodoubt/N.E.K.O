@@ -10,6 +10,7 @@ class MahjongCoachConfig:
     coach_checkpoint_self_turns: int = 1
     critical_action_interrupts: bool = True
     per_turn_discard_prompt: bool = False
+    play_style: str = "riichi"
     hand_recognition_backend: str = "legacy_templates"
     onnx_hand_enabled: bool = False
     river_recognition_enabled: bool = True
@@ -42,6 +43,7 @@ class MahjongCoachConfig:
             coach_checkpoint_self_turns=max(1, int(decision.get("coach_checkpoint_self_turns") or 1)),
             critical_action_interrupts=bool(decision.get("critical_action_interrupts", True)),
             per_turn_discard_prompt=bool(decision.get("per_turn_discard_prompt", False)),
+            play_style=_valid_play_style(decision.get("play_style")),
             hand_recognition_backend=str(perception.get("hand_recognition_backend") or "legacy_templates"),
             onnx_hand_enabled=bool(perception.get("onnx_hand_enabled", False)),
             river_recognition_enabled=bool(perception.get("river_recognition_enabled", True)),
@@ -70,15 +72,18 @@ class MahjongCoachConfig:
 class RoundCoachState:
     round_id: str = "default"
     round_phase: str = "round_idle"
+    play_style: str = "riichi"
     opening_emitted: bool = False
     opening_plan: str = ""
     current_plan: str = ""
     plan_source: str = "heuristic"
+    local_direction: str = ""
     local_plan: str = ""
     local_detail: str = ""
     local_targets: list[str] = field(default_factory=list)
     local_cautions: list[str] = field(default_factory=list)
     ai_plan: str = ""
+    ai_direction: str = ""
     ai_detail: str = ""
     ai_targets: list[str] = field(default_factory=list)
     ai_cautions: list[str] = field(default_factory=list)
@@ -145,7 +150,6 @@ class LiveSessionState:
     last_error: str = ""
     last_frame_path: str = ""
     last_capture_source: str = ""
-    last_window_title: str = ""
     last_binding: dict[str, Any] = field(default_factory=dict)
     observed_hand_changes: int = 0
     missing_hand_frames: int = 0
@@ -163,3 +167,10 @@ def _string_list(value: Any, fallback: list[str]) -> list[str]:
         result = [item.strip() for item in value.split(",") if item.strip()]
         return result or list(fallback)
     return list(fallback)
+
+
+def _valid_play_style(value: Any) -> str:
+    style = str(value or "").strip().lower()
+    if style in ("fast", "快攻", "aggressive"):
+        return "fast"
+    return "riichi"

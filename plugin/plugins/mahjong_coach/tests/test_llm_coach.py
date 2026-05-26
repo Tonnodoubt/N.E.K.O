@@ -48,6 +48,7 @@ def test_parse_llm_plan_response_missing_fields_fills_defaults() -> None:
     plan = parse_llm_plan_response('{"summary":"主线：牌效"}')
 
     assert plan == {
+        "direction": "",
         "summary": "主线：牌效",
         "detail": "",
         "bias": "neutral",

@@ -58,10 +58,10 @@
     },
     "riichi": {
       "button_type": "riichi",
-      "file": "1440x900/riichi.png",
+      "file": "1920x1080/riichi.png",
       "resolution": [
-        1440,
-        900
+        1920,
+        1080
       ],
       "match_threshold": 0.9
     }
