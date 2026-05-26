@@ -81,8 +81,7 @@ class CoachOverlayController:
 
             def place_window(width: int, height: int) -> None:
                 if drag_state["manual"]:
-                    x = max(0, min(screen_width - width, drag_state["x"]))
-                    y = max(0, min(screen_height - height, drag_state["y"]))
+                    x, y = drag_state["x"], drag_state["y"]
                 else:
                     x, y = _overlay_geometry(screen_width, screen_height, width, height)
                 drag_state["x"] = x
@@ -94,14 +93,12 @@ class CoachOverlayController:
                 drag_state["offset_y"] = int(event.y_root) - root.winfo_y()
 
             def drag_window(event: tk.Event) -> None:
-                width = root.winfo_width()
-                height = root.winfo_height()
                 x = int(event.x_root) - drag_state["offset_x"]
                 y = int(event.y_root) - drag_state["offset_y"]
-                drag_state["x"] = max(0, min(screen_width - width, x))
-                drag_state["y"] = max(0, min(screen_height - height, y))
+                drag_state["x"] = x
+                drag_state["y"] = y
                 drag_state["manual"] = True
-                root.geometry(f"+{drag_state['x']}+{drag_state['y']}")
+                root.geometry(f"+{x}+{y}")
 
             for widget in (container, local_panel, local_label, ai_panel, ai_label):
                 widget.bind("<ButtonPress-1>", start_drag)
@@ -156,7 +153,7 @@ def overlay_text_from_payload(payload: dict[str, Any]) -> str:
         return _format_overlay("等待下一局", "上一局已结束", "新手牌出现后自动重开")
     has_plan = state.get("local_plan") or state.get("ai_plan") or state.get("current_plan") or state.get("opening_plan")
     if not has_plan and decision.get("decision_type") == "observe":
-        return _format_overlay("等待手牌", str(decision.get("detail") or "正在找稳定手牌"), "保持牌桌无遮挡")
+        return _waiting_hand_overlay(decision)
     local_block = _strategy_overlay_block(
         "本地",
         str(state.get("local_plan") or state.get("current_plan") or state.get("opening_plan") or decision.get("suggestion") or ""),
@@ -202,46 +199,6 @@ def _strategy_overlay_block(label: str, plan: str, targets: list[str], cautions:
     return _format_overlay(label, f"方向：{direction}", f"留：{keep}" if keep else "", f"打：{discard}" if discard else "")
 
 
-def _title_for_decision(decision_type: str, decision: dict[str, Any], state: dict[str, Any]) -> str:
-    source = "AI" if _is_llm_decision(decision, state) else "本地"
-    if decision_type == "opening_plan":
-        return f"{source}开局"
-    if decision_type == "coach_checkpoint":
-        return f"{source}调整"
-    if decision_type == "observe":
-        return f"{source}跟踪"
-    return f"{source}建议"
-
-
-def _main_line(state: dict[str, Any], decision: dict[str, Any]) -> str:
-    plan = str(state.get("current_plan") or state.get("opening_plan") or decision.get("suggestion") or "").strip()
-    if plan:
-        return f"方向：{_clean_line(plan)}"
-    targets = _string_items(state.get("target_shapes"))
-    for item in targets:
-        if item.startswith("主线"):
-            return f"方向：{_clean_line(item)}"
-    return "方向：继续观察牌局"
-
-
-def _keep_line(state: dict[str, Any], decision: dict[str, Any]) -> str:
-    targets = _string_items(state.get("target_shapes"))
-    keep = _first_prefixed_value(targets, "保留：")
-    if not keep:
-        plan = str(state.get("current_plan") or state.get("opening_plan") or decision.get("suggestion") or "")
-        keep = _extract_after(plan, ("保留",), stop_markers=("，先", "；", "。"))
-    return f"保留：{_plain_text(keep)}" if keep else ""
-
-
-def _discard_line(state: dict[str, Any], decision: dict[str, Any]) -> str:
-    cautions = _string_items(state.get("caution_points"))
-    discard = _first_prefixed_value(cautions, "优先清理：")
-    if not discard:
-        plan = str(state.get("current_plan") or state.get("opening_plan") or decision.get("suggestion") or "")
-        discard = _extract_after(plan, ("先打", "先清"), stop_markers=("，", "；", "。"))
-    return f"先打：{_plain_text(discard)}" if discard else ""
-
-
 def _direction_text(plan: str, targets: list[str]) -> str:
     for item in targets:
         if item.startswith("主线："):
@@ -261,22 +218,6 @@ def _discard_text(cautions: list[str], plan: str) -> str:
     if not discard:
         discard = _extract_after(plan, ("先打", "先清", "打："), stop_markers=("，", "；", "。"))
     return _brief_items(_plain_text(discard), max_items=3)
-
-
-def _rule_line(state: dict[str, Any], decision_type: str) -> str:
-    if decision_type == "coach_checkpoint":
-        return "照这条打3巡再看"
-    if decision_type == "opening_plan":
-        return "先按主线走，别每巡改"
-    return _call_rule_line(state)
-
-
-def _call_rule_line(state: dict[str, Any]) -> str:
-    cautions = _string_items(state.get("caution_points"))
-    for item in cautions:
-        if item.startswith("吃碰杠"):
-            return "鸣牌：默认跳过，能听牌再开"
-    return "鸣牌：默认跳过，能听牌再开"
 
 
 def _string_items(value: Any) -> list[str]:
@@ -410,3 +351,28 @@ def _extract_after(text: str, keywords: tuple[str, ...], *, stop_markers: tuple[
     if stop_positions:
         tail = tail[: min(stop_positions)]
     return tail.strip()
+
+
+def _waiting_hand_overlay(decision: dict[str, Any]) -> str:
+    reason_codes = [str(item) for item in (decision.get("reason_codes") or []) if str(item).strip()]
+    hand_reason = ""
+    for code in reason_codes:
+        if code.startswith("hand_"):
+            hand_reason = code[len("hand_"):]
+            break
+    perception = decision.get("perception") if isinstance(decision.get("perception"), dict) else {}
+    hand_perception = perception.get("hand") if isinstance(perception.get("hand"), dict) else {}
+    if not hand_reason:
+        hand_reason = str(hand_perception.get("reason") or "")
+    accepted = sum(1 for item in (hand_perception.get("raw_detections") or []) if item.get("accepted"))
+    occupied = sum(1 for item in (hand_perception.get("raw_detections") or []) if item.get("occupied"))
+
+    if hand_reason == "missing_hand_tile_templates":
+        return _format_overlay("等待手牌", "截图分辨率无匹配校准", "支持 1920x1080 / 2560x1440")
+    if hand_reason in {"image_path_missing", "image_missing"}:
+        return _format_overlay("等待手牌", "截图获取失败")
+    if accepted > 0:
+        return _format_overlay("等待手牌", f"已识别{accepted}张，需要13-14张", "保持牌桌无遮挡")
+    if occupied > 0:
+        return _format_overlay("等待手牌", f"检测到{occupied}个牌位，识别中", "保持牌桌无遮挡")
+    return _format_overlay("等待手牌", "未检测到手牌区域", "确保雀魂窗口可见")

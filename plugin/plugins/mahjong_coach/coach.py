@@ -113,6 +113,8 @@ class RoundCoachEngine:
     ) -> CoachDecision:
         self.state.round_phase = phase
         summary, detail, reason_codes = self._observe_message(hand_result)
+        if hand_result.ok and hand_result.hand_tiles:
+            self.state.last_hand_tiles = [normalize_tile(t) for t in hand_result.hand_tiles if normalize_tile(t)]
         return CoachDecision(
             decision_type="observe",
             priority=5,
@@ -376,10 +378,6 @@ class RoundCoachEngine:
         self.state.local_detail = detail
         self.state.local_targets = targets
         self.state.local_cautions = cautions
-        self.state.ai_plan = ""
-        self.state.ai_detail = ""
-        self.state.ai_targets = []
-        self.state.ai_cautions = []
         self.state.attack_defense_bias = str(plan.get("bias") or "neutral")
         self.state.target_shapes = targets
         self.state.caution_points = cautions
@@ -844,7 +842,7 @@ def _visible_counts(tiles: list[str]) -> Counter[str]:
 
 @lru_cache(maxsize=4096)
 def _standard_shanten(counts_tuple: tuple[int, ...]) -> int:
-    @lru_cache(maxsize=None)
+    @lru_cache(maxsize=262144)
     def walk(counts_state: tuple[int, ...], melds: int, taatsu: int, pair: int) -> int:
         counts = list(counts_state)
         capped_taatsu = min(taatsu, max(0, 4 - melds))

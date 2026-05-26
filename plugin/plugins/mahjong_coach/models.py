@@ -7,7 +7,7 @@ from typing import Any
 @dataclass(frozen=True)
 class MahjongCoachConfig:
     live_advice_mode: str = "coach"
-    coach_checkpoint_self_turns: int = 3
+    coach_checkpoint_self_turns: int = 1
     critical_action_interrupts: bool = True
     per_turn_discard_prompt: bool = False
     hand_recognition_backend: str = "legacy_templates"
@@ -18,7 +18,7 @@ class MahjongCoachConfig:
     live_interval_ms: int = 1200
     live_fast_interval_ms: int = 300
     live_keep_frames: int = 30
-    live_checkpoint_interval_seconds: int = 20
+    live_checkpoint_interval_seconds: int = 4
     live_overlay_enabled: bool = True
     live_save_format: str = "jpg"
     round_wind: str = "1z"
@@ -39,7 +39,7 @@ class MahjongCoachConfig:
         llm = payload.get("llm") if isinstance(payload.get("llm"), dict) else {}
         return cls(
             live_advice_mode=str(decision.get("live_advice_mode") or "coach"),
-            coach_checkpoint_self_turns=max(1, int(decision.get("coach_checkpoint_self_turns") or 3)),
+            coach_checkpoint_self_turns=max(1, int(decision.get("coach_checkpoint_self_turns") or 1)),
             critical_action_interrupts=bool(decision.get("critical_action_interrupts", True)),
             per_turn_discard_prompt=bool(decision.get("per_turn_discard_prompt", False)),
             hand_recognition_backend=str(perception.get("hand_recognition_backend") or "legacy_templates"),
@@ -50,7 +50,7 @@ class MahjongCoachConfig:
             live_interval_ms=max(200, int(live.get("interval_ms") or 1200)),
             live_fast_interval_ms=max(100, int(live.get("fast_interval_ms") or 300)),
             live_keep_frames=max(5, int(live.get("keep_frames") or 30)),
-            live_checkpoint_interval_seconds=max(5, int(live.get("checkpoint_interval_seconds") or 20)),
+            live_checkpoint_interval_seconds=max(4, int(live.get("checkpoint_interval_seconds") or 4)),
             live_overlay_enabled=bool(live.get("overlay_enabled", True)),
             live_save_format=str(live.get("save_format") or "jpg"),
             round_wind=str(round_context.get("round_wind") or "1z"),

@@ -52,6 +52,12 @@ class DefaultCaptureProvider:
         region = self._resolve_capture_region(context.binding_result)
         errors: list[str] = []
 
+        if platform.system().lower() == "windows" and context.binding_result.hwnd:
+            try:
+                return self._save_with_print_window(context.file_path, int(context.binding_result.hwnd))
+            except Exception as exc:
+                errors.append(f"print-window: {exc}")
+
         if region is not None and pyautogui is not None:
             try:
                 return self._save_with_pyautogui(context.file_path, region)
@@ -105,6 +111,71 @@ class DefaultCaptureProvider:
         assert binding_result.width is not None
         assert binding_result.height is not None
         return (int(binding_result.left), int(binding_result.top), int(binding_result.width), int(binding_result.height))
+
+    def _save_with_print_window(self, file_path: Path, hwnd: int) -> str:
+        import ctypes
+        import ctypes.wintypes
+
+        if Image is None:
+            raise RuntimeError("PIL Image unavailable")
+
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+
+        rect = ctypes.wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        w = rect.right - rect.left
+        h = rect.bottom - rect.top
+        if w <= 0 or h <= 0:
+            raise RuntimeError(f"invalid window size {w}x{h}")
+
+        hdc = user32.GetWindowDC(hwnd)
+        if not hdc:
+            raise RuntimeError(f"GetWindowDC returned null for hwnd={hwnd}")
+        hdc_mem = gdi32.CreateCompatibleDC(hdc)
+        hbm = gdi32.CreateCompatibleBitmap(hdc, w, h)
+        gdi32.SelectObject(hdc_mem, hbm)
+
+        try:
+            PW_RENDERFULLCONTENT = 2
+            used_fullcontent = bool(user32.PrintWindow(hwnd, hdc_mem, PW_RENDERFULLCONTENT))
+            if not used_fullcontent:
+                if not user32.PrintWindow(hwnd, hdc_mem, 0):
+                    raise RuntimeError("PrintWindow failed")
+
+            class BITMAPINFOHEADER(ctypes.Structure):
+                _fields_ = [
+                    ("biSize", ctypes.wintypes.DWORD),
+                    ("biWidth", ctypes.wintypes.LONG),
+                    ("biHeight", ctypes.wintypes.LONG),
+                    ("biPlanes", ctypes.wintypes.WORD),
+                    ("biBitCount", ctypes.wintypes.WORD),
+                    ("biCompression", ctypes.wintypes.DWORD),
+                    ("biSizeImage", ctypes.wintypes.DWORD),
+                    ("biXPelsPerMeter", ctypes.wintypes.LONG),
+                    ("biYPelsPerMeter", ctypes.wintypes.LONG),
+                    ("biClrUsed", ctypes.wintypes.DWORD),
+                    ("biClrImportant", ctypes.wintypes.DWORD),
+                ]
+
+            bmi = BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            bmi.biWidth = w
+            bmi.biHeight = -h
+            bmi.biPlanes = 1
+            bmi.biBitCount = 32
+            bmi.biCompression = 0
+
+            buf = ctypes.create_string_buffer(w * h * 4)
+            gdi32.GetDIBits(hdc_mem, hbm, 0, h, buf, ctypes.byref(bmi), 0)
+        finally:
+            gdi32.DeleteObject(hbm)
+            gdi32.DeleteDC(hdc_mem)
+            user32.ReleaseDC(hwnd, hdc)
+
+        image = Image.frombytes("RGBX", (w, h), buf.raw).convert("RGB")
+        self._persist_image(image, file_path)
+        return "print-window-fullcontent" if used_fullcontent else "print-window"
 
     def _save_with_pyautogui(self, file_path: Path, region: tuple[int, int, int, int] | None) -> str:
         if pyautogui is None:
