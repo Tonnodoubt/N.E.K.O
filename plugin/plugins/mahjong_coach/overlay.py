@@ -7,6 +7,23 @@ from typing import Any
 
 OVERLAY_BLOCK_SEPARATOR = "\n---MAHJONG_COACH_OVERLAY_BLOCK---\n"
 
+# N.E.K.O design tokens (dark mode)
+_BG = "#0f172a"
+_BG_CARD = "#1a2236"
+_ACCENT = "#409EFF"
+_ACCENT_DIM = "#2a5a9e"
+_TEXT = "#e5e7eb"
+_TEXT_MUTED = "#94a3b8"
+_TEXT_ACCENT = "#7db8f5"
+_BORDER = "#2a3a54"
+_BADGE_LOCAL_BG = "#1e3a5f"
+_BADGE_AI_BG = "#2d1f4e"
+_BADGE_AI_FG = "#c4a8ff"
+_HEADER_BG = "#2f68df"
+_FONT = "Segoe UI"
+_FONT_MONO = "Consolas"
+_TRANSPARENT = "#010203"
+
 
 class CoachOverlayController:
     def __init__(self) -> None:
@@ -45,35 +62,69 @@ class CoachOverlayController:
             root.title("Mahjong Coach Overlay")
             root.overrideredirect(True)
             root.attributes("-topmost", True)
-            root.attributes("-alpha", 0.88)
-            transparent = "#010203"
-            root.configure(bg=transparent)
+            root.attributes("-alpha", 0.92)
+            root.configure(bg=_TRANSPARENT)
             try:
-                root.attributes("-transparentcolor", transparent)
+                root.attributes("-transparentcolor", _TRANSPARENT)
             except Exception:
                 pass
-            container = tk.Frame(root, bg=transparent)
-            container.pack(fill="both", expand=True, padx=0, pady=0)
 
-            def build_panel() -> tuple[tk.Frame, tk.Label]:
-                panel = tk.Frame(container, bg="#121719", padx=12, pady=10, width=300, height=128)
+            # --- shell (rounded feel via border padding) ---
+            shell = tk.Frame(root, bg=_BORDER, padx=1, pady=1)
+            shell.pack(fill="both", expand=True)
+
+            inner = tk.Frame(shell, bg=_BG, padx=0, pady=0)
+            inner.pack(fill="both", expand=True)
+
+            # --- header bar (blue gradient accent) ---
+            header = tk.Frame(inner, bg=_HEADER_BG, height=6)
+            header.pack(fill="x", side="top")
+            header.pack_propagate(False)
+
+            # --- content row ---
+            content = tk.Frame(inner, bg=_BG, padx=8, pady=6)
+            content.pack(fill="both", expand=True)
+
+            # --- panel builder ---
+            def build_panel(badge_text: str, badge_bg: str, badge_fg: str) -> tuple[tk.Frame, tk.Label, tk.Label]:
+                panel = tk.Frame(content, bg=_BG_CARD, padx=10, pady=8)
                 panel.pack_propagate(False)
-                panel.pack(side="left", fill="both", expand=True, padx=5)
-                panel_label = tk.Label(
+
+                # badge row
+                badge_frame = tk.Frame(panel, bg=_BG_CARD)
+                badge_frame.pack(fill="x", pady=(0, 4))
+
+                badge = tk.Label(
+                    badge_frame,
+                    text=f"  {badge_text}  ",
+                    bg=badge_bg,
+                    fg=badge_fg,
+                    font=(_FONT, 9, "bold"),
+                    anchor="w",
+                )
+                badge.pack(side="left")
+
+                # main text
+                label = tk.Label(
                     panel,
-                    text="Mahjong Coach",
-                    bg="#121719",
-                    fg="#f1f4ef",
-                    font=("Microsoft YaHei UI", 15, "bold"),
+                    text="",
+                    bg=_BG_CARD,
+                    fg=_TEXT,
+                    font=(_FONT, 13),
                     justify="left",
                     anchor="nw",
-                    wraplength=276,
+                    wraplength=260,
                 )
-                panel_label.pack(fill="both", expand=True)
-                return panel, panel_label
+                label.pack(fill="both", expand=True)
 
-            local_panel, local_label = build_panel()
-            ai_panel, ai_label = build_panel()
+                return panel, badge, label
+
+            local_panel, local_badge, local_label = build_panel("本地", _BADGE_LOCAL_BG, _TEXT_ACCENT)
+            local_panel.pack(side="left", fill="both", expand=True, padx=(0, 4))
+
+            ai_panel, ai_badge, ai_label = build_panel("AI", _BADGE_AI_BG, _BADGE_AI_FG)
+            # ai_panel packed dynamically
+
             root.update_idletasks()
             screen_width = root.winfo_screenwidth()
             screen_height = root.winfo_screenheight()
@@ -100,25 +151,45 @@ class CoachOverlayController:
                 drag_state["manual"] = True
                 root.geometry(f"+{x}+{y}")
 
-            for widget in (container, local_panel, local_label, ai_panel, ai_label):
+            all_widgets = [shell, inner, header, content, local_panel, local_badge, local_label, ai_panel, ai_badge, ai_label]
+            for widget in all_widgets:
                 widget.bind("<ButtonPress-1>", start_drag)
                 widget.bind("<B1-Motion>", drag_window)
 
+            def _style_action_label(badge_label: tk.Label, text: str) -> None:
+                label_map = {
+                    "本地和牌": ("和牌", "#1b5e20", "#81c784"),
+                    "本地立直": ("立直", "#4a148c", "#ce93d8"),
+                    "本地鸣牌": ("鸣牌", "#e65100", "#ffb74d"),
+                    "本地防守": ("防守", "#b71c1c", "#ef9a9a"),
+                    "操作窗口": ("操作", _BADGE_LOCAL_BG, _TEXT_ACCENT),
+                }
+                for prefix, (label_text, bg, fg) in label_map.items():
+                    if text.startswith(prefix):
+                        badge_label.config(text=f"  {label_text}  ", bg=bg, fg=fg)
+                        return
+                badge_label.config(text="  本地  ", bg=_BADGE_LOCAL_BG, fg=_TEXT_ACCENT)
+
             def apply_text(text: str) -> None:
                 blocks = _split_overlay_blocks(text)
+                first_line = (blocks[0] if blocks else "Mahjong Coach").split("\n")[0]
+
                 if len(blocks) >= 2:
                     if not ai_panel.winfo_ismapped():
-                        ai_panel.pack(side="left", fill="both", expand=True, padx=5)
-                    local_panel.config(width=300, height=128)
-                    ai_panel.config(width=300, height=128)
-                    local_label.config(text=blocks[0], font=("Microsoft YaHei UI", 15, "bold"), wraplength=276)
-                    ai_label.config(text=blocks[1], font=("Microsoft YaHei UI", 15, "bold"), wraplength=276)
-                    width, height = 630, 138
+                        ai_panel.pack(side="left", fill="both", expand=True, padx=(4, 0))
+                    local_panel.config(width=280, height=100)
+                    ai_panel.config(width=280, height=100)
+                    _style_action_label(local_badge, first_line)
+                    local_label.config(text=blocks[0], wraplength=260)
+                    ai_badge.config(text="  AI  ", bg=_BADGE_AI_BG, fg=_BADGE_AI_FG)
+                    ai_label.config(text=blocks[1], wraplength=260)
+                    width, height = 610, 126
                 else:
                     ai_panel.pack_forget()
-                    local_panel.config(width=430, height=150)
-                    local_label.config(text=blocks[0] if blocks else "Mahjong Coach", font=("Microsoft YaHei UI", 18, "bold"), wraplength=390)
-                    width, height = 440, 150
+                    local_panel.config(width=380, height=100)
+                    _style_action_label(local_badge, first_line)
+                    local_label.config(text=blocks[0] if blocks else "Mahjong Coach", wraplength=360)
+                    width, height = 400, 126
                 place_window(width, height)
 
             apply_text("Mahjong Coach")
@@ -258,12 +329,6 @@ def _overlay_geometry(screen_width: int, screen_height: int, width: int, height:
     bottom_gap = max(160, int(screen_height * 0.19))
     y = max(28, screen_height - height - bottom_gap)
     return x, y
-
-
-def _is_llm_decision(decision: dict[str, Any], state: dict[str, Any]) -> bool:
-    meta = decision.get("engine_meta") if isinstance(decision.get("engine_meta"), dict) else {}
-    source = decision.get("analysis_source") or meta.get("analysis_source") or state.get("plan_source")
-    return str(source or "").lower() == "llm"
 
 
 def _plain_text(value: str) -> str:
