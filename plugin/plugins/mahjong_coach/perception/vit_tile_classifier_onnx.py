@@ -40,6 +40,7 @@ class _Preprocessor:
     rescale_factor: float
     do_rescale: bool
     do_normalize: bool
+    letterbox_pad: bool = False
 
 
 @dataclass(frozen=True)
@@ -190,6 +191,7 @@ def _load_preprocessor(path: Path) -> _Preprocessor:
         rescale_factor=float(payload.get("rescale_factor") or (1.0 / 255.0)),
         do_rescale=bool(payload.get("do_rescale", True)),
         do_normalize=bool(payload.get("do_normalize", True)),
+        letterbox_pad=bool(payload.get("letterbox_pad", False)),
     )
 
 
@@ -209,7 +211,10 @@ def _load_labels(path: Path) -> dict[int, str]:
 
 
 def _preprocess(image: Image.Image, preprocessor: _Preprocessor) -> np.ndarray:
-    resized = image.resize((preprocessor.width, preprocessor.height), Image.BILINEAR)
+    if preprocessor.letterbox_pad:
+        resized = _letterbox_resize(image, preprocessor.width, preprocessor.height)
+    else:
+        resized = image.resize((preprocessor.width, preprocessor.height), Image.BILINEAR)
     array = np.asarray(resized, dtype=np.float32)
     if preprocessor.do_rescale:
         array = array * preprocessor.rescale_factor
@@ -218,6 +223,16 @@ def _preprocess(image: Image.Image, preprocessor: _Preprocessor) -> np.ndarray:
         std = np.asarray(preprocessor.std, dtype=np.float32)
         array = (array - mean) / std
     return np.transpose(array, (2, 0, 1)).astype(np.float32, copy=False)
+
+
+def _letterbox_resize(image: Image.Image, target_w: int, target_h: int) -> Image.Image:
+    w, h = image.size
+    scale = min(target_w / w, target_h / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized = image.resize((new_w, new_h), Image.BILINEAR)
+    canvas = Image.new("RGB", (target_w, target_h), (0, 0, 0))
+    canvas.paste(resized, ((target_w - new_w) // 2, (target_h - new_h) // 2))
+    return canvas
 
 
 def _softmax(logits: np.ndarray) -> np.ndarray:

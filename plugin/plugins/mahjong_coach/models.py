@@ -7,7 +7,7 @@ from typing import Any
 @dataclass(frozen=True)
 class MahjongCoachConfig:
     live_advice_mode: str = "coach"
-    coach_checkpoint_self_turns: int = 1
+    coach_checkpoint_self_turns: int = 3
     critical_action_interrupts: bool = True
     per_turn_discard_prompt: bool = False
     play_style: str = "riichi"
@@ -18,9 +18,9 @@ class MahjongCoachConfig:
     river_recognition_enabled: bool = True
     river_min_confidence: float = 0.90
     live_window_keywords: list[str] = field(default_factory=lambda: ["雀魂", "Mahjong Soul"])
-    live_interval_ms: int = 1200
+    live_interval_ms: int = 400
     live_fast_interval_ms: int = 300
-    live_keep_frames: int = 30
+    live_keep_frames: int = 200
     live_checkpoint_interval_seconds: int = 4
     live_overlay_enabled: bool = True
     live_save_format: str = "jpg"
@@ -75,8 +75,6 @@ class RoundCoachState:
     local_direction: str = ""
     local_plan: str = ""
     local_detail: str = ""
-    local_targets: list[str] = field(default_factory=list)
-    local_cautions: list[str] = field(default_factory=list)
     attack_defense_bias: str = "neutral"
     target_shapes: list[str] = field(default_factory=list)
     caution_points: list[str] = field(default_factory=list)
@@ -91,6 +89,10 @@ class RoundCoachState:
     last_visible_discards: list[str] = field(default_factory=list)
     last_river_confidence: float = 0.0
     last_checkpoint_self_turn: int = 0
+    prev_direction: str = ""
+    prev_discard_priority: list[str] = field(default_factory=list)
+    riichi_players: list[str] = field(default_factory=list)
+    riichi_pending: dict[str, int] = field(default_factory=dict)
     last_update_reason: str = ""
     update_count: int = 0
 
@@ -113,6 +115,7 @@ class CoachDecision:
     perception: dict[str, Any] = field(default_factory=dict)
     engine_meta: dict[str, Any] = field(default_factory=dict)
     analysis_source: str = "heuristic"
+    quiet: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -140,6 +143,7 @@ class LiveSessionState:
     updated_at: float = 0.0
     last_error: str = ""
     last_frame_path: str = ""
+    last_window_title: str = ""
     last_capture_source: str = ""
     last_binding: dict[str, Any] = field(default_factory=dict)
     observed_hand_changes: int = 0
@@ -158,6 +162,10 @@ def _string_list(value: Any, fallback: list[str]) -> list[str]:
         result = [item.strip() for item in value.split(",") if item.strip()]
         return result or list(fallback)
     return list(fallback)
+
+
+def _clean_string_list(items: list[Any] | None) -> list[str]:
+    return [str(item).strip() for item in (items or []) if str(item).strip()]
 
 
 def _valid_play_style(value: Any) -> str:

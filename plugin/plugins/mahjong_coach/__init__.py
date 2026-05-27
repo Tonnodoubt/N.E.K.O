@@ -12,7 +12,7 @@ from plugin.sdk.plugin import Err, NekoPluginBase, Ok, SdkError, lifecycle, neko
 
 from .capture import DefaultCaptureProvider, prune_frames
 from .coach import RoundCoachEngine
-from .models import LiveSessionState, MahjongCoachConfig
+from .models import LiveSessionState, MahjongCoachConfig, _clean_string_list, _valid_play_style
 from .overlay import CoachOverlayController, overlay_text_from_payload
 from .window_binding import list_window_candidates
 
@@ -31,7 +31,6 @@ class MahjongCoachPlugin(NekoPluginBase):
         self._live_stop_event: asyncio.Event | None = None
         self._live_last_hand_signature = ""
         self._live_last_checkpoint_at = 0.0
-        self._live_missing_hand_frames = 0
         self._loop: asyncio.AbstractEventLoop | None = None
         self._tk_loop: asyncio.AbstractEventLoop | None = None
         self._tk_loop_thread: threading.Thread | None = None
@@ -109,20 +108,16 @@ class MahjongCoachPlugin(NekoPluginBase):
             return self._tk_loop
         try:
             self._tk_loop = asyncio.new_event_loop()
+            ready = threading.Event()
 
             def _run():
                 asyncio.set_event_loop(self._tk_loop)
+                ready.set()
                 self._tk_loop.run_forever()
 
             self._tk_loop_thread = threading.Thread(target=_run, daemon=True)
             self._tk_loop_thread.start()
-            import time as _time
-
-            for _ in range(100):
-                if self._tk_loop.is_running():
-                    break
-                _time.sleep(0.01)
-            if not self._tk_loop.is_running():
+            if not ready.wait(timeout=2.0) or not self._tk_loop.is_running():
                 self.logger.warning("tk event loop failed to start")
                 return None
             return self._tk_loop
@@ -132,50 +127,30 @@ class MahjongCoachPlugin(NekoPluginBase):
 
     def _on_overlay_start_sync(self, style: str) -> None:
         self.logger.info("_on_overlay_start_sync called style={}", style)
-        loop = None
-        if self._loop is not None and self._loop.is_running():
-            loop = self._loop
-        else:
-            loop = self._ensure_tk_loop()
-        if loop is None:
-            self.logger.warning("overlay start requested but no running event loop available")
-            return
-        try:
-            future = asyncio.run_coroutine_threadsafe(
-                self._overlay_start_live(play_style=style), loop
-            )
-        except Exception as exc:
-            self.logger.warning("asyncio.run_coroutine_threadsafe failed: {}", exc)
-            return
-
-        def _on_done(f):
-            exc = f.exception()
-            if exc:
-                self.logger.warning("_overlay_start_live failed: {}", exc)
-
-        future.add_done_callback(_on_done)
+        self._schedule_on_loop(self._overlay_start_live(play_style=style), "overlay_start")
 
     def _on_overlay_stop_sync(self) -> None:
+        self._schedule_on_loop(self._overlay_stop_live(hide_overlay=True), "overlay_stop")
+
+    def _schedule_on_loop(self, coro, label: str) -> None:
         loop = None
         if self._loop is not None and self._loop.is_running():
             loop = self._loop
         else:
             loop = self._ensure_tk_loop()
         if loop is None:
-            self.logger.warning("overlay stop requested but no running event loop available")
+            self.logger.warning("{} requested but no running event loop available", label)
             return
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                self._overlay_stop_live(hide_overlay=True), loop
-            )
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
         except Exception as exc:
-            self.logger.warning("asyncio.run_coroutine_threadsafe failed: {}", exc)
+            self.logger.warning("asyncio.run_coroutine_threadsafe failed for {}: {}", label, exc)
             return
 
         def _on_done(f):
             exc = f.exception()
             if exc:
-                self.logger.warning("_overlay_stop_live failed: {}", exc)
+                self.logger.warning("{} failed: {}", label, exc)
 
         future.add_done_callback(_on_done)
 
@@ -196,12 +171,14 @@ class MahjongCoachPlugin(NekoPluginBase):
         if self._engine is None:
             return Err(SdkError("mahjong coach is not initialized"))
         state = self._engine.state.to_dict()
+        payload = {"last_decision": dict(self._last_decision), "round_state": state}
         return Ok(
             {
                 "status": "ready",
                 "config": self._cfg.to_dict(),
                 "round_state": state,
                 "last_decision": dict(self._last_decision),
+                "overlay_text": overlay_text_from_payload(payload),
                 "live": self._live_state.to_dict(),
                 "ui_path": f"/plugin/{self.plugin_id}/ui/",
                 **state,
@@ -223,7 +200,6 @@ class MahjongCoachPlugin(NekoPluginBase):
         self._live_last_hand_signature = ""
         self._live_state.observed_hand_changes = 0
         self._live_state.missing_hand_frames = 0
-        self._live_missing_hand_frames = 0
         self._live_last_checkpoint_at = 0.0
         return Ok({"status": "reset", "round_state": state.to_dict(), "round_id": state.round_id})
 
@@ -343,12 +319,11 @@ class MahjongCoachPlugin(NekoPluginBase):
             if overlay:
                 self._show_overlay(strategy=True)
             return Ok({"status": "already_running", "running": True, "live": self._live_state.to_dict()})
-        selected_keywords = [str(item).strip() for item in (keywords or []) if str(item).strip()] or list(self._cfg.live_window_keywords)
+        selected_keywords = _clean_string_list(keywords) or list(self._cfg.live_window_keywords)
         selected_interval = max(200, int(interval_ms or self._cfg.live_interval_ms))
         overlay_enabled = bool(overlay and self._cfg.live_overlay_enabled)
         self._apply_runtime_round_context(round_wind=round_wind, seat_wind=seat_wind, dora_tiles=dora_tiles, play_style=play_style)
         self._live_stop_event = asyncio.Event()
-        self._live_missing_hand_frames = 0
         self._live_state = LiveSessionState(
             running=True,
             status="starting",
@@ -376,10 +351,8 @@ class MahjongCoachPlugin(NekoPluginBase):
         dora_tiles: list[str] | None = None,
         play_style: str = "",
     ) -> None:
-        dora_list = None if dora_tiles is None else [str(item).strip() for item in dora_tiles if str(item).strip()]
-        style = str(play_style or "").strip().lower()
-        if style and style not in ("fast", "riichi"):
-            style = "riichi"
+        dora_list = None if dora_tiles is None else _clean_string_list(dora_tiles)
+        style = _valid_play_style(play_style) if play_style else ""
         updated = replace(
             self._cfg,
             round_wind=str(round_wind or self._cfg.round_wind or "").strip(),
@@ -429,9 +402,90 @@ class MahjongCoachPlugin(NekoPluginBase):
         llm_result_fields=["candidates"],
     )
     async def mahjong_coach_window_candidates(self, keywords: list[str] | None = None, **_):
-        selected_keywords = [str(item).strip() for item in (keywords or []) if str(item).strip()] or list(self._cfg.live_window_keywords)
+        selected_keywords = _clean_string_list(keywords) or list(self._cfg.live_window_keywords)
         candidates = await asyncio.to_thread(list_window_candidates, selected_keywords)
         return Ok({"keywords": selected_keywords, "candidates": candidates})
+
+    @plugin_entry(
+        id="mahjong_coach_extract_hand_crops",
+        name=tr("entries.extract_crops.name", default="Extract Hand Crops for Training"),
+        description=tr(
+            "entries.extract_crops.description",
+            default="Extract hand tile crops from saved live frames for classifier training.",
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "output_dir": {"type": "string", "default": ""},
+                "classify": {"type": "boolean", "default": True},
+            },
+        },
+        timeout=60.0,
+        llm_result_fields=["total", "per_label"],
+    )
+    async def mahjong_coach_extract_hand_crops(
+        self,
+        output_dir: str = "",
+        classify: bool = True,
+        **_,
+    ):
+        from .perception.calibration import resolve_calibration_profile
+        from .perception.hand_layout import build_hand_layout
+        from .perception.roi import collect_region_metrics
+        from .perception.tile_classifier_dispatch import classify_hand_tile
+        from .perception.tile_templates import is_probably_occupied_hand_slot
+        from .tile_labels import normalize_tile
+
+        frames_dir = self.data_path("live_frames")
+        out = Path(output_dir) if output_dir else self.data_path("hand_crops")
+        calibration_dir = Path(__file__).parent / "data" / "calibration" / "profiles"
+
+        images = sorted(p for p in frames_dir.glob("*-frame.*") if p.is_file())
+        if not images:
+            return Err(SdkError(f"No frames found in {frames_dir}"))
+
+        counts: dict[str, int] = {}
+        min_confidence = 0.10
+        IMG_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+
+        for image_path in images:
+            from PIL import Image
+            with Image.open(image_path) as opened:
+                image = opened.convert("RGB")
+            w, h = image.size
+            calibration = resolve_calibration_profile(w, h, calibration_dir=calibration_dir)
+            template_payload = calibration.hand_tile_templates
+            layout = build_hand_layout(w, h, calibration=calibration)
+
+            for slot in layout["hand"][:14]:
+                metrics = collect_region_metrics(image, slot.box, sample_step=6)
+                occupied = is_probably_occupied_hand_slot({
+                    "slot_mean_luma": metrics.get("mean_luma"),
+                    "slot_bright_ratio": metrics.get("bright_ratio"),
+                    "slot_dark_ratio": metrics.get("dark_ratio"),
+                    "slot_stddev": metrics.get("stddev"),
+                })
+                if not occupied:
+                    continue
+                crop = image.crop((slot.box.left, slot.box.top, slot.box.right, slot.box.bottom))
+
+                if classify and template_payload:
+                    match = classify_hand_tile(crop, template_payload)
+                    if match and match.confidence >= min_confidence:
+                        label = match.tile
+                    else:
+                        label = "unclassified"
+                else:
+                    label = "unclassified"
+
+                label_dir = out / label
+                label_dir.mkdir(parents=True, exist_ok=True)
+                crop.save(label_dir / f"{image_path.stem}_{slot.slot_id}.png")
+                counts[label] = counts.get(label, 0) + 1
+
+        total = sum(counts.values())
+        self.logger.info("Extracted {} hand crops: {}", total, counts)
+        return Ok({"total": total, "per_label": counts, "output_dir": str(out)})
 
     async def _run_live_loop(self, *, keywords: list[str], interval_ms: int, overlay_enabled: bool) -> None:
         assert self._engine is not None
@@ -481,8 +535,9 @@ class MahjongCoachPlugin(NekoPluginBase):
                     self._live_state.last_frame_path = packet.image_path
                     self._live_state.last_capture_source = packet.source
                     self._live_state.last_window_title = packet.window_title
-                    payload = {"last_decision": dict(self._last_decision), "round_state": self._engine.state.to_dict()}
-                    self._update_overlay(payload)
+                    if not getattr(decision, "quiet", False):
+                        payload = {"last_decision": dict(self._last_decision), "round_state": self._engine.state.to_dict()}
+                        self._update_overlay(payload)
                     await asyncio.to_thread(prune_frames, frames_dir, keep=self._cfg.live_keep_frames)
                     if decision.action_required and not round_idle:
                         sleep_ms = self._cfg.live_fast_interval_ms
@@ -541,21 +596,17 @@ class MahjongCoachPlugin(NekoPluginBase):
         if self._engine is None:
             return False
         if getattr(decision, "action_required", False) or getattr(decision, "hand_tiles", []):
-            self._live_missing_hand_frames = 0
             self._live_state.missing_hand_frames = 0
             return False
         if not self._engine.state.opening_emitted:
-            self._live_missing_hand_frames = 0
             self._live_state.missing_hand_frames = 0
             return False
         reason_codes = [str(item) for item in (getattr(decision, "reason_codes", []) or [])]
         if not any(code.startswith("hand_") for code in reason_codes):
-            self._live_missing_hand_frames = 0
             self._live_state.missing_hand_frames = 0
             return False
-        self._live_missing_hand_frames += 1
-        self._live_state.missing_hand_frames = self._live_missing_hand_frames
-        if self._live_missing_hand_frames < 4:
+        self._live_state.missing_hand_frames += 1
+        if self._live_state.missing_hand_frames < 4:
             return False
 
         state = self._engine.reset_round("auto_waiting_next_round")
@@ -574,7 +625,7 @@ class MahjongCoachPlugin(NekoPluginBase):
             "reason_codes": ["live_round_idle", "hand_missing_streak"],
             "coach_state": state.to_dict(),
             "perception": getattr(decision, "perception", {}),
-            "engine_meta": {"source": "live_round_idle", "missing_hand_frames": self._live_missing_hand_frames},
+            "engine_meta": {"source": "live_round_idle", "missing_hand_frames": self._live_state.missing_hand_frames},
         }
         return True
 
@@ -590,6 +641,3 @@ class MahjongCoachPlugin(NekoPluginBase):
             return
         overlay_payload = dict(payload)
         self._overlay.update(overlay_text_from_payload(overlay_payload))
-
-
-MahjongCoachBridgePlugin = MahjongCoachPlugin

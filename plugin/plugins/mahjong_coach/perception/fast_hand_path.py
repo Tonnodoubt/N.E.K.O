@@ -5,11 +5,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from PIL import Image
 
 from .calibration import resolve_calibration_profile
 from .hand_layout import build_hand_layout
-from .roi import collect_region_metrics
+from .roi import RoiBox, collect_region_metrics
 from .tile_classifier_dispatch import classify_hand_tile
 from .tile_templates import is_probably_occupied_hand_slot
 
@@ -130,3 +131,55 @@ def detect_fast_hand_path(
         elapsed_ms=elapsed_ms,
         raw_detections=raw_detections,
     )
+
+
+def quick_frame_fingerprint(
+    image_path: Path,
+    last_hashes: dict[str, bytes] | None = None,
+) -> dict[str, Any]:
+    """Cheap pixel hash of action bar + hand regions.
+
+    Returns dict with:
+      - action_changed: bool
+      - hand_changed: bool
+      - hashes: dict[str, bytes]  (for next call's last_hashes)
+    """
+    last_hashes = last_hashes or {}
+    if not image_path.exists():
+        return {"action_changed": True, "hand_changed": True, "hashes": {}}
+
+    with Image.open(image_path) as opened:
+        image = opened.convert("RGB")
+    w, h = image.width, image.height
+    arr = np.asarray(image, dtype=np.int16)
+
+    # Action bar region (same as action_detector.py uses)
+    ax = int(w * 0.18)
+    ay = int(h * 0.54)
+    aw = int(w * 0.68)
+    ah = int(h * 0.28)
+    action_crop = arr[ay:ay + ah:8, ax:ax + aw:8]
+    action_hash = _row_hash(action_crop)
+
+    # Hand region (same as hand_layout.py uses)
+    hx = int(w * 0.14)
+    hy = int(h * 0.72)
+    hw = int(w * 0.54)
+    hh = int(h * 0.15)
+    hand_crop = arr[hy:hy + hh:8, hx:hx + hw:8]
+    hand_hash = _row_hash(hand_crop)
+
+    hashes = {"action": action_hash, "hand": hand_hash}
+    return {
+        "action_changed": action_hash != last_hashes.get("action", b""),
+        "hand_changed": hand_hash != last_hashes.get("hand", b""),
+        "hashes": hashes,
+    }
+
+
+def _row_hash(crop: np.ndarray) -> bytes:
+    """Compact hash of a 2D pixel array — sum of each row's mean."""
+    if crop.size == 0:
+        return b""
+    row_means = crop.reshape(crop.shape[0], -1).mean(axis=1)
+    return row_means.astype(np.float32).tobytes()

@@ -5,7 +5,7 @@ import os
 import queue
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 # N.E.K.O design system (light mode)
@@ -38,14 +38,18 @@ _ACTION_DEFENSE = ("防守", _DANGER, "#ffffff")
 _ACTION_GENERIC = ("操作", _BTN_PRIMARY, "#ffffff")
 
 # Resize bounds
-_MIN_WIDTH = 320
-_MIN_HEIGHT = 110
-_MAX_WIDTH = 1200
-_MAX_HEIGHT = 460
+_MIN_WIDTH = 280
+_MIN_HEIGHT = 80
+_MAX_WIDTH = 1000
+_MAX_HEIGHT = 360
 
 # Default size
-_DEFAULT_WIDTH = 700
-_DEFAULT_HEIGHT = 190
+_DEFAULT_WIDTH = 420
+_DEFAULT_HEIGHT = 100
+
+# Config mode (two buttons) compact size
+_CONFIG_WIDTH = 380
+_CONFIG_HEIGHT = 90
 
 # Prefs file
 _PREFS_FILENAME = "overlay_prefs.json"
@@ -196,7 +200,7 @@ class CoachOverlayController:
             # Resize grip
             grip = tk.Label(
                 body, text="⌟", bg=_BG, fg=_BORDER_FOCUS,
-                font=(_FONT, 9), anchor="se", padx=4, pady=1,
+                font=(_FONT, 14), anchor="se", padx=8, pady=2,
             )
             grip.pack(side="bottom", fill="x")
 
@@ -375,7 +379,11 @@ class CoachOverlayController:
             def show_config_mode() -> None:
                 strategy_frame.pack_forget()
                 config_frame.pack(fill="both", expand=True)
+                saved_w, saved_h = layout["width"], layout["height"]
+                layout["width"] = _CONFIG_WIDTH
+                layout["height"] = _CONFIG_HEIGHT
                 _set_geometry()
+                layout["width"], layout["height"] = saved_w, saved_h
 
             def show_strategy_mode() -> None:
                 config_frame.pack_forget()
@@ -427,15 +435,19 @@ def overlay_text_from_payload(payload: dict[str, Any]) -> str:
     has_plan = state.get("local_direction") or state.get("local_plan") or state.get("current_plan") or state.get("opening_plan")
     if not has_plan and decision.get("decision_type") == "observe":
         return _waiting_hand_overlay(decision)
+    riichi_players = [str(p).strip() for p in (state.get("riichi_players") or []) if str(p).strip()]
+    label = "本地防守" if riichi_players else "本地"
     local_direction = str(state.get("local_direction") or "").strip()
     local_plan = str(state.get("local_plan") or state.get("current_plan") or state.get("opening_plan") or decision.get("suggestion") or "").strip()
     local_block = _strategy_overlay_block(
-        "本地",
+        label,
         local_direction,
         local_plan,
-        _string_items(state.get("local_targets")) or _string_items(state.get("target_shapes")),
-        _string_items(state.get("local_cautions")) or _string_items(state.get("caution_points")),
+        _string_items(state.get("target_shapes")),
+        _string_items(state.get("caution_points")),
     )
+    if riichi_players:
+        local_block = f"有人立直，注意安全牌\n{local_block}"
     return local_block
 
 
@@ -462,20 +474,14 @@ def _call_text(cautions: list[str]) -> str:
 
 def _strategy_overlay_block(label: str, direction: str, plan: str, targets: list[str], cautions: list[str]) -> str:
     direction = _direction_text(direction, plan, targets)
-    yaku = _yaku_text(targets)
-    keep = _keep_text(targets, plan)
-    discard = _discard_text(cautions, plan)
-    efficiency = _efficiency_text(cautions)
-    call = _call_text(cautions)
     lines = [f"方向：{direction}"]
+    yaku = _yaku_text(targets)
     if yaku:
         lines.append(f"役：{yaku}")
+    keep = _keep_text(targets, plan)
     if keep:
         lines.append(f"留：{keep}")
-    if discard:
-        lines.append(f"打：{discard}")
-    if efficiency:
-        lines.append(f"牌效：{efficiency}")
+    call = _call_text(cautions)
     if call:
         lines.append(f"开：{call}")
     return _format_overlay(label, *lines)

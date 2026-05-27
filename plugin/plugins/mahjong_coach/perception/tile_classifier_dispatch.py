@@ -41,11 +41,27 @@ def classify_hand_tile(
     crop: Image.Image,
     template_payload: dict[str, Any],
 ) -> TileTemplateMatch | None:
-    """Classify a hand tile using legacy templates by default.
+    """Classify a hand tile using ONNX when available, template fallback.
 
-    The old ONNX model was strong for discard crops but intentionally opt-in
-    for hand tiles, so this new coach keeps hand recognition template-first.
+    After fine-tuning on hand crops, the ONNX model is now the primary path.
+    Template matching serves as fallback when ONNX is unavailable.
     """
+    if onnx_discard_available():
+        onnx_match = _classify_hand_onnx(crop)
+        if onnx_match is not None and onnx_match.confidence >= 0.5:
+            return onnx_match
+        # Low confidence from ONNX — try template as second opinion
+        tmpl_result = classify_tile_from_templates(crop, template_payload)
+        if tmpl_result is not None and tmpl_result.confidence >= 0.3:
+            # If template agrees with ONNX, trust the higher-confidence one
+            if tmpl_result.tile == (onnx_match.tile if onnx_match else ""):
+                return tmpl_result if tmpl_result.confidence > onnx_match.confidence else onnx_match  # type: ignore[union-attr]
+            # Disagreement — trust template if confident enough
+            if tmpl_result.confidence >= 0.5:
+                return _apply_red_five(crop, tmpl_result)
+            return onnx_match
+        return onnx_match
+
     result = classify_tile_from_templates(crop, template_payload)
     if result is None:
         return None
@@ -54,7 +70,9 @@ def classify_hand_tile(
 
 def onnx_hand_enabled() -> bool:
     value = os.environ.get("MAHJONG_COACH_ONNX_HAND_ENABLED", "")
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    if value.strip().lower() in {"0", "false", "no", "off"}:
+        return False
+    return True  # ONNX for hand tiles is now enabled by default
 
 
 def detect_red_five(crop: Image.Image, classified_tile: str) -> str | None:
@@ -105,3 +123,23 @@ def _onnx_prediction_to_match(prediction: Any) -> TileTemplateMatch | None:
         runner_up_tile=runner_up_tile,
         runner_up_distance=runner_up_distance,
     )
+
+
+def _classify_hand_onnx(crop: Image.Image) -> TileTemplateMatch | None:
+    predictions = classify_tile_crops_onnx([crop], top_k=2)
+    if not predictions or predictions[0] is None:
+        return None
+    match = _onnx_prediction_to_match(predictions[0])
+    if match is None:
+        return None
+    # Apply red-five color post-processing
+    red = detect_red_five(crop, match.tile)
+    if red is not None:
+        return TileTemplateMatch(
+            tile=red,
+            confidence=match.confidence,
+            distance=match.distance,
+            runner_up_tile=match.runner_up_tile,
+            runner_up_distance=match.runner_up_distance,
+        )
+    return match

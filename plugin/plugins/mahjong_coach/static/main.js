@@ -275,15 +275,19 @@ function renderRiver(piles = {}) {
 function renderDashboard(data = {}) {
   const state = data.round_state || data.coach_state || data || {};
   const decision = data.last_decision || data;
-  const detail = decision.detail || state.opening_plan || '';
   const live = data.live || {};
   const localPlan = state.local_direction || state.local_plan || state.current_plan || state.opening_plan || decision.suggestion;
-  const localDetail = state.local_detail || detail;
-  const localTargets = listValues(state.local_targets).length ? listValues(state.local_targets) : listValues(state.target_shapes);
-  const localCautions = listValues(state.local_cautions).length ? listValues(state.local_cautions) : listValues(state.caution_points);
+  const localDetail = decision.detail || state.opening_plan || '';
+  const overlayText = data.overlay_text || '';
 
-  mainPlan.textContent = strategyHeadline(localPlan, localTargets, '等待手牌');
-  planDetail.textContent = strategyBrief(localPlan, localDetail, localTargets, localCautions, '还没有稳定手牌输入');
+  if (overlayText) {
+    const lines = overlayText.split('\n');
+    mainPlan.textContent = lines[0] || '等待手牌';
+    planDetail.textContent = lines.slice(1).join('\n') || '还没有稳定手牌输入';
+  } else {
+    mainPlan.textContent = strategyHeadline(localPlan, listValues(state.target_shapes), '等待手牌');
+    planDetail.textContent = strategyBrief(localPlan, localDetail, listValues(state.target_shapes), listValues(state.caution_points), '还没有稳定手牌输入');
+  }
   analysisSource.textContent = '本地';
   analysisSource.classList.remove('is-ai');
   const style = state.play_style || 'riichi';

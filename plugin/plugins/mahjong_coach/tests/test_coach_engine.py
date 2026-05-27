@@ -379,7 +379,7 @@ def test_checkpoint_plan_uses_onnx_meld_state(monkeypatch: pytest.MonkeyPatch) -
     assert decision.decision_type == "coach_checkpoint"
     assert decision.perception["meld"]["open_meld_count"] == 2
     assert decision.coach_state["last_open_meld_count"] == 2
-    assert any("役牌副露" in item for item in decision.coach_state["local_targets"])
+    assert any("役牌副露" in item for item in decision.coach_state["target_shapes"])
 
 
 def test_round_plan_prefers_seven_pairs_when_pairs_are_dense() -> None:
@@ -454,9 +454,42 @@ def test_riichi_defense_uses_recognized_riichi_player_river(monkeypatch: pytest.
     decision = engine.analyze_frame("frame.png", riichi_players=["shimocha"])
 
     assert "现物" in decision.suggestion
-    assert "7筒" in decision.suggestion
     assert "2索" in decision.suggestion
+    assert "7筒" not in decision.suggestion
     assert decision.coach_state["last_visible_discards"] == ["7p", "2s"]
+
+
+def test_riichi_defense_only_recommends_safe_tiles_player_actually_holds(monkeypatch: pytest.MonkeyPatch) -> None:
+    hand = ["1m", "2m", "3m", "4p", "5p", "6p", "2s", "3s", "4s", "5s", "6s", "7s", "1z", "1z"]
+    engine = RoundCoachEngine(MahjongCoachConfig())
+    engine.state.opening_emitted = True
+    monkeypatch.setattr(
+        engine,
+        "_detect_hand",
+        lambda _path: FastHandResult(ok=True, hand_tiles=hand, confidence=0.91, reason="test_hand"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "_detect_river",
+        lambda _path: RiverStateResult(
+            ok=True,
+            discard_piles={
+                "right_opponent": [
+                    {"tile": "3z", "confidence": 0.96},
+                    {"tile": "4z", "confidence": 0.95},
+                ]
+            },
+            visible_tiles=["3z", "4z"],
+            confidence=0.955,
+            reason="test_river",
+        ),
+    )
+
+    decision = engine.analyze_frame("frame.png", riichi_players=["shimocha"])
+
+    assert decision.decision_type == "defense_alert"
+    assert "现物" in decision.suggestion
+    assert "手里没有" in decision.suggestion
 
 
 def test_checkpoint_plan_uses_recognized_river_for_ukeire(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -629,7 +662,6 @@ def test_overlay_text_uses_strategy_when_no_action() -> None:
 
     assert "本地" in text
     assert "方向：围绕索子 122334 推进" in text
-    assert "打：2万、7万、西等4张" in text
     assert "…" not in text
 
 
@@ -640,8 +672,8 @@ def test_overlay_text_shows_detailed_open_hand_lines() -> None:
             "round_state": {
                 "local_direction": "副露一向听",
                 "local_plan": "已副露2组，优先打向听最低、有效牌最多的牌；留6索、7索、8索、9索，先看打6索，当前1向听",
-                "local_targets": ["已成役：役牌副露 白", "保留：6索、7索、8索、9索"],
-                "local_cautions": [
+                "target_shapes": ["已成役：役牌副露 白", "保留：6索、7索、8索、9索"],
+                "caution_points": [
                     "副露收束：主线打6索；不硬染打2万",
                     "副露牌效：估算2组，当前1向听；打6索后1向听，有效8种28枚，已扣可见牌（1万、2万）。",
                     "鸣牌：继续快攻，但只开能进听或明显增加有效牌的牌。",
@@ -652,8 +684,6 @@ def test_overlay_text_shows_detailed_open_hand_lines() -> None:
 
     assert "方向：副露一向听" in text
     assert "役：役牌副露 白" in text
-    assert "打：6索" in text
-    assert "牌效：当前1向听；打6索后1向听，有效8种28枚" in text
     assert "..." not in text
 
 
