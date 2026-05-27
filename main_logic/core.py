@@ -714,6 +714,7 @@ class LLMSessionManager:
         self._speech_output_total = 0  # diagnostic: chunks actually sent to frontend playback
         self._last_speech_output_time = 0.0
         self._last_speech_output_bytes = 0
+        self.client_audio_format = ''
         self._audio_stream_queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=300)
         self._audio_stream_worker_task: Optional[asyncio.Task] = None
         self._audio_stream_dropped_total = 0
@@ -1187,6 +1188,7 @@ class LLMSessionManager:
                 core_api_type=self.core_api_type,
                 has_custom_voice=has_custom,
                 voice_id=self.voice_id or '',
+                client_audio_format=self.client_audio_format,
             )
             tts_config = self._config_manager.get_model_api_config(
                 'tts_custom' if has_custom else 'tts_default'
@@ -1198,6 +1200,7 @@ class LLMSessionManager:
                 self.voice_id or '',
                 bool(getattr(self, "_is_free_preset_voice", False)),
                 bool(has_custom),
+                self.client_audio_format,
                 tts_config.get('base_url', ''),
                 tts_config.get('model', ''),
                 api_key,
@@ -3066,6 +3069,7 @@ class LLMSessionManager:
                 core_api_type=self.core_api_type,
                 has_custom_voice=has_custom,
                 voice_id=self.voice_id or '',
+                client_audio_format=self.client_audio_format,
             )
             tts_config = self._config_manager.get_model_api_config(
                 'tts_custom' if has_custom else 'tts_default'

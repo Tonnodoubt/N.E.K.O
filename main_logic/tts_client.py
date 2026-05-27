@@ -2107,7 +2107,7 @@ def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice
         response_queue.put(("__ready__", False))
 
 
-def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
+def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_id, output_audio_format='ogg_opus'):
     """
     TTS多进程worker函数，用于阿里云CosyVoice TTS
     
@@ -2120,6 +2120,12 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
     import dashscope
     from dashscope.audio.tts_v2 import ResultCallback, SpeechSynthesizer, AudioFormat
     from utils.language_utils import detect_tts_language_hint, TTS_LANG_DETECT_MIN_CHARS
+
+    audio_format = (
+        AudioFormat.PCM_48000HZ_MONO_16BIT
+        if str(output_audio_format or '').lower() == 'pcm_48000'
+        else AudioFormat.OGG_OPUS_48KHZ_MONO_64KBPS
+    )
 
     # 从 voice 元数据中读取注册时使用的模型和地域 URL，缺失时回退到全局配置
     _voice_meta = _get_voice_meta(voice_id)
@@ -2278,7 +2284,7 @@ def cosyvoice_vc_tts_worker(request_queue, response_queue, audio_api_key, voice_
             model=clone_model,
             voice=voice_id,
             speech_rate=1.05,
-            format=AudioFormat.OGG_OPUS_48KHZ_MONO_64KBPS,
+            format=audio_format,
             callback=callback,
         )
         if lang_hint and cosyvoice_model_supports_language_hints(clone_model):
@@ -3843,7 +3849,13 @@ def _grok_voice_id_is_xai_custom(voice_id: str) -> bool:
     return bool(_XAI_CUSTOM_VOICE_PATTERN.match(voice_id))
 
 
-def get_tts_worker(core_api_type='qwen', has_custom_voice=False, voice_id=''):
+def _cosyvoice_worker_for_client_audio(client_audio_format=''):
+    if str(client_audio_format or '').strip().upper() == 'PCM_48000HZ_MONO_16BIT':
+        return partial(cosyvoice_vc_tts_worker, output_audio_format='pcm_48000')
+    return cosyvoice_vc_tts_worker
+
+
+def get_tts_worker(core_api_type='qwen', has_custom_voice=False, voice_id='', client_audio_format=''):
     """
     根据 core_api 类型和是否有自定义音色，返回一个 callable。
 
@@ -3916,7 +3928,7 @@ def get_tts_worker(core_api_type='qwen', has_custom_voice=False, voice_id=''):
                 return dummy_tts_worker, None, None
             logger.info("检测到阿里 CosyVoice 克隆音色: %s (provider=%s)，使用 CosyVoice TTS Worker",
                         voice_id, provider)
-            return cosyvoice_vc_tts_worker, (runtime_key or None), 'cosyvoice'
+            return _cosyvoice_worker_for_client_audio(client_audio_format), (runtime_key or None), 'cosyvoice'
 
     # core_api_type 命中 native voice provider + 用户选了该 provider 的原生声线
     # (e.g. Gemini Puck/Leda/中文男) 时优先走原生 worker，不能被 has_custom_voice=False
@@ -3969,7 +3981,7 @@ def get_tts_worker(core_api_type='qwen', has_custom_voice=False, voice_id=''):
             grok_api_key = (cm.get_core_config() or {}).get('CORE_API_KEY', '')
             return grok_streaming_tts_worker, grok_api_key, 'grok'
         else:
-            return cosyvoice_vc_tts_worker, None, 'cosyvoice'
+            return _cosyvoice_worker_for_client_audio(client_audio_format), None, 'cosyvoice'
 
     # 没有自定义音色时，使用与 core_api 匹配的默认 TTS
     if core_api_type in ('qwen', 'qwen_intl'):

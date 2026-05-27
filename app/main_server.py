@@ -146,12 +146,13 @@ def _check_port(host: str, port: int, timeout: float = 1.0) -> bool:
 
 async def _request_lan_proxy(path: str, timeout: float = 2.0):
     """Request a local LAN Proxy endpoint with stale-IP fallback."""
-    hosts = _get_lan_proxy_hosts()
+    hosts = await asyncio.to_thread(_get_lan_proxy_hosts)
     last_error = None
 
     async with httpx.AsyncClient(proxy=None, trust_env=False) as client:
         for host in hosts:
-            if not _check_port(host, LAN_PROXY_PORT):
+            is_open = await asyncio.to_thread(_check_port, host, LAN_PROXY_PORT)
+            if not is_open:
                 last_error = f"{host}:{LAN_PROXY_PORT} not accepting TCP"
                 continue
 
@@ -1647,11 +1648,10 @@ async def health():
     以区分当前服务与随机占用该端口的其他进程。"""
     from utils.port_utils import build_health_response
     from config import INSTANCE_ID
-    lan_hosts = _get_lan_proxy_hosts()
-    lan_available = any(
-        _check_port(host, LAN_PROXY_PORT, timeout=0.2)
-        for host in lan_hosts
-    )
+    lan_hosts = await asyncio.to_thread(_get_lan_proxy_hosts)
+    check_tasks = [asyncio.to_thread(_check_port, host, LAN_PROXY_PORT, 0.2) for host in lan_hosts]
+    check_results = await asyncio.gather(*check_tasks)
+    lan_available = any(check_results)
     return build_health_response(
         "main",
         instance_id=INSTANCE_ID,
@@ -1674,7 +1674,8 @@ async def p2p_info():
 
     response, host, error = await _request_lan_proxy("/p2p-info", timeout=2.0)
     if response is None:
-        logger.warning("LAN proxy unavailable for /p2p-info via %s: %s", _get_lan_proxy_hosts(), error)
+        hosts = await asyncio.to_thread(_get_lan_proxy_hosts)
+        logger.warning("LAN proxy unavailable for /p2p-info via %s: %s", hosts, error)
         return JSONResponse(content={"error": "P2P service unavailable"}, status_code=503)
     if response.status_code == 200:
         payload = response.json()
@@ -1696,7 +1697,8 @@ async def lanproxy_qrcode():
 
     response, host, error = await _request_lan_proxy("/lanproxyqrcode", timeout=3.0)
     if response is None:
-        logger.warning("LAN proxy unavailable for /lanproxyqrcode via %s: %s", _get_lan_proxy_hosts(), error)
+        hosts = await asyncio.to_thread(_get_lan_proxy_hosts)
+        logger.warning("LAN proxy unavailable for /lanproxyqrcode via %s: %s", hosts, error)
         return JSONResponse(content={"error": "QR code service unavailable"}, status_code=503)
     if response.status_code == 200:
         return Response(

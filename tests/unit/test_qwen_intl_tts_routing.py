@@ -46,3 +46,16 @@ def test_qwen_intl_default_routes_to_realtime_tts(monkeypatch):
     assert worker is tts_client.qwen_realtime_tts_worker
     assert api_key_override is None
     assert provider_key == 'qwen'
+
+
+def test_cosyvoice_worker_uses_pcm_for_mobile_audio_request():
+    worker = tts_client._cosyvoice_worker_for_client_audio("PCM_48000HZ_MONO_16BIT")
+
+    assert getattr(worker, "func", None) is tts_client.cosyvoice_vc_tts_worker
+    assert getattr(worker, "keywords", {}) == {"output_audio_format": "pcm_48000"}
+
+
+def test_cosyvoice_worker_keeps_ogg_without_mobile_audio_request():
+    worker = tts_client._cosyvoice_worker_for_client_audio("")
+
+    assert worker is tts_client.cosyvoice_vc_tts_worker

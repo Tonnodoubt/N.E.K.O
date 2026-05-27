@@ -161,6 +161,8 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
                 session_manager[lanlan_name].active_session_is_idle = False
                 input_type = message.get("input_type", "audio")
                 if input_type in ['audio', 'screen', 'camera', 'text']:
+                    requested_audio_format = str(message.get("audio_format") or "").strip().upper()
+                    session_manager[lanlan_name].client_audio_format = requested_audio_format
                     if is_game_route_active(lanlan_name):
                         if input_type == "text":
                             logger.info("[%s] game route active: acknowledging text entry without starting ordinary text session", lanlan_name)
