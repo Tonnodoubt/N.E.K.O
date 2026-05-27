@@ -76,6 +76,12 @@ PROXY_PORT = LAN_PROXY_PORT
 TARGET_BASE = f"http://127.0.0.1:{MAIN_SERVER_PORT}"
 TARGET_WS_BASE = f"ws://127.0.0.1:{MAIN_SERVER_PORT}"
 MOBILE_API_VERSION = 1
+MOBILE_CLIENT_TYPE = "mobile"
+NEKOCAM_CLIENT_TYPE = "nekocam"
+DEFAULT_CLIENT_CAPABILITIES = {
+    MOBILE_CLIENT_TYPE: ["mobile_pairing"],
+    NEKOCAM_CLIENT_TYPE: ["camera_frame", "camera_advice", "live2d_overlay"],
+}
 
 # 状态文件路径
 STATUS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".lan_proxy_status.json")
@@ -111,6 +117,31 @@ def _write_json_atomic(path: Path, payload: dict):
         encoding="utf-8",
     )
     tmp_path.replace(path)
+
+
+def _normalize_mobile_client_type(value: Any, default: str = MOBILE_CLIENT_TYPE) -> str:
+    raw = str(value or "").strip().lower()
+    if raw == NEKOCAM_CLIENT_TYPE:
+        return NEKOCAM_CLIENT_TYPE
+    return default
+
+
+def _normalize_client_capabilities(value: Any, client_type: str) -> list[str]:
+    if isinstance(value, list):
+        capabilities: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            normalized = item.strip()
+            if not normalized or normalized in capabilities:
+                continue
+            capabilities.append(normalized[:64])
+            if len(capabilities) >= 16:
+                break
+        if capabilities:
+            return capabilities
+
+    return list(DEFAULT_CLIENT_CAPABILITIES.get(client_type, DEFAULT_CLIENT_CAPABILITIES[MOBILE_CLIENT_TYPE]))
 
 
 def _read_env(var_name: str) -> Optional[str]:
@@ -570,20 +601,30 @@ class LanProxy:
         client_name: str = "",
         client_device_id: str = "",
         user_agent: str = "",
+        client_type: str = MOBILE_CLIENT_TYPE,
+        capabilities: Any = None,
     ) -> dict:
         payload = self._load_mobile_pairings()
         pairings = payload["pairings"]
         pairing_id = f"pair_{secrets.token_urlsafe(9)}"
         pairing_secret = secrets.token_urlsafe(32)
         now = int(time.time())
+        normalized_client_type = _normalize_mobile_client_type(client_type)
+        normalized_capabilities = _normalize_client_capabilities(
+            capabilities,
+            normalized_client_type,
+        )
 
         pairings[pairing_id] = {
             "secret_sha256": hashlib.sha256(pairing_secret.encode("utf-8")).hexdigest(),
             "client_name": str(client_name or "")[:128],
+            "client_type": normalized_client_type,
+            "capabilities": normalized_capabilities,
             "client_device_id": str(client_device_id or "")[:128],
             "user_agent": str(user_agent or "")[:256],
             "created_at": now,
             "last_resolved_at": 0,
+            "last_seen_at": now,
         }
         self._save_mobile_pairings(payload)
 
@@ -591,6 +632,8 @@ class LanProxy:
             "pairing_id": pairing_id,
             "pairing_secret": pairing_secret,
             "device_id": self._get_device_id(),
+            "client_type": normalized_client_type,
+            "capabilities": normalized_capabilities,
             "register_path": "/pairing/register",
             "resolve_path": "/pairing/resolve",
             "created_at": now,
@@ -603,6 +646,8 @@ class LanProxy:
         client_name: str = "",
         client_device_id: str = "",
         user_agent: str = "",
+        client_type: str = "",
+        capabilities: Any = None,
     ) -> Optional[dict]:
         if not pairing_id or not pairing_secret:
             return None
@@ -618,7 +663,25 @@ class LanProxy:
         if not expected_hash or not hmac.compare_digest(expected_hash, actual_hash):
             return None
 
-        entry["last_resolved_at"] = int(time.time())
+        now = int(time.time())
+        stored_client_type = _normalize_mobile_client_type(
+            entry.get("client_type"),
+            MOBILE_CLIENT_TYPE,
+        )
+        normalized_client_type = (
+            _normalize_mobile_client_type(client_type, stored_client_type)
+            if client_type
+            else stored_client_type
+        )
+        normalized_capabilities = _normalize_client_capabilities(
+            capabilities if capabilities is not None else entry.get("capabilities"),
+            normalized_client_type,
+        )
+
+        entry["client_type"] = normalized_client_type
+        entry["capabilities"] = normalized_capabilities
+        entry["last_resolved_at"] = now
+        entry["last_seen_at"] = now
         if client_name:
             entry["client_name"] = str(client_name)[:128]
         if client_device_id:
@@ -627,7 +690,11 @@ class LanProxy:
             entry["user_agent"] = str(user_agent)[:256]
         self._save_mobile_pairings(payload)
 
-        return self.get_connection_info(token=self.token)
+        return self.get_connection_info(
+            token=self.token,
+            client_type=normalized_client_type,
+            capabilities=normalized_capabilities,
+        )
 
     async def handle_pairing_register(self, request: web.Request) -> web.Response:
         """Register a durable mobile pairing after the first QR/token bootstrap."""
@@ -656,11 +723,17 @@ class LanProxy:
             client_name=str(payload.get("client_name") or ""),
             client_device_id=str(payload.get("client_device_id") or ""),
             user_agent=request.headers.get("User-Agent", ""),
+            client_type=str(payload.get("client_type") or request.query.get("client_type") or ""),
+            capabilities=payload.get("capabilities"),
         )
 
         return web.json_response({
             "success": True,
-            **self.get_connection_info(token=self.token),
+            **self.get_connection_info(
+                token=self.token,
+                client_type=pairing.get("client_type", MOBILE_CLIENT_TYPE),
+                capabilities=pairing.get("capabilities"),
+            ),
             "pairing": pairing,
         })
 
@@ -685,6 +758,8 @@ class LanProxy:
             or request.query.get("client_device_id")
             or ""
         )
+        client_type = str(payload.get("client_type") or request.query.get("client_type") or "")
+        capabilities = payload.get("capabilities")
 
         if not pairing_id or not pairing_secret:
             return web.json_response(
@@ -698,6 +773,8 @@ class LanProxy:
             client_name=client_name,
             client_device_id=client_device_id,
             user_agent=request.headers.get("User-Agent", ""),
+            client_type=client_type,
+            capabilities=capabilities,
         )
         if not info:
             return web.json_response(
@@ -711,6 +788,8 @@ class LanProxy:
             "pairing": {
                 "pairing_id": pairing_id,
                 "device_id": info.get("device_id", ""),
+                "client_type": info.get("client_type", MOBILE_CLIENT_TYPE),
+                "capabilities": info.get("capabilities", []),
                 "resolve_path": "/pairing/resolve",
             },
         })
@@ -891,7 +970,12 @@ class LanProxy:
     async def handle_p2p_info(self, request: web.Request) -> web.Response:
         """返回 P2P 连接信息（用于生成二维码）"""
         public_host, public_port = _public_endpoint_from_request(request)
-        info = self.get_connection_info(public_host=public_host, public_port=public_port)
+        client_type = _normalize_mobile_client_type(request.query.get("client_type"))
+        info = self.get_connection_info(
+            public_host=public_host,
+            public_port=public_port,
+            client_type=client_type,
+        )
         return web.json_response(info)
 
     # ── P2P 二维码图片 ──
@@ -906,7 +990,12 @@ class LanProxy:
         try:
             # 获取连接信息
             public_host, public_port = _public_endpoint_from_request(request)
-            info = self.get_connection_info(public_host=public_host, public_port=public_port)
+            client_type = _normalize_mobile_client_type(request.query.get("client_type"))
+            info = self.get_connection_info(
+                public_host=public_host,
+                public_port=public_port,
+                client_type=client_type,
+            )
 
             # 生成二维码
             import io
@@ -937,6 +1026,8 @@ class LanProxy:
                     'X-Port': str(info.get('port', '')),
                     'X-Token': info.get('token', ''),
                     'X-Device-Id': info.get('device_id', ''),
+                    'X-Client-Type': info.get('client_type', MOBILE_CLIENT_TYPE),
+                    'X-Capabilities': ','.join(info.get('capabilities', [])),
                     'X-Pairing-Supported': '1' if info.get('pairing_supported') else '0',
                     'X-Pairing-Register-Path': info.get('pairing_register_path', ''),
                     'X-Pairing-Resolve-Path': info.get('pairing_resolve_path', ''),
@@ -1184,9 +1275,16 @@ class LanProxy:
         public_host: Optional[str] = None,
         public_port: Optional[int] = None,
         token: Optional[str] = None,
+        client_type: str = MOBILE_CLIENT_TYPE,
+        capabilities: Any = None,
     ) -> dict:
         """获取连接信息（用于生成二维码）"""
         self._refresh_lan_ip()
+        normalized_client_type = _normalize_mobile_client_type(client_type)
+        normalized_capabilities = _normalize_client_capabilities(
+            capabilities,
+            normalized_client_type,
+        )
         env_public_host, env_public_port = _get_mobile_public_endpoint()
         public_host = public_host or env_public_host
         public_port = public_port or env_public_port
@@ -1201,6 +1299,8 @@ class LanProxy:
             "service": "lan_proxy",
             "mobile_backend": True,
             "mobile_api_version": MOBILE_API_VERSION,
+            "client_type": normalized_client_type,
+            "capabilities": normalized_capabilities,
             "lan_ip": connect_host,
             "port": connect_port,  # TCP HTTP 端口（供 WebSocket/HTTP 连接）
             "udp_port": udp_port,  # UDP P2P 端口（用于 UDP 打洞）
@@ -1218,6 +1318,11 @@ class LanProxy:
                 "port": connect_port,
             },
         }
+        if normalized_client_type == NEKOCAM_CLIENT_TYPE:
+            info["avatar"] = {
+                "type": "live2d",
+                "character": self.character,
+            }
 
         # 添加 STUN 信息
         if self.stun_ip and self.stun_port:
@@ -1226,9 +1331,9 @@ class LanProxy:
 
         return info
 
-    def get_qr_data(self) -> str:
+    def get_qr_data(self, client_type: str = MOBILE_CLIENT_TYPE) -> str:
         """生成二维码数据"""
-        info = self.get_connection_info()
+        info = self.get_connection_info(client_type=client_type)
         return json.dumps(info, separators=(',', ':'))
 
 
