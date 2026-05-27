@@ -224,6 +224,9 @@ async def websocket_endpoint(websocket: WebSocket, lanlan_name: str):
             elif action == "avatar_interaction":
                 _fire_task(session_manager[lanlan_name].handle_avatar_interaction(message))
 
+            elif action == "camera_event":
+                _fire_task(session_manager[lanlan_name].handle_camera_event(message))
+
             elif action == "end_session":
                 session_manager[lanlan_name].active_session_is_idle = False
                 _fire_task(session_manager[lanlan_name].end_session())

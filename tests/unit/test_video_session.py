@@ -174,6 +174,43 @@ async def test_camera_advice_nudge_is_throttled(monkeypatch):
 
 
 @pytest.mark.unit
+async def test_forced_camera_advice_bypasses_throttle(monkeypatch):
+    mgr = LLMSessionManager.__new__(LLMSessionManager)
+    mgr._last_camera_advice_nudge_at = 100.0
+    mgr.trigger_voice_proactive_nudge = AsyncMock(return_value=True)
+
+    monkeypatch.setattr(core_module.time, "time", lambda: 101.0)
+
+    assert await LLMSessionManager.trigger_camera_advice_nudge(mgr, force=True) is True
+    mgr.trigger_voice_proactive_nudge.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("message", "expected_force", "expected_result"),
+    [
+        ({"client_type": "nekocam", "event": "shutter_prepare"}, True, True),
+        ({"client_type": "nekocam", "event": "shutter_taken"}, False, True),
+        ({"client_type": "nekocam", "event": "shutter_cancelled"}, None, False),
+        ({"client_type": "mobile", "event": "shutter_prepare"}, None, False),
+    ],
+)
+async def test_handle_camera_event_routes_only_nekocam_shutter_events(
+    message,
+    expected_force,
+    expected_result,
+):
+    mgr = LLMSessionManager.__new__(LLMSessionManager)
+    mgr.trigger_camera_advice_nudge = AsyncMock(return_value=True)
+
+    assert await LLMSessionManager.handle_camera_event(mgr, message) is expected_result
+    if expected_force is None:
+        mgr.trigger_camera_advice_nudge.assert_not_awaited()
+    else:
+        mgr.trigger_camera_advice_nudge.assert_awaited_once_with(force=expected_force)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("client_type", "expected_tasks"),
     [("nekocam", 1), ("mobile", 0), (None, 0)],

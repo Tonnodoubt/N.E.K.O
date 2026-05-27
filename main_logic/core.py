@@ -4765,12 +4765,26 @@ class LLMSessionManager:
             logger.info("[%s] voice proactive nudge skipped (guard)", self.lanlan_name)
         return delivered
 
-    async def trigger_camera_advice_nudge(self) -> bool:
+    async def trigger_camera_advice_nudge(self, *, force: bool = False) -> bool:
         now = time.time()
-        if now - self._last_camera_advice_nudge_at < CAMERA_ADVICE_NUDGE_INTERVAL_SECONDS:
+        if (
+            not force
+            and now - self._last_camera_advice_nudge_at < CAMERA_ADVICE_NUDGE_INTERVAL_SECONDS
+        ):
             return False
         self._last_camera_advice_nudge_at = now
         return await self.trigger_voice_proactive_nudge()
+
+    async def handle_camera_event(self, message: dict) -> bool:
+        if message.get('client_type') != 'nekocam':
+            return False
+
+        event = message.get('event')
+        if event == 'shutter_prepare':
+            return await self.trigger_camera_advice_nudge(force=True)
+        if event == 'shutter_taken':
+            return await self.trigger_camera_advice_nudge(force=False)
+        return False
 
     # ------------------------------------------------------------------
     # Proactive streaming helpers (Phase 2 流式 TTS + 完整文本投递)
