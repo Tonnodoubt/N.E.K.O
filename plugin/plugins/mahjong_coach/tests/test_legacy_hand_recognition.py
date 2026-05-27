@@ -6,13 +6,14 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from plugin.plugins.mahjong_coach.perception import action_detector
+from plugin.plugins.mahjong_coach.perception import action_detector, meld_state
 from plugin.plugins.mahjong_coach.perception.action_detector import detect_action_buttons_fast
 from plugin.plugins.mahjong_coach.perception.calibration import CalibrationProfile
 from plugin.plugins.mahjong_coach.perception.fast_hand_path import detect_fast_hand_path
 from plugin.plugins.mahjong_coach.perception.hand_layout import build_hand_layout
+from plugin.plugins.mahjong_coach.perception.meld_state import build_self_meld_layout, detect_meld_state_path
 from plugin.plugins.mahjong_coach.perception.tile_classifier_dispatch import classify_hand_tile
-from plugin.plugins.mahjong_coach.perception.tile_templates import extract_tile_signature
+from plugin.plugins.mahjong_coach.perception.tile_templates import TileTemplateMatch, extract_tile_signature
 
 
 def test_fast_hand_path_reuses_legacy_templates(tmp_path: Path) -> None:
@@ -53,6 +54,81 @@ def test_fast_hand_path_reuses_legacy_templates(tmp_path: Path) -> None:
     assert result.reason == "matched_14_hand_tiles"
 
 
+def test_fast_hand_path_accepts_open_hand_count_with_lower_threshold(tmp_path: Path) -> None:
+    width, height = 1920, 1080
+    tiles = ["1m", "2m", "3m", "4p", "5p", "6p", "2s", "3s"]
+    image = Image.new("RGB", (width, height), (35, 80, 110))
+    layout = build_hand_layout(width, height, calibration=CalibrationProfile(screen_width=width, screen_height=height))
+    samples: dict[str, Image.Image] = {}
+
+    for slot, tile in zip(layout["hand"], tiles):
+        crop = _tile_crop(slot.box.width, slot.box.height, tile)
+        image.paste(crop, (slot.box.left, slot.box.top))
+        samples.setdefault(tile, crop)
+
+    profile_dir = tmp_path / "profiles"
+    profile_dir.mkdir()
+    (profile_dir / "synthetic-1920x1080.json").write_text(
+        json.dumps(
+            {
+                "profile_id": "synthetic-1920x1080",
+                "enabled": True,
+                "screen_width": width,
+                "screen_height": height,
+                "confidence": 0.99,
+                "hand_offsets": {},
+                "hand_tile_templates": _template_payload(samples),
+            }
+        ),
+        encoding="utf-8",
+    )
+    frame_path = tmp_path / "open_hand_frame.png"
+    image.save(frame_path)
+
+    default_result = detect_fast_hand_path(frame_path, calibration_dir=profile_dir)
+    open_result = detect_fast_hand_path(frame_path, calibration_dir=profile_dir, min_hand_tiles=4)
+
+    assert default_result.ok is False
+    assert default_result.reason == "unstable_hand_count"
+    assert open_result.ok is True
+    assert open_result.hand_tiles == tiles
+    assert open_result.reason == "matched_open_8_hand_tiles"
+
+
+def test_meld_state_uses_onnx_classifier_for_self_melds(tmp_path: Path, monkeypatch) -> None:
+    image = Image.new("RGB", (1920, 1080), (35, 80, 110))
+    slots = build_self_meld_layout(*image.size)
+    for slot in slots[:3]:
+        image.paste(_tile_crop(slot.box.width, slot.box.height, "5z"), (slot.box.left, slot.box.top))
+
+    calls: dict[str, int] = {}
+
+    def fake_classify(crops):
+        calls["crop_count"] = len(crops)
+        return [TileTemplateMatch(tile="5z", confidence=0.96, distance=3.0) for _ in crops]
+
+    monkeypatch.setattr(meld_state, "onnx_discard_available", lambda: True)
+    monkeypatch.setattr(meld_state, "classify_discard_tiles_batch", fake_classify)
+    frame_path = tmp_path / "meld_frame.png"
+    image.save(frame_path)
+
+    result = detect_meld_state_path(frame_path)
+
+    assert result.ok is True
+    assert result.reason == "recognized_self_melds"
+    assert result.open_meld_count == 1
+    assert result.tiles == ["5z", "5z", "5z"]
+    assert calls["crop_count"] == 3
+    assert result.analysis_hints["meld_parser_source"] == "onnx_tile_classifier"
+
+
+def test_meld_layout_moves_up_for_ultrawide_captures() -> None:
+    slots = build_self_meld_layout(2048, 721)
+
+    assert slots
+    assert slots[0].box.top < 480
+
+
 def test_red_five_post_processing_with_template_result() -> None:
     crop = _tile_crop(72, 116, "5m", red_center=True)
     payload = _template_payload({"5m": crop})
@@ -88,12 +164,12 @@ def test_action_button_template_scan_detects_riichi(tmp_path: Path) -> None:
         Path(__file__).resolve().parents[1]
         / "perception"
         / "templates"
-        / "1440x900"
+        / "1920x1080"
         / "riichi.png"
     )
     template = Image.open(template_path).convert("RGB")
-    image = Image.new("RGB", (1440, 900), (20, 30, 40))
-    image.paste(template, (640, 560))
+    image = Image.new("RGB", (1920, 1080), (20, 30, 40))
+    image.paste(template, (800, 660))
     frame_path = tmp_path / "riichi_frame.png"
     image.save(frame_path)
 

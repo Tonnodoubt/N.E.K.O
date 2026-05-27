@@ -13,6 +13,8 @@ class MahjongCoachConfig:
     play_style: str = "riichi"
     hand_recognition_backend: str = "legacy_templates"
     onnx_hand_enabled: bool = False
+    meld_recognition_enabled: bool = True
+    meld_min_confidence: float = 0.72
     river_recognition_enabled: bool = True
     river_min_confidence: float = 0.90
     live_window_keywords: list[str] = field(default_factory=lambda: ["雀魂", "Mahjong Soul"])
@@ -25,10 +27,6 @@ class MahjongCoachConfig:
     round_wind: str = "1z"
     seat_wind: str = ""
     dora_tiles: list[str] = field(default_factory=list)
-    llm_enabled: bool = True
-    llm_timeout: float = 8.0
-    llm_opening_enabled: bool = True
-    llm_checkpoint_enabled: bool = True
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any] | None) -> "MahjongCoachConfig":
@@ -37,7 +35,6 @@ class MahjongCoachConfig:
         perception = payload.get("perception") if isinstance(payload.get("perception"), dict) else {}
         live = payload.get("live") if isinstance(payload.get("live"), dict) else {}
         round_context = payload.get("round") if isinstance(payload.get("round"), dict) else {}
-        llm = payload.get("llm") if isinstance(payload.get("llm"), dict) else {}
         return cls(
             live_advice_mode=str(decision.get("live_advice_mode") or "coach"),
             coach_checkpoint_self_turns=max(1, int(decision.get("coach_checkpoint_self_turns") or 1)),
@@ -46,6 +43,8 @@ class MahjongCoachConfig:
             play_style=_valid_play_style(decision.get("play_style")),
             hand_recognition_backend=str(perception.get("hand_recognition_backend") or "legacy_templates"),
             onnx_hand_enabled=bool(perception.get("onnx_hand_enabled", False)),
+            meld_recognition_enabled=bool(perception.get("meld_recognition_enabled", True)),
+            meld_min_confidence=max(0.0, min(1.0, float(perception.get("meld_min_confidence") or 0.72))),
             river_recognition_enabled=bool(perception.get("river_recognition_enabled", True)),
             river_min_confidence=max(0.0, min(1.0, float(perception.get("river_min_confidence") or 0.90))),
             live_window_keywords=_string_list(live.get("window_keywords"), ["雀魂", "Mahjong Soul"]),
@@ -58,10 +57,6 @@ class MahjongCoachConfig:
             round_wind=str(round_context.get("round_wind") or "1z"),
             seat_wind=str(round_context.get("seat_wind") or ""),
             dora_tiles=_string_list(round_context.get("dora_tiles"), []),
-            llm_enabled=bool(llm.get("enabled", True)),
-            llm_timeout=max(1.0, float(llm.get("timeout") or 8.0)),
-            llm_opening_enabled=bool(llm.get("opening_enabled", True)),
-            llm_checkpoint_enabled=bool(llm.get("checkpoint_enabled", True)),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,19 +77,16 @@ class RoundCoachState:
     local_detail: str = ""
     local_targets: list[str] = field(default_factory=list)
     local_cautions: list[str] = field(default_factory=list)
-    ai_plan: str = ""
-    ai_direction: str = ""
-    ai_detail: str = ""
-    ai_targets: list[str] = field(default_factory=list)
-    ai_cautions: list[str] = field(default_factory=list)
-    llm_status: str = "idle"
-    llm_error: str = ""
     attack_defense_bias: str = "neutral"
     target_shapes: list[str] = field(default_factory=list)
     caution_points: list[str] = field(default_factory=list)
     last_hand_signature: str = ""
     last_hand_tiles: list[str] = field(default_factory=list)
     last_hand_confidence: float = 0.0
+    last_melds: list[dict[str, Any]] = field(default_factory=list)
+    last_meld_tiles: list[str] = field(default_factory=list)
+    last_open_meld_count: int = 0
+    last_meld_confidence: float = 0.0
     last_discard_piles: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     last_visible_discards: list[str] = field(default_factory=list)
     last_river_confidence: float = 0.0
@@ -120,7 +112,6 @@ class CoachDecision:
     coach_state: dict[str, Any] = field(default_factory=dict)
     perception: dict[str, Any] = field(default_factory=dict)
     engine_meta: dict[str, Any] = field(default_factory=dict)
-    llm_enhanced: bool = False
     analysis_source: str = "heuristic"
 
     def to_dict(self) -> dict[str, Any]:

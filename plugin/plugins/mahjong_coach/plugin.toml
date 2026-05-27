@@ -35,14 +35,10 @@ play_style = "riichi"
 [perception]
 hand_recognition_backend = "legacy_templates"
 onnx_hand_enabled = false
+meld_recognition_enabled = true
+meld_min_confidence = 0.72
 river_recognition_enabled = true
 river_min_confidence = 0.90
-
-[llm]
-enabled = true
-timeout = 8.0
-opening_enabled = true
-checkpoint_enabled = true
 
 [live]
 window_keywords = ["雀魂", "Mahjong Soul"]

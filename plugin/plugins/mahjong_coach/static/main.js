@@ -24,9 +24,6 @@ const analysisDoraTilesInput = document.getElementById('analysisDoraTilesInput')
 const analysisSource = document.getElementById('analysisSource');
 const mainPlan = document.getElementById('mainPlan');
 const planDetail = document.getElementById('planDetail');
-const aiSource = document.getElementById('aiSource');
-const aiPlan = document.getElementById('aiPlan');
-const aiPlanDetail = document.getElementById('aiPlanDetail');
 const biasValue = document.getElementById('biasValue');
 const lastReason = document.getElementById('lastReason');
 const confidenceValue = document.getElementById('confidenceValue');
@@ -280,33 +277,15 @@ function renderDashboard(data = {}) {
   const decision = data.last_decision || data;
   const detail = decision.detail || state.opening_plan || '';
   const live = data.live || {};
-  const source = decision.analysis_source || decision.engine_meta?.analysis_source || state.plan_source || 'heuristic';
-  const localPlan = state.local_direction || state.local_plan || (source === 'llm' ? state.opening_plan : state.current_plan) || decision.suggestion;
-  const localDetail = state.local_detail || (source === 'llm' ? '' : detail);
+  const localPlan = state.local_direction || state.local_plan || state.current_plan || state.opening_plan || decision.suggestion;
+  const localDetail = state.local_detail || detail;
   const localTargets = listValues(state.local_targets).length ? listValues(state.local_targets) : listValues(state.target_shapes);
   const localCautions = listValues(state.local_cautions).length ? listValues(state.local_cautions) : listValues(state.caution_points);
-  const aiPlanText = state.ai_direction || state.ai_plan || (source === 'llm' ? state.current_plan || decision.suggestion : '');
-  const aiDetailText = state.ai_detail || (source === 'llm' ? detail : '');
-  const aiTargets = listValues(state.ai_targets);
-  const aiCautions = listValues(state.ai_cautions);
-  const llmStatus = String(state.llm_status || '').toLowerCase();
-  const llmError = String(state.llm_error || '').trim();
-  const aiPending = Number(data.llm_pending || 0) > 0 || llmStatus === 'pending';
-  const aiFailed = ['timeout', 'error', 'empty'].includes(llmStatus);
 
   mainPlan.textContent = strategyHeadline(localPlan, localTargets, '等待手牌');
   planDetail.textContent = strategyBrief(localPlan, localDetail, localTargets, localCautions, '还没有稳定手牌输入');
-  analysisSource.textContent = 'Heuristic';
+  analysisSource.textContent = '本地';
   analysisSource.classList.remove('is-ai');
-  aiPlan.textContent = aiPlanText
-    ? strategyHeadline(aiPlanText, aiTargets, llmStatus === 'ready_previous_hand' ? 'AI参考' : 'AI策略')
-    : compact('', aiPending ? 'AI 思考中' : (aiFailed ? 'AI 未返回' : '等待 AI'));
-  aiPlanDetail.textContent = compact(
-    aiPlanText ? strategyBrief(aiPlanText, aiDetailText, aiTargets, aiCautions, 'AI 已更新策略') : '',
-    aiPending ? '模型请求已发出，返回后会更新这里' : (aiFailed ? llmError || '模型没有返回可用策略' : 'AI 只在开局/阶段更新后异步生成'),
-  );
-  aiSource.textContent = llmStatus === 'ready_previous_hand' ? 'AI参考' : 'AI';
-  aiSource.classList.toggle('is-ai', Boolean(aiPlanText));
   const style = state.play_style || 'riichi';
   const styleLabel = style === 'fast' ? '快攻' : '立直';
   biasValue.textContent = `${styleLabel} / ${compact(state.attack_defense_bias, 'neutral')}`;

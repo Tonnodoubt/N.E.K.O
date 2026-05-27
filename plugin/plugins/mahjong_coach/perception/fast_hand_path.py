@@ -38,10 +38,14 @@ def detect_fast_hand_path(
     image_path: Path,
     *,
     calibration_dir: Path | None = None,
+    min_hand_tiles: int = 12,
+    max_hand_tiles: int = 14,
 ) -> FastHandResult:
     started = time.perf_counter()
     if not image_path.exists():
         return FastHandResult(reason="image_missing")
+    min_tiles = max(1, min(14, int(min_hand_tiles or 12)))
+    max_tiles = max(min_tiles, min(14, int(max_hand_tiles or 14)))
 
     with Image.open(image_path) as opened:
         image = opened.convert("RGB")
@@ -105,7 +109,8 @@ def detect_fast_hand_path(
 
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     mean_confidence = sum(confidences) / max(1, len(confidences))
-    if not (12 <= len(hand_tiles) <= 14):
+    hand_count = len(hand_tiles)
+    if not (min_tiles <= hand_count <= max_tiles):
         return FastHandResult(
             hand_tiles=hand_tiles,
             confidence=mean_confidence,
@@ -113,12 +118,15 @@ def detect_fast_hand_path(
             elapsed_ms=elapsed_ms,
             raw_detections=raw_detections,
         )
+    confidence = mean_confidence
+    if hand_count < 13:
+        confidence = round(mean_confidence * (0.92 if hand_count >= 12 else 0.84), 4)
+    reason_prefix = "matched_open" if hand_count < 12 else "matched"
     return FastHandResult(
         ok=True,
         hand_tiles=hand_tiles,
-        confidence=mean_confidence if len(hand_tiles) >= 13 else round(mean_confidence * 0.92, 4),
-        reason=f"matched_{len(hand_tiles)}_hand_tiles",
+        confidence=confidence,
+        reason=f"{reason_prefix}_{hand_count}_hand_tiles",
         elapsed_ms=elapsed_ms,
         raw_detections=raw_detections,
     )
-

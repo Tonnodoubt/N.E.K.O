@@ -12,9 +12,7 @@ from plugin.sdk.plugin import Err, NekoPluginBase, Ok, SdkError, lifecycle, neko
 
 from .capture import DefaultCaptureProvider, prune_frames
 from .coach import RoundCoachEngine
-from .decision_coordinator import DecisionCoordinator
-from .llm_coach import build_round_plan_llm
-from .models import CoachDecision, LiveSessionState, MahjongCoachConfig
+from .models import LiveSessionState, MahjongCoachConfig
 from .overlay import CoachOverlayController, overlay_text_from_payload
 from .window_binding import list_window_candidates
 
@@ -38,8 +36,6 @@ class MahjongCoachPlugin(NekoPluginBase):
         self._tk_loop: asyncio.AbstractEventLoop | None = None
         self._tk_loop_thread: threading.Thread | None = None
         self._overlay = CoachOverlayController()
-        self._decision_coordinator = DecisionCoordinator()
-        self._llm_tasks: set[asyncio.Task] = set()
 
     @lifecycle(id="startup")
     async def startup(self, **_):
@@ -55,8 +51,7 @@ class MahjongCoachPlugin(NekoPluginBase):
                 on_start=self._on_overlay_start_sync,
                 on_stop=self._on_overlay_stop_sync,
             )
-            self._overlay.start()
-            self._overlay.show_config()
+            self._show_overlay(strategy=False)
             self.register_static_ui("static")
             self.set_list_actions(
                 [
@@ -70,6 +65,11 @@ class MahjongCoachPlugin(NekoPluginBase):
                         "id": "status",
                         "kind": "entry",
                         "target": "mahjong_coach_status",
+                    },
+                    {
+                        "id": "show_overlay",
+                        "kind": "entry",
+                        "target": "mahjong_coach_show_overlay",
                     },
                     {
                         "id": "analyze_frame",
@@ -92,6 +92,15 @@ class MahjongCoachPlugin(NekoPluginBase):
         except Exception as exc:
             self.logger.warning("mahjong coach startup failed: {}", exc)
             return Err(SdkError("failed to start mahjong_coach"))
+
+    def _show_overlay(self, *, strategy: bool = False) -> bool:
+        if not self._overlay.start():
+            return False
+        if strategy:
+            self._overlay.show_strategy()
+        else:
+            self._overlay.show_config()
+        return True
 
     def _ensure_tk_loop(self) -> asyncio.AbstractEventLoop | None:
         if self._tk_loop is not None and self._tk_loop.is_running():
@@ -173,7 +182,6 @@ class MahjongCoachPlugin(NekoPluginBase):
     @lifecycle(id="shutdown")
     async def shutdown(self, **_):
         await self._stop_live_task()
-        await self._cancel_llm_tasks()
         self.clear_list_actions()
         return Ok({"status": "stopped"})
 
@@ -195,7 +203,6 @@ class MahjongCoachPlugin(NekoPluginBase):
                 "round_state": state,
                 "last_decision": dict(self._last_decision),
                 "live": self._live_state.to_dict(),
-                "llm_pending": len(self._llm_tasks),
                 "ui_path": f"/plugin/{self.plugin_id}/ui/",
                 **state,
             }
@@ -211,7 +218,6 @@ class MahjongCoachPlugin(NekoPluginBase):
     async def mahjong_coach_reset_round(self, round_id: str = "default", **_):
         if self._engine is None:
             return Err(SdkError("mahjong coach is not initialized"))
-        await self._cancel_llm_tasks()
         state = self._engine.reset_round(round_id)
         self._last_decision = {}
         self._live_last_hand_signature = ""
@@ -273,7 +279,6 @@ class MahjongCoachPlugin(NekoPluginBase):
         except Exception as exc:
             self.logger.warning("mahjong coach frame analysis failed: {}", exc)
             return Err(SdkError(str(exc)))
-        decision = await self._enhance_decision_with_llm(decision)
         self._last_decision = decision.to_dict()
         return Ok(dict(self._last_decision))
 
@@ -335,6 +340,8 @@ class MahjongCoachPlugin(NekoPluginBase):
             return Err(SdkError("mahjong coach is not initialized"))
         if self._live_task is not None and not self._live_task.done():
             self.logger.warning("_overlay_start_live early return: live_task already running")
+            if overlay:
+                self._show_overlay(strategy=True)
             return Ok({"status": "already_running", "running": True, "live": self._live_state.to_dict()})
         selected_keywords = [str(item).strip() for item in (keywords or []) if str(item).strip()] or list(self._cfg.live_window_keywords)
         selected_interval = max(200, int(interval_ms or self._cfg.live_interval_ms))
@@ -349,8 +356,9 @@ class MahjongCoachPlugin(NekoPluginBase):
             updated_at=time.time(),
             overlay_enabled=overlay_enabled,
         )
-        self.logger.info("_overlay_start_live calling show_strategy")
-        self._overlay.show_strategy()
+        if overlay_enabled:
+            self.logger.info("_overlay_start_live calling show_strategy")
+            self._show_overlay(strategy=True)
         self._live_task = asyncio.create_task(
             self._run_live_loop(
                 keywords=selected_keywords,
@@ -393,6 +401,19 @@ class MahjongCoachPlugin(NekoPluginBase):
     )
     async def mahjong_coach_stop_live(self, **_):
         return await self._overlay_stop_live(hide_overlay=True)
+
+    @plugin_entry(
+        id="mahjong_coach_show_overlay",
+        name=tr("entries.show_overlay.name", default="Show Mahjong Coach Overlay"),
+        description=tr("entries.show_overlay.description", default="Reopen the Mahjong Coach overlay after it has been closed."),
+        input_schema={"type": "object", "properties": {}},
+        llm_result_fields=["status", "running"],
+    )
+    async def mahjong_coach_show_overlay(self, **_):
+        running = self._live_task is not None and not self._live_task.done()
+        if not self._show_overlay(strategy=running):
+            return Err(SdkError("failed to show mahjong coach overlay"))
+        return Ok({"status": "overlay_open", "running": running, "live": self._live_state.to_dict()})
 
     async def _overlay_stop_live(self, hide_overlay: bool = False):
         await self._stop_live_task()
@@ -462,8 +483,6 @@ class MahjongCoachPlugin(NekoPluginBase):
                     self._live_state.last_window_title = packet.window_title
                     payload = {"last_decision": dict(self._last_decision), "round_state": self._engine.state.to_dict()}
                     self._update_overlay(payload)
-                    if not round_idle:
-                        self._schedule_llm_enhancement(decision)
                     await asyncio.to_thread(prune_frames, frames_dir, keep=self._cfg.live_keep_frames)
                     if decision.action_required and not round_idle:
                         sleep_ms = self._cfg.live_fast_interval_ms
@@ -494,186 +513,9 @@ class MahjongCoachPlugin(NekoPluginBase):
                         await task
             except RuntimeError:
                 pass
-        await self._cancel_llm_tasks()
         self._live_state.running = False
         self._live_state.status = "stopped"
         self._live_state.updated_at = time.time()
-
-    def _schedule_llm_enhancement(self, decision: CoachDecision) -> None:
-        if self._engine is None or not self._decision_coordinator.should_enhance_with_llm(decision, self._cfg):
-            return
-        for task in list(self._llm_tasks):
-            if not task.done():
-                task.cancel()
-            self._llm_tasks.discard(task)
-        self._engine.state.llm_status = "pending"
-        self._engine.state.llm_error = ""
-        token = self._decision_coordinator.build_enhancement_token(
-            decision,
-            self._engine.state,
-            self._engine.state.last_hand_signature,
-        )
-        heuristic_plan = self._heuristic_plan_from_decision(decision)
-        task = asyncio.create_task(self._run_llm_enhancement(decision, token, heuristic_plan))
-        self._llm_tasks.add(task)
-        task.add_done_callback(self._llm_tasks.discard)
-        self._update_overlay({"last_decision": dict(self._last_decision), "round_state": self._engine.state.to_dict()})
-
-    async def _run_llm_enhancement(
-        self,
-        decision: CoachDecision,
-        token: str,
-        heuristic_plan: dict[str, Any],
-    ) -> None:
-        diagnostics: dict[str, str] = {}
-        play_style = str(self._cfg.play_style or "").strip().lower()
-        plan = await build_round_plan_llm(
-            decision.hand_tiles,
-            previous_plan=self._llm_previous_plan(decision),
-            turn_number=self._llm_turn_number(decision),
-            heuristic_plan=heuristic_plan,
-            play_style=play_style,
-            timeout=self._cfg.llm_timeout,
-            diagnostics=diagnostics,
-        )
-        if plan is None:
-            if self._engine is not None:
-                self._engine.state.llm_status = diagnostics.get("status") or "empty"
-                self._engine.state.llm_error = diagnostics.get("error") or "AI 没有返回可用策略"
-                self._update_overlay({"last_decision": dict(self._last_decision), "round_state": self._engine.state.to_dict()})
-            return
-        enhanced = self._apply_llm_enhancement(decision, token, heuristic_plan, plan)
-        if enhanced is None:
-            return
-        self._update_overlay({"last_decision": dict(self._last_decision), "round_state": self._engine.state.to_dict()})
-
-    async def _enhance_decision_with_llm(self, decision: CoachDecision) -> CoachDecision:
-        if self._engine is None or not self._decision_coordinator.should_enhance_with_llm(decision, self._cfg):
-            return decision
-        self._engine.state.llm_status = "pending"
-        self._engine.state.llm_error = ""
-        token = self._decision_coordinator.build_enhancement_token(
-            decision,
-            self._engine.state,
-            self._engine.state.last_hand_signature,
-        )
-        heuristic_plan = self._heuristic_plan_from_decision(decision)
-        play_style = str(self._cfg.play_style or "").strip().lower()
-        diagnostics: dict[str, str] = {}
-        plan = await build_round_plan_llm(
-            decision.hand_tiles,
-            previous_plan=self._llm_previous_plan(decision),
-            turn_number=self._llm_turn_number(decision),
-            heuristic_plan=heuristic_plan,
-            play_style=play_style,
-            timeout=self._cfg.llm_timeout,
-            diagnostics=diagnostics,
-        )
-        if plan is None:
-            self._engine.state.llm_status = diagnostics.get("status") or "empty"
-            self._engine.state.llm_error = diagnostics.get("error") or "AI 没有返回可用策略"
-            return decision
-        return self._apply_llm_enhancement(decision, token, heuristic_plan, plan) or decision
-
-    def _apply_llm_enhancement(
-        self,
-        decision: CoachDecision,
-        token: str,
-        heuristic_plan: dict[str, Any],
-        llm_plan: dict[str, Any],
-    ) -> CoachDecision | None:
-        if self._engine is None:
-            return None
-        state = self._engine.state
-        if self._decision_coordinator.is_stale(
-            token,
-            current_hand_signature=state.last_hand_signature,
-            round_id=state.round_id,
-            update_count=state.update_count,
-        ):
-            return None
-        enhanced = self._decision_coordinator.apply_llm_plan(decision, heuristic_plan, llm_plan)
-        token_update_count = self._decision_coordinator.token_update_count(token)
-        token_hand_signature = self._decision_coordinator.token_hand_signature(token)
-        same_hand = not token_hand_signature or token_hand_signature == state.last_hand_signature
-        can_promote_plan = token_update_count == state.update_count and same_hand
-        state.llm_status = "ready" if same_hand else "ready_previous_hand"
-        state.llm_error = ""
-        direction = str(llm_plan.get("direction") or "").strip()
-        summary = str(enhanced.suggestion or "").strip()
-        display = direction if direction else summary
-        if display:
-            if can_promote_plan and decision.decision_type == "opening_plan":
-                state.opening_plan = display
-            state.ai_plan = display
-            state.ai_direction = direction
-            if can_promote_plan:
-                state.current_plan = display
-                state.plan_source = "llm"
-            if not state.local_plan:
-                state.local_plan = str(heuristic_plan.get("summary") or decision.suggestion or decision.summary or "").strip()
-                state.local_direction = str(heuristic_plan.get("direction") or "").strip()
-                state.local_detail = str(heuristic_plan.get("detail") or decision.detail or "").strip()
-            if not state.local_targets:
-                heuristic_targets = heuristic_plan.get("targets")
-                if isinstance(heuristic_targets, list):
-                    state.local_targets = [str(item) for item in heuristic_targets if str(item).strip()]
-            if not state.local_cautions:
-                heuristic_cautions = heuristic_plan.get("cautions")
-                if isinstance(heuristic_cautions, list):
-                    state.local_cautions = [str(item) for item in heuristic_cautions if str(item).strip()]
-        bias = str(llm_plan.get("bias") or "").strip()
-        if can_promote_plan and bias in {"attack", "neutral", "defense"}:
-            state.attack_defense_bias = bias
-        targets = llm_plan.get("targets")
-        if isinstance(targets, list):
-            ai_targets = [str(item) for item in targets if str(item).strip()]
-            state.ai_targets = ai_targets
-            if can_promote_plan:
-                state.target_shapes = list(ai_targets)
-        cautions = llm_plan.get("cautions")
-        if isinstance(cautions, list):
-            ai_cautions = [str(item) for item in cautions if str(item).strip()]
-            state.ai_cautions = ai_cautions
-            if can_promote_plan:
-                state.caution_points = list(ai_cautions)
-        detail = str(llm_plan.get("detail") or enhanced.detail or "").strip()
-        if detail:
-            state.ai_detail = detail
-        state.update_count += 1
-        payload = enhanced.to_dict()
-        payload["coach_state"] = state.to_dict()
-        self._last_decision = payload
-        return enhanced
-
-    def _llm_previous_plan(self, decision: CoachDecision) -> str:
-        if self._engine is None or decision.decision_type == "opening_plan":
-            return ""
-        return self._engine.state.opening_plan
-
-    def _llm_turn_number(self, decision: CoachDecision) -> int | None:
-        if decision.decision_type == "opening_plan":
-            return None
-        return self._live_state.observed_hand_changes or None
-
-    def _heuristic_plan_from_decision(self, decision: CoachDecision) -> dict[str, Any]:
-        state = self._engine.state if self._engine is not None else None
-        return {
-            "summary": decision.suggestion or decision.summary,
-            "detail": decision.detail,
-            "bias": state.attack_defense_bias if state is not None else "neutral",
-            "targets": list(state.target_shapes) if state is not None else [],
-            "cautions": list(state.caution_points) if state is not None else [],
-            "discard_priority": [],
-        }
-
-    async def _cancel_llm_tasks(self) -> None:
-        tasks = [task for task in self._llm_tasks if not task.done()]
-        self._llm_tasks.clear()
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _sleep_live(self, loop_started: float, sleep_ms: int) -> None:
         elapsed_ms = (time.monotonic() - loop_started) * 1000.0
@@ -747,7 +589,6 @@ class MahjongCoachPlugin(NekoPluginBase):
         if not self._live_state.overlay_enabled:
             return
         overlay_payload = dict(payload)
-        overlay_payload["llm_pending"] = len([task for task in self._llm_tasks if not task.done()])
         self._overlay.update(overlay_text_from_payload(overlay_payload))
 
 

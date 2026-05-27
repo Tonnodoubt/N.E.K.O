@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 
 
-OVERLAY_BLOCK_SEPARATOR = "\n---MAHJONG_COACH_OVERLAY_BLOCK---\n"
-
 # N.E.K.O design system (light mode)
 _BG = "#ffffff"
 _CARD = "#f5f5f5"
@@ -25,14 +23,12 @@ _PURPLE = "#7c3aed"
 _TEXT = "#1e1e1e"
 _TEXT_MUTED = "#666666"
 _FONT = "Segoe UI"
-_FONT_SIZE = 14
+_FONT_SIZE = 18
 _HEADER_H = 3
 
 # Badge colors
 _BADGE_LOCAL_BG = "#2a7bc4"
 _BADGE_LOCAL_FG = "#ffffff"
-_BADGE_AI_BG = "#6366f1"
-_BADGE_AI_FG = "#ffffff"
 
 # Action badge overrides
 _ACTION_WIN = ("和牌", _SUCCESS, "#ffffff")
@@ -43,13 +39,13 @@ _ACTION_GENERIC = ("操作", _BTN_PRIMARY, "#ffffff")
 
 # Resize bounds
 _MIN_WIDTH = 320
-_MIN_HEIGHT = 80
+_MIN_HEIGHT = 110
 _MAX_WIDTH = 1200
-_MAX_HEIGHT = 400
+_MAX_HEIGHT = 460
 
 # Default size
-_DEFAULT_WIDTH = 560
-_DEFAULT_HEIGHT = 140
+_DEFAULT_WIDTH = 700
+_DEFAULT_HEIGHT = 190
 
 # Prefs file
 _PREFS_FILENAME = "overlay_prefs.json"
@@ -72,7 +68,7 @@ def _load_prefs() -> dict[str, int]:
             return {
                 "width": max(_MIN_WIDTH, min(_MAX_WIDTH, w)),
                 "height": max(_MIN_HEIGHT, min(_MAX_HEIGHT, h)),
-                "font_size": max(10, min(28, fs)),
+                "font_size": max(16, min(32, fs)),
             }
     except Exception:
         pass
@@ -275,29 +271,17 @@ class CoachOverlayController:
                 return panel, badge, label
 
             local_panel, local_badge, local_label = build_panel(strategy_frame, "本地", _BADGE_LOCAL_BG, _BADGE_LOCAL_FG)
-            local_panel.pack(side="left", fill="both", expand=True, padx=(0, 3))
-
-            ai_panel, ai_badge, ai_label = build_panel(strategy_frame, "AI", _BADGE_AI_BG, _BADGE_AI_FG)
+            local_panel.pack(side="left", fill="both", expand=True)
 
             def _recompute_panels() -> None:
                 w = layout["width"]
                 h = layout["height"]
                 padding = 30
                 panel_h = max(60, h - 40)
-                has_ai = ai_panel.winfo_ismapped()
-
-                if has_ai:
-                    panel_w = max(80, (w - padding - 6) // 2)
-                    wrap = max(40, panel_w - 24)
-                    local_panel.config(width=panel_w, height=panel_h)
-                    ai_panel.config(width=panel_w, height=panel_h)
-                    local_label.config(wraplength=wrap)
-                    ai_label.config(wraplength=wrap)
-                else:
-                    panel_w = max(80, w - padding)
-                    wrap = max(40, panel_w - 24)
-                    local_panel.config(width=panel_w, height=panel_h)
-                    local_label.config(wraplength=wrap)
+                panel_w = max(80, w - padding)
+                wrap = max(40, panel_w - 24)
+                local_panel.config(width=panel_w, height=panel_h)
+                local_label.config(wraplength=wrap)
 
             def _set_geometry() -> None:
                 w, h = layout["width"], layout["height"]
@@ -320,8 +304,7 @@ class CoachOverlayController:
                 drag_state["manual"] = True
                 root.geometry(f"+{drag_state['x']}+{drag_state['y']}")
 
-            drag_widgets = [shell, inner, header, content, config_frame, strategy_frame,
-                            local_panel, local_badge, local_label, ai_panel, ai_badge, ai_label]
+            drag_widgets = [shell, inner, header, content, config_frame, strategy_frame, local_panel, local_badge, local_label]
             for widget in drag_widgets:
                 widget.bind("<ButtonPress-1>", start_drag)
                 widget.bind("<B1-Motion>", drag_window)
@@ -353,11 +336,10 @@ class CoachOverlayController:
             # --- scroll to adjust font size ---
             def scroll_font(event: tk.Event) -> None:
                 delta = 1 if int(event.delta) > 0 else -1
-                new_fs = max(10, min(28, layout["font_size"] + delta))
+                new_fs = max(16, min(32, layout["font_size"] + delta))
                 if new_fs != layout["font_size"]:
                     layout["font_size"] = new_fs
                     local_label.config(font=(_FONT, new_fs))
-                    ai_label.config(font=(_FONT, new_fs))
                     _recompute_panels()
                     _save_prefs(layout["width"], layout["height"], layout["font_size"])
 
@@ -380,21 +362,10 @@ class CoachOverlayController:
 
             # --- apply text ---
             def apply_text(text: str) -> None:
-                blocks = _split_overlay_blocks(text)
-                first_line = (blocks[0] if blocks else "Mahjong Coach").split("\n")[0]
-
-                if len(blocks) >= 2:
-                    if not ai_panel.winfo_ismapped():
-                        ai_panel.pack(side="left", fill="both", expand=True, padx=(3, 0))
-                    _style_action_label(local_badge, first_line)
-                    local_label.config(text=blocks[0])
-                    ai_badge.config(text="AI", bg=_BADGE_AI_BG, fg=_BADGE_AI_FG)
-                    ai_label.config(text=blocks[1])
-                else:
-                    ai_panel.pack_forget()
-                    _style_action_label(local_badge, first_line)
-                    local_label.config(text=blocks[0] if blocks else "Mahjong Coach")
-
+                value = str(text or "").strip() or "Mahjong Coach"
+                first_line = value.split("\n")[0]
+                _style_action_label(local_badge, first_line)
+                local_label.config(text=value)
                 _recompute_panels()
                 _set_geometry()
 
@@ -453,7 +424,7 @@ def overlay_text_from_payload(payload: dict[str, Any]) -> str:
         return _action_overlay_text(decision_type, decision)
     if decision_type == "round_idle":
         return _format_overlay("等待下一局", "上一局已结束", "新手牌出现后自动重开")
-    has_plan = state.get("local_direction") or state.get("local_plan") or state.get("ai_direction") or state.get("ai_plan") or state.get("current_plan") or state.get("opening_plan")
+    has_plan = state.get("local_direction") or state.get("local_plan") or state.get("current_plan") or state.get("opening_plan")
     if not has_plan and decision.get("decision_type") == "observe":
         return _waiting_hand_overlay(decision)
     local_direction = str(state.get("local_direction") or "").strip()
@@ -465,25 +436,7 @@ def overlay_text_from_payload(payload: dict[str, Any]) -> str:
         _string_items(state.get("local_targets")) or _string_items(state.get("target_shapes")),
         _string_items(state.get("local_cautions")) or _string_items(state.get("caution_points")),
     )
-    ai_direction = str(state.get("ai_direction") or "").strip()
-    ai_plan = str(state.get("ai_plan") or "").strip()
-    llm_status = str(state.get("llm_status") or "").strip().lower()
-    llm_error = str(state.get("llm_error") or "").strip()
-    if ai_plan:
-        ai_block = _strategy_overlay_block(
-            "AI参考" if llm_status == "ready_previous_hand" else "AI",
-            ai_direction,
-            ai_plan,
-            _string_items(state.get("ai_targets")),
-            _string_items(state.get("ai_cautions")),
-        )
-    elif int(payload.get("llm_pending") or 0) > 0 or llm_status == "pending":
-        ai_block = _format_overlay("AI", "思考中")
-    elif llm_status in {"timeout", "error", "empty"}:
-        ai_block = _format_overlay("AI", "未返回", _brief_error(llm_error or llm_status))
-    else:
-        ai_block = _format_overlay("AI", "等待阶段更新")
-    return _join_overlay_blocks(local_block, ai_block)
+    return local_block
 
 
 def _action_overlay_text(decision_type: str, decision: dict[str, Any]) -> str:
@@ -509,16 +462,22 @@ def _call_text(cautions: list[str]) -> str:
 
 def _strategy_overlay_block(label: str, direction: str, plan: str, targets: list[str], cautions: list[str]) -> str:
     direction = _direction_text(direction, plan, targets)
+    yaku = _yaku_text(targets)
     keep = _keep_text(targets, plan)
     discard = _discard_text(cautions, plan)
+    efficiency = _efficiency_text(cautions)
     call = _call_text(cautions)
     lines = [f"方向：{direction}"]
+    if yaku:
+        lines.append(f"役：{yaku}")
     if keep:
         lines.append(f"留：{keep}")
-    if call:
-        lines.append(f"开：{call}")
     if discard:
         lines.append(f"打：{discard}")
+    if efficiency:
+        lines.append(f"牌效：{efficiency}")
+    if call:
+        lines.append(f"开：{call}")
     return _format_overlay(label, *lines)
 
 
@@ -538,11 +497,49 @@ def _keep_text(targets: list[str], plan: str) -> str:
     return _brief_items(_plain_text(keep), max_items=3)
 
 
+def _yaku_text(targets: list[str]) -> str:
+    values: list[str] = []
+    for prefix in ("已成役：", "可成役：", "役牌对子："):
+        text = _first_prefixed_value(targets, prefix)
+        if text:
+            values.append(_plain_text(text))
+    return _brief_items("、".join(values), max_items=2)
+
+
 def _discard_text(cautions: list[str], plan: str) -> str:
     discard = _first_prefixed_value(cautions, "优先清理：")
     if not discard:
+        for prefix in ("副露收束：", "路线选择：", "下一步：", "副露牌效：", "牌效："):
+            value = _first_prefixed_value(cautions, prefix)
+            if not value:
+                continue
+            discard = _extract_after(value, ("主线打", "优先看打", "打"), stop_markers=("后", "；", "，", "。"))
+            if discard:
+                break
+    if not discard:
         discard = _extract_after(plan, ("先打", "先清", "打："), stop_markers=("，", "；", "。"))
     return _brief_items(_plain_text(discard), max_items=3)
+
+
+def _efficiency_text(cautions: list[str]) -> str:
+    for item in cautions:
+        text = _plain_text(str(item or "").strip())
+        if "牌效" not in text or "当前" not in text:
+            continue
+        for prefix in ("副露牌效：", "牌效："):
+            if text.startswith(prefix):
+                text = text[len(prefix) :]
+                break
+        if text.startswith("估算") and "，" in text:
+            text = text.split("，", 1)[1]
+        for marker in ("，已扣", "（"):
+            if marker in text:
+                text = text.split(marker, 1)[0]
+        for stop in ("。", "\n"):
+            if stop in text:
+                text = text.split(stop, 1)[0]
+        return text
+    return ""
 
 
 def _string_items(value: Any) -> list[str]:
@@ -567,15 +564,6 @@ def _clean_line(value: str) -> str:
 def _format_overlay(*parts: str) -> str:
     lines = [_plain_text(" ".join(str(value or "").split())) for value in parts]
     return "\n".join(line for line in lines if line).strip() or "Mahjong Coach"
-
-
-def _join_overlay_blocks(*blocks: str) -> str:
-    values = [block.strip() for block in blocks if block.strip()]
-    return OVERLAY_BLOCK_SEPARATOR.join(values)
-
-
-def _split_overlay_blocks(text: str) -> list[str]:
-    return [block.strip() for block in str(text or "").split(OVERLAY_BLOCK_SEPARATOR) if block.strip()]
 
 
 def _overlay_geometry(screen_width: int, screen_height: int, width: int, height: int) -> tuple[int, int]:
@@ -614,13 +602,6 @@ def _brief_items(value: str, *, max_items: int) -> str:
     if len(parts) <= max_items:
         return "、".join(parts) if parts else text
     return f"{'、'.join(parts[:max_items])}等{len(parts)}张"
-
-
-def _brief_error(value: str) -> str:
-    text = _plain_text(str(value or "").strip())
-    if len(text) <= 28:
-        return text
-    return f"{text[:27]}..."
 
 
 def _call_action_line(value: str) -> str:
@@ -710,7 +691,7 @@ def _waiting_hand_overlay(decision: dict[str, Any]) -> str:
     if hand_reason in {"image_path_missing", "image_missing"}:
         return _format_overlay("等待手牌", "截图获取失败")
     if accepted > 0:
-        return _format_overlay("等待手牌", f"已识别{accepted}张，需要12-14张", "保持牌桌无遮挡")
+        return _format_overlay("等待手牌", f"已识别{accepted}张，继续确认稳定手牌", "副露后少张也会跟踪")
     if occupied > 0:
         return _format_overlay("等待手牌", f"检测到{occupied}个牌位，识别中", "保持牌桌无遮挡")
     return _format_overlay("等待手牌", "未检测到手牌区域", "确保雀魂窗口可见")

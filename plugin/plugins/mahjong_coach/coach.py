@@ -9,6 +9,7 @@ from typing import Any
 from .models import CoachDecision, MahjongCoachConfig, RoundCoachState
 from .perception.action_detector import detect_action_buttons_fast
 from .perception.fast_hand_path import FastHandResult, detect_fast_hand_path
+from .perception.meld_state import MeldStateResult, detect_meld_state_path
 from .perception.river_state import RiverStateResult, detect_river_state_path
 from .tile_labels import hand_signature, is_honor, is_simple, is_terminal, normalize_tile, tile_rank, tile_suit
 
@@ -55,13 +56,31 @@ class RoundCoachEngine:
 
         if not self.state.opening_emitted:
             hand_result = self._detect_hand(path)
+            meld_result = self._detect_melds(path)
+            if meld_result.ok:
+                self._remember_melds(meld_result)
+            if not hand_result.ok and meld_result.ok and _play_style(self.config) == "fast":
+                hand_result = self._detect_hand(path, min_hand_tiles=2 if meld_result.open_meld_count >= 3 else 4)
             if hand_result.ok:
                 self._remember_hand(hand_result)
             action_meta = {"source": "opening_hand_scan", "skipped": True}
             river_result = self._river_result_from_state("opening_skips_river_scan", ok_if_cached=False)
             if hand_result.ok:
-                return self._opening_decision(hand_result, river_result, started, action_meta=action_meta)
-            return self._observe_decision(hand_result, action_meta, river_result, started, phase="opening_hand_scan")
+                return self._opening_decision(
+                    hand_result,
+                    river_result,
+                    started,
+                    action_meta=action_meta,
+                    meld_result=meld_result,
+                )
+            return self._observe_decision(
+                hand_result,
+                action_meta,
+                river_result,
+                started,
+                phase="opening_hand_scan",
+                meld_result=meld_result,
+            )
 
         buttons, action_meta = self._resolve_buttons(path, observed_buttons)
         critical = [button for button in buttons if button in CRITICAL_BUTTONS]
@@ -73,6 +92,9 @@ class RoundCoachEngine:
         hand_result = self._detect_hand(path)
         if hand_result.ok:
             self._remember_hand(hand_result)
+        meld_result = self._detect_melds(path)
+        if meld_result.ok:
+            self._remember_melds(meld_result)
 
         call_buttons = [button for button in critical if button in CALL_BUTTONS]
         riichi_buttons = [button for button in critical if button == "riichi"]
@@ -83,6 +105,7 @@ class RoundCoachEngine:
                 action_meta,
                 started,
                 hand_result=hand_result,
+                meld_result=meld_result,
                 river_result=river_result,
             )
 
@@ -90,17 +113,17 @@ class RoundCoachEngine:
             river_result = self._detect_river(path)
             if river_result.ok:
                 self._remember_river(river_result)
-            return self._defense_decision(riichi_players, hand_result, river_result, started)
+            return self._defense_decision(riichi_players, hand_result, river_result, started, meld_result=meld_result)
 
         turn_number = _coerce_turn(self_turn_index)
         if hand_result.ok and self._checkpoint_due(turn_number, force_checkpoint=force_checkpoint):
             river_result = self._detect_river(path)
             if river_result.ok:
                 self._remember_river(river_result)
-            return self._checkpoint_decision(hand_result, river_result, turn_number, force_checkpoint, started)
+            return self._checkpoint_decision(hand_result, river_result, turn_number, force_checkpoint, started, meld_result=meld_result)
 
         river_result = self._river_result_from_state("river_scan_not_due")
-        return self._observe_decision(hand_result, action_meta, river_result, started, phase="normal_tracking")
+        return self._observe_decision(hand_result, action_meta, river_result, started, phase="normal_tracking", meld_result=meld_result)
 
     def _observe_decision(
         self,
@@ -110,6 +133,7 @@ class RoundCoachEngine:
         started: float,
         *,
         phase: str,
+        meld_result: MeldStateResult | None = None,
     ) -> CoachDecision:
         self.state.round_phase = phase
         summary, detail, reason_codes = self._observe_message(hand_result)
@@ -125,7 +149,12 @@ class RoundCoachEngine:
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=reason_codes,
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict(), "action": action_meta, "river": river_result.to_dict()},
+            perception={
+                "hand": hand_result.to_dict(),
+                "action": action_meta,
+                "river": river_result.to_dict(),
+                "meld": meld_result.to_dict() if meld_result is not None else {},
+            },
             engine_meta=self._meta(started, "observe"),
         )
 
@@ -145,10 +174,22 @@ class RoundCoachEngine:
         meta.update({"detected_buttons": detected, "metrics": metrics})
         return _normalize_buttons(detected), meta
 
-    def _detect_hand(self, path: Path | None) -> FastHandResult:
+    def _detect_hand(self, path: Path | None, *, min_hand_tiles: int | None = None) -> FastHandResult:
         if path is None:
             return FastHandResult(reason="image_path_missing")
-        return detect_fast_hand_path(path, calibration_dir=self.calibration_dir)
+        return detect_fast_hand_path(
+            path,
+            calibration_dir=self.calibration_dir,
+            min_hand_tiles=max(1, int(min_hand_tiles or self._min_hand_tiles_for_scan())),
+        )
+
+    def _min_hand_tiles_for_scan(self) -> int:
+        if not self.state.opening_emitted:
+            return 12
+        if _play_style(self.config) != "fast":
+            return 12
+        last_count = len([tile for tile in self.state.last_hand_tiles if normalize_tile(tile)])
+        return 2 if 0 < last_count <= 5 else 4
 
     def _detect_river(self, path: Path | None) -> RiverStateResult:
         if not self.config.river_recognition_enabled:
@@ -160,6 +201,13 @@ class RoundCoachEngine:
             calibration_dir=self.calibration_dir,
             min_confidence=self.config.river_min_confidence,
         )
+
+    def _detect_melds(self, path: Path | None) -> MeldStateResult:
+        if not self.config.meld_recognition_enabled:
+            return MeldStateResult(reason="meld_recognition_disabled")
+        if path is None:
+            return MeldStateResult(reason="image_path_missing")
+        return detect_meld_state_path(path, min_confidence=self.config.meld_min_confidence)
 
     def _river_result_from_state(self, reason: str, *, ok_if_cached: bool = True) -> RiverStateResult:
         has_cached = bool(self.state.last_discard_piles or self.state.last_visible_discards)
@@ -199,7 +247,9 @@ class RoundCoachEngine:
         elif accepted == 0:
             detail = "No stable hand tiles were detected; live capture may be grabbing the desktop, menu, or a covered game window."
         else:
-            detail = f"Hand scan accepted {accepted} tiles from {occupied} occupied-looking slots; waiting for 12-14 stable tiles."
+            min_tiles = self._min_hand_tiles_for_scan()
+            expected = f"at least {min_tiles} open-hand tiles" if min_tiles <= 4 else "12-14 stable tiles"
+            detail = f"Hand scan accepted {accepted} tiles from {occupied} occupied-looking slots; waiting for {expected}."
         return "Waiting for stable hand", detail, ["coach_observe", f"hand_{reason}"]
 
     def _remember_hand(self, hand_result: FastHandResult) -> None:
@@ -217,12 +267,19 @@ class RoundCoachEngine:
         self.state.last_visible_discards = list(river_result.visible_tiles)
         self.state.last_river_confidence = float(river_result.confidence)
 
+    def _remember_melds(self, meld_result: MeldStateResult) -> None:
+        self.state.last_melds = [dict(item) for item in meld_result.melds]
+        self.state.last_meld_tiles = [str(tile) for tile in meld_result.tiles if str(tile).strip()]
+        self.state.last_open_meld_count = int(meld_result.open_meld_count)
+        self.state.last_meld_confidence = float(meld_result.confidence)
+
     def _critical_decision(
         self,
         buttons: list[str],
         action_meta: dict[str, Any],
         started: float,
         hand_result: FastHandResult | None = None,
+        meld_result: MeldStateResult | None = None,
         river_result: RiverStateResult | None = None,
     ) -> CoachDecision:
         if any(button in WIN_BUTTONS for button in buttons):
@@ -232,7 +289,7 @@ class RoundCoachEngine:
             priority = 100
         elif any(button in CALL_BUTTONS for button in buttons):
             summary = "吃碰杠窗口"
-            suggestion = self._call_suggestion(hand_result, buttons, river_result)
+            suggestion = self._call_suggestion(hand_result, buttons, river_result, meld_result=meld_result)
             decision_type = "call_window"
             priority = 95
         elif "riichi" in buttons:
@@ -253,7 +310,7 @@ class RoundCoachEngine:
             priority=priority,
             action_required=True,
             summary=summary,
-            detail="动作窗口不等待 LLM；吃碰杠和立直只使用当前策略与本地快判。",
+            detail="动作窗口只使用当前策略与本地快判。",
             suggestion=suggestion,
             buttons=list(buttons),
             hand_tiles=list(hand_result.hand_tiles) if hand_result else [],
@@ -262,6 +319,7 @@ class RoundCoachEngine:
             perception={
                 "action": action_meta,
                 "hand": hand_result.to_dict() if hand_result else {},
+                "meld": meld_result.to_dict() if meld_result else {},
                 "river": river_result.to_dict() if river_result else {},
             },
             engine_meta=self._meta(started, decision_type),
@@ -272,10 +330,17 @@ class RoundCoachEngine:
         hand_result: FastHandResult | None,
         buttons: list[str] | None = None,
         river_result: RiverStateResult | None = None,
+        meld_result: MeldStateResult | None = None,
     ) -> str:
         plan = self.state.current_plan or self.state.opening_plan
         if not plan and hand_result is not None and hand_result.ok:
-            built = build_round_plan(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
+            built = build_round_plan(
+                hand_result.hand_tiles,
+                self.config,
+                visible_tiles=_visible_tiles_for_plan(river_result),
+                open_melds=self._open_meld_count_for_plan(meld_result),
+                meld_tiles=self._meld_tiles_for_plan(meld_result),
+            )
             plan = built["summary"]
             self.state.opening_emitted = True
             self.state.round_phase = "opening_strategy"
@@ -299,7 +364,7 @@ class RoundCoachEngine:
         advice = _riichi_advice(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
         if advice:
             return advice
-        return "可立直：本地暂未算出明确听牌形，先确认待牌和打点；不等待 LLM。"
+        return "可立直：本地暂未算出明确听牌形，先确认待牌和打点。"
 
     def _opening_decision(
         self,
@@ -308,8 +373,15 @@ class RoundCoachEngine:
         started: float,
         *,
         action_meta: dict[str, Any] | None = None,
+        meld_result: MeldStateResult | None = None,
     ) -> CoachDecision:
-        plan = build_round_plan(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
+        plan = build_round_plan(
+            hand_result.hand_tiles,
+            self.config,
+            visible_tiles=_visible_tiles_for_plan(river_result),
+            open_melds=self._open_meld_count_for_plan(meld_result),
+            meld_tiles=self._meld_tiles_for_plan(meld_result),
+        )
         self.state.opening_emitted = True
         self.state.round_phase = "opening_strategy"
         self._remember_local_plan(plan, opening=True)
@@ -324,7 +396,12 @@ class RoundCoachEngine:
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=["first_stable_hand"],
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict(), "action": action_meta or {}, "river": river_result.to_dict()},
+            perception={
+                "hand": hand_result.to_dict(),
+                "action": action_meta or {},
+                "meld": meld_result.to_dict() if meld_result is not None else {},
+                "river": river_result.to_dict(),
+            },
             engine_meta=self._meta(started, "opening_plan"),
         )
 
@@ -344,8 +421,15 @@ class RoundCoachEngine:
         turn_number: int | None,
         force_checkpoint: bool,
         started: float,
+        meld_result: MeldStateResult | None = None,
     ) -> CoachDecision:
-        plan = build_round_plan(hand_result.hand_tiles, self.config, visible_tiles=_visible_tiles_for_plan(river_result))
+        plan = build_round_plan(
+            hand_result.hand_tiles,
+            self.config,
+            visible_tiles=_visible_tiles_for_plan(river_result),
+            open_melds=self._open_meld_count_for_plan(meld_result),
+            meld_tiles=self._meld_tiles_for_plan(meld_result),
+        )
         if turn_number is not None:
             self.state.last_checkpoint_self_turn = turn_number
         self.state.round_phase = "checkpoint_strategy"
@@ -361,7 +445,11 @@ class RoundCoachEngine:
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=[self.state.last_update_reason],
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict(), "river": river_result.to_dict()},
+            perception={
+                "hand": hand_result.to_dict(),
+                "meld": meld_result.to_dict() if meld_result is not None else {},
+                "river": river_result.to_dict(),
+            },
             engine_meta=self._meta(started, "coach_checkpoint"),
         )
 
@@ -391,6 +479,7 @@ class RoundCoachEngine:
         hand_result: FastHandResult,
         river_result: RiverStateResult,
         started: float,
+        meld_result: MeldStateResult | None = None,
     ) -> CoachDecision:
         self.state.round_phase = "defense_mode"
         self.state.attack_defense_bias = "defense"
@@ -406,7 +495,11 @@ class RoundCoachEngine:
             hand_tiles=list(hand_result.hand_tiles),
             reason_codes=["riichi_players_present"],
             coach_state=self.state.to_dict(),
-            perception={"hand": hand_result.to_dict(), "river": river_result.to_dict()},
+            perception={
+                "hand": hand_result.to_dict(),
+                "meld": meld_result.to_dict() if meld_result is not None else {},
+                "river": river_result.to_dict(),
+            },
             engine_meta=self._meta(started, "defense_alert"),
         )
 
@@ -420,7 +513,19 @@ class RoundCoachEngine:
             "onnx_hand_enabled": self.config.onnx_hand_enabled,
             "river_recognition_enabled": self.config.river_recognition_enabled,
             "river_recognition_backend": "onnx_discard_model",
+            "meld_recognition_enabled": self.config.meld_recognition_enabled,
+            "meld_recognition_backend": "onnx_tile_classifier",
         }
+
+    def _open_meld_count_for_plan(self, meld_result: MeldStateResult | None) -> int | None:
+        if meld_result is not None and meld_result.ok:
+            return int(meld_result.open_meld_count)
+        return int(self.state.last_open_meld_count) if self.state.last_open_meld_count else None
+
+    def _meld_tiles_for_plan(self, meld_result: MeldStateResult | None) -> list[str]:
+        if meld_result is not None and meld_result.ok:
+            return [str(tile) for tile in meld_result.tiles if str(tile).strip()]
+        return list(self.state.last_meld_tiles)
 
     def _defense_suggestion(self, riichi_players: list[str], river_result: RiverStateResult) -> str:
         piles = river_result.discard_piles if river_result.ok else self.state.last_discard_piles
@@ -456,16 +561,24 @@ def build_round_plan(
     config: MahjongCoachConfig | None = None,
     *,
     visible_tiles: list[str] | None = None,
+    open_melds: int | None = None,
+    meld_tiles: list[str] | None = None,
 ) -> dict[str, Any]:
     tiles = [normalize_tile(tile) for tile in hand_tiles if normalize_tile(tile)]
+    meld_tile_list = [normalize_tile(tile) for tile in (meld_tiles or []) if normalize_tile(tile)]
+    shape_tiles = [*tiles, *meld_tile_list]
     counts = Counter(tiles)
-    visible_counts = _visible_counts(visible_tiles or [])
+    visible_counts = _visible_counts([*(visible_tiles or []), *meld_tile_list])
     value_honors = _value_honor_tiles(config)
     dora_tiles = _dora_tiles(config)
-    suit_counts = Counter(tile_suit(tile) for tile in tiles if tile_suit(tile))
-    honor_count = sum(1 for tile in tiles if is_honor(tile))
-    terminal_count = sum(1 for tile in tiles if is_terminal(tile))
-    simple_count = sum(1 for tile in tiles if is_simple(tile))
+    style = _play_style(config)
+    explicit_open_melds = _coerce_open_melds(open_melds)
+    inferred_open_melds = _inferred_open_melds(len(tiles)) if style == "fast" else 0
+    open_meld_count = explicit_open_melds if explicit_open_melds is not None else inferred_open_melds
+    suit_counts = Counter(tile_suit(tile) for tile in shape_tiles if tile_suit(tile))
+    honor_count = sum(1 for tile in shape_tiles if is_honor(tile))
+    terminal_count = sum(1 for tile in shape_tiles if is_terminal(tile))
+    simple_count = sum(1 for tile in shape_tiles if is_simple(tile))
     pair_count = sum(1 for value in counts.values() if value >= 2)
     best_suit, best_suit_count = ("", 0)
     suited = {suit: count for suit, count in suit_counts.items() if suit in {"m", "p", "s"}}
@@ -474,11 +587,20 @@ def build_round_plan(
     second_suit_count = max((count for suit, count in suited.items() if suit != best_suit), default=0)
     pair_tiles = [tile for tile, value in counts.items() if value >= 2]
     value_pair_tiles = [tile for tile in pair_tiles if tile in value_honors]
-    pair_route = pair_count >= 4 and best_suit_count < 8
+    pair_route = open_meld_count == 0 and pair_count >= 4 and best_suit_count < 8
     cleanup_tiles = _cleanup_candidates(tiles, counts, best_suit, value_honors, dora_tiles)
     keep_tiles = pair_tiles if pair_route else _keep_candidates(tiles, counts, best_suit, dora_tiles)
     discard_tiles = _discard_candidates(tiles, counts, best_suit, cleanup_tiles, keep_tiles, value_honors, dora_tiles)
-    efficiency = _efficiency_analysis(tiles, discard_tiles, counts, visible_counts, best_suit, value_honors, dora_tiles)
+    efficiency = _efficiency_analysis(
+        tiles,
+        discard_tiles,
+        counts,
+        visible_counts,
+        best_suit,
+        value_honors,
+        dora_tiles,
+        open_melds=open_meld_count,
+    )
     best_efficiency_discard = _best_efficiency_discard(efficiency)
     if best_efficiency_discard:
         discard_tiles = _merge_unique_tiles([best_efficiency_discard, *discard_tiles])
@@ -502,10 +624,9 @@ def build_round_plan(
     )
     primary_discard_text = primary_discard_text or cleanup_text
     keep_text = _tile_list(keep_tiles) or "连续搭子和中张"
-    suit_text = _suit_breakdown(tiles)
-    best_shape = _suit_shape(tiles, best_suit) if best_suit else ""
-
-    style = _play_style(config)
+    suit_text = _suit_breakdown(shape_tiles) if meld_tile_list else _suit_breakdown(tiles)
+    best_shape = _suit_shape(shape_tiles, best_suit) if best_suit else ""
+    meld_text = _tile_list_in_order(meld_tile_list)
 
     direction = "牌效推进"
     targets: list[str] = []
@@ -516,9 +637,14 @@ def build_round_plan(
     pair_threshold = 4 if style == "riichi" else 5
     simple_threshold = 10 if style == "riichi" else 8
 
-    is_pair_route = pair_count >= pair_threshold and best_suit_count < suit_threshold
+    is_pair_route = open_meld_count == 0 and pair_count >= pair_threshold and best_suit_count < suit_threshold
 
-    if best_suit_count >= suit_threshold:
+    if open_meld_count:
+        direction = _open_hand_direction(open_meld_count, efficiency)
+        targets.append(f"主线：已副露{open_meld_count}组，按最快进听/听牌收束")
+        targets.append(f"保留：{keep_text}")
+        summary = f"已副露{open_meld_count}组，优先打向听最低、有效牌最多的牌"
+    elif best_suit_count >= suit_threshold:
         direction = f"染手({SUIT_NAMES.get(best_suit, best_suit)}子)"
         targets.append(f"主线：{SUIT_NAMES.get(best_suit, best_suit)}子清一色/混一色倾向")
         summary = f"{SUIT_NAMES.get(best_suit, best_suit)}子多，优先保留同色，杂色牌逐步清理"
@@ -546,13 +672,35 @@ def build_round_plan(
         targets.append("主线：牌效推进")
         summary = f"牌效推进，保留{keep_text}"
 
+    target_shape = _target_shape_text(
+        direction,
+        best_suit,
+        best_shape,
+        keep_text,
+        efficiency,
+        open_meld_count,
+        bool(value_pair_tiles),
+        is_pair_route,
+    )
+    if target_shape:
+        targets.append(f"目标形：{target_shape}")
     if keep_text and not any(item.startswith("保留：") for item in targets):
         targets.append(f"保留：{keep_text}")
+    if meld_text:
+        targets.append(f"副露识别：{meld_text}")
     if pair_tiles:
         targets.append(f"对子：{_tile_list(pair_tiles)}")
     if value_pair_tiles:
         targets.append(f"役牌对子：{_tile_list(value_pair_tiles)}")
-    dora_text = _tile_list([tile for tile in tiles if _is_dora(tile, dora_tiles)])
+    open_yaku_targets, open_yaku_cautions = _open_yaku_notes(
+        meld_tile_list,
+        shape_tiles,
+        value_honors,
+        best_suit,
+        open_meld_count,
+    )
+    targets.extend(open_yaku_targets)
+    dora_text = _tile_list([tile for tile in shape_tiles if _is_dora(tile, dora_tiles)])
     if dora_text:
         targets.append(f"宝牌/红5：{dora_text}")
 
@@ -563,19 +711,28 @@ def build_round_plan(
     if best_suit_count >= 7:
         cautions.append("有染手分支，但摸到强中张时不要硬染。")
     if route_text:
-        cautions.append(f"路线选择：{route_text}")
+        cautions.append(f"{'副露收束' if open_meld_count else '路线选择'}：{route_text}")
     efficiency_note = _efficiency_note(efficiency)
     if efficiency_note:
         cautions.append(efficiency_note)
     if cleanup_tiles:
         cautions.append(f"优先清理：{discard_text or cleanup_text}")
-    cautions.append(_open_policy_line(counts, value_honors, best_suit_count, simple_count, honor_count, terminal_count, is_pair_route, style))
+    next_step = _next_step_text(primary_discard_text, efficiency, open_meld_count)
+    if next_step:
+        cautions.append(f"下一步：{next_step}")
+    if open_meld_count:
+        cautions.extend(open_yaku_cautions)
+        cautions.append(_open_hand_policy_line(open_meld_count))
+    else:
+        cautions.append(_open_policy_line(counts, value_honors, best_suit_count, simple_count, honor_count, terminal_count, is_pair_route, style))
     if not cautions:
         cautions.append("三巡后再看主线，不要每摸一张就推翻主线。")
 
     bias = "attack" if simple_count >= 8 or best_suit_count >= 5 or value_pair_tiles else "neutral"
+    summary = _plan_summary(summary, keep_text, primary_discard_text, efficiency)
     detail = (
-        f"结构：{suit_text}；对子 {pair_count} 组。"
+        f"结构：{suit_text}；对子 {pair_count} 组。主线：{summary}。"
+        f"{(' 已副露' + str(open_meld_count) + '组，') if open_meld_count else ' '}"
         f" 当前先保留 {keep_text}，{('路线选择：' + route_text) if route_text else ('候选打牌 ' + (discard_text or cleanup_text))}。"
         f" {_efficiency_detail(efficiency)}"
     )
@@ -745,6 +902,8 @@ def _efficiency_analysis(
     best_suit: str,
     value_honors: set[str],
     dora_tiles: set[str],
+    *,
+    open_melds: int = 0,
 ) -> dict[str, Any]:
     canonical_tiles = [_canonical_tile(tile) for tile in tiles if _canonical_tile(tile) in TILE_TYPES]
     if not canonical_tiles:
@@ -752,9 +911,12 @@ def _efficiency_analysis(
             "current_shanten": 8,
             "best_path": "standard",
             "discard_options": [],
+            "open_melds": max(0, min(4, int(open_melds or 0))),
+            "closed_tile_count": 0,
         }
 
-    current = _best_hand_shanten(canonical_tiles)
+    open_meld_count = max(0, min(4, int(open_melds or 0)))
+    current = _best_hand_shanten(canonical_tiles, open_melds=open_meld_count)
     candidates = _efficiency_discard_candidates(tiles, initial_discards, counts, best_suit, value_honors, dora_tiles)
     options: list[dict[str, Any]] = []
     visible_total = sum(visible_counts.values())
@@ -767,14 +929,14 @@ def _efficiency_analysis(
                 continue
             remaining = list(canonical_tiles)
             remaining.remove(canonical)
-            post_discard = _best_hand_shanten(remaining)["shanten"]
+            post_discard = _best_hand_shanten(remaining, open_melds=open_meld_count)["shanten"]
             effective_tiles: list[str] = []
             effective_count = 0
             for draw in TILE_TYPES:
                 available = max(0, 4 - hand_counts.get(draw, 0) - visible_counts.get(draw, 0))
                 if available <= 0:
                     continue
-                if _best_hand_shanten([*remaining, draw])["shanten"] < post_discard:
+                if _best_hand_shanten([*remaining, draw], open_melds=open_meld_count)["shanten"] < post_discard:
                     effective_tiles.append(draw)
                     effective_count += available
             options.append(
@@ -799,6 +961,8 @@ def _efficiency_analysis(
     return {
         "current_shanten": current["shanten"],
         "best_path": current["path"],
+        "open_melds": open_meld_count,
+        "closed_tile_count": len(canonical_tiles),
         "discard_options": [
             {
                 "tile": str(item["tile"]),
@@ -834,16 +998,18 @@ def _efficiency_discard_candidates(
     return candidates[:12]
 
 
-def _best_hand_shanten(tiles: list[str]) -> dict[str, Any]:
+def _best_hand_shanten(tiles: list[str], *, open_melds: int = 0) -> dict[str, Any]:
     counts = _shanten_counts(tiles)
-    standard = _standard_shanten(tuple(counts))
-    seven_pairs = _seven_pairs_shanten(counts)
-    thirteen_orphans = _thirteen_orphans_shanten(counts)
-    options = [
-        ("standard", standard),
-        ("seven_pairs", seven_pairs),
-        ("thirteen_orphans", thirteen_orphans),
-    ]
+    open_meld_count = max(0, min(4, int(open_melds or 0)))
+    standard = _standard_shanten(tuple(counts), open_meld_count)
+    options = [("standard", standard)]
+    if open_meld_count == 0:
+        options.extend(
+            [
+                ("seven_pairs", _seven_pairs_shanten(counts)),
+                ("thirteen_orphans", _thirteen_orphans_shanten(counts)),
+            ]
+        )
     path, shanten = min(options, key=lambda item: item[1])
     return {"path": path, "shanten": int(shanten)}
 
@@ -862,7 +1028,9 @@ def _visible_counts(tiles: list[str]) -> Counter[str]:
 
 
 @lru_cache(maxsize=4096)
-def _standard_shanten(counts_tuple: tuple[int, ...]) -> int:
+def _standard_shanten(counts_tuple: tuple[int, ...], open_melds: int = 0) -> int:
+    open_meld_count = max(0, min(4, int(open_melds or 0)))
+
     @lru_cache(maxsize=262144)
     def walk(counts_state: tuple[int, ...], melds: int, taatsu: int, pair: int) -> int:
         counts = list(counts_state)
@@ -916,7 +1084,7 @@ def _standard_shanten(counts_tuple: tuple[int, ...]) -> int:
 
         return best
 
-    return walk(counts_tuple, 0, 0, 0)
+    return walk(counts_tuple, open_meld_count, 0, 0)
 
 
 def _seven_pairs_shanten(counts: list[int]) -> int:
@@ -966,6 +1134,8 @@ def _best_efficiency_discard(efficiency: dict[str, Any]) -> str:
 
 def _efficiency_note(efficiency: dict[str, Any]) -> str:
     current = _shanten_text(int(efficiency.get("current_shanten", 8)))
+    open_melds = int(efficiency.get("open_melds", 0))
+    prefix = f"副露牌效：估算{open_melds}组，" if open_melds else "牌效："
     options = efficiency.get("discard_options")
     if isinstance(options, list) and options:
         best = options[0]
@@ -978,8 +1148,8 @@ def _efficiency_note(efficiency: dict[str, Any]) -> str:
             wait_text = f"（{waits}）" if waits else ""
             visible_count = int(efficiency.get("visible_tile_count", 0))
             visible_text = "，已扣可见牌" if visible_count else ""
-            return f"牌效：当前{current}；打{tile}后{shanten}，有效{effective_types}种{effective_count}枚{visible_text}{wait_text}。"
-    return f"牌效：当前{current}；未到出牌手数，先按主线保留结构。"
+            return f"{prefix}当前{current}；打{tile}后{shanten}，有效{effective_types}种{effective_count}枚{visible_text}{wait_text}。"
+    return f"{prefix}当前{current}；未到出牌手数，先按主线保留结构。"
 
 
 def _efficiency_detail(efficiency: dict[str, Any]) -> str:
@@ -994,6 +1164,56 @@ def _shanten_text(value: int) -> str:
     if value == 0:
         return "听牌"
     return f"{value}向听"
+
+
+def _plan_summary(summary: str, keep_text: str, primary_discard_text: str, efficiency: dict[str, Any]) -> str:
+    shanten = _shanten_text(int(efficiency.get("current_shanten", 8)))
+    discard = str(primary_discard_text or "").strip()
+    keep = str(keep_text or "").strip()
+    if discard:
+        return f"{summary}；留{keep}，先看打{discard}，当前{shanten}"
+    return f"{summary}；留{keep}，当前{shanten}"
+
+
+def _target_shape_text(
+    direction: str,
+    best_suit: str,
+    best_shape: str,
+    keep_text: str,
+    efficiency: dict[str, Any],
+    open_melds: int,
+    has_value_pair: bool,
+    pair_route: bool,
+) -> str:
+    shanten = _shanten_text(int(efficiency.get("current_shanten", 8)))
+    if open_melds:
+        return f"{shanten}，剩余手牌只保留进听块，避免再转慢速大牌"
+    if pair_route:
+        return "七对子优先，继续收对子；孤张只保留安全、宝牌或强中张"
+    if has_value_pair:
+        return f"役牌对子可碰，碰成刻子后按{shanten}收束"
+    if best_suit and "染手" in direction:
+        return f"{SUIT_NAMES.get(best_suit, best_suit)}子{best_shape}，保留同色和役牌，杂色逐步切"
+    if "断幺" in direction:
+        return "断幺/平和速度，保留中张两面，孤幺九和孤字先处理"
+    return f"{shanten}，保留{keep_text}，每次优先比较向听和有效牌"
+
+
+def _next_step_text(primary_discard_text: str, efficiency: dict[str, Any], open_melds: int) -> str:
+    discard = str(primary_discard_text or "").strip()
+    options = efficiency.get("discard_options")
+    if isinstance(options, list) and options:
+        best = options[0]
+        if isinstance(best, dict):
+            effective = int(best.get("effective_count", 0) or 0)
+            types = int(best.get("effective_types", 0) or 0)
+            shanten = _shanten_text(int(best.get("shanten", 8)))
+            tile = _tile_name(str(best.get("tile") or "")) or discard
+            open_note = "；副露后只开能进听/听牌的牌" if open_melds else ""
+            return f"优先看打{tile}后{shanten}，有效{types}种{effective}枚{open_note}"
+    if discard:
+        return f"先处理{discard}，三巡后再复核主线"
+    return ""
 
 
 def _merge_unique_tiles(tiles: list[str]) -> list[str]:
@@ -1047,6 +1267,84 @@ def _play_style(config: MahjongCoachConfig | None) -> str:
     if style in ("fast", "快攻", "aggressive"):
         return "fast"
     return "riichi"
+
+
+def _inferred_open_melds(closed_tile_count: int) -> int:
+    count = max(0, int(closed_tile_count or 0))
+    if count >= 12:
+        return 0
+    if count >= 9:
+        return 1
+    if count >= 6:
+        return 2
+    if count >= 3:
+        return 3
+    return 4 if count > 0 else 0
+
+
+def _coerce_open_melds(value: int | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return max(0, min(4, int(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _open_yaku_notes(
+    meld_tiles: list[str],
+    shape_tiles: list[str],
+    value_honors: set[str],
+    best_suit: str,
+    open_melds: int,
+) -> tuple[list[str], list[str]]:
+    if open_melds <= 0:
+        return [], []
+    canonical_melds = [_canonical_tile(tile) for tile in meld_tiles if _canonical_tile(tile) in TILE_TYPES]
+    if not canonical_melds:
+        return [], ["确认役种：副露牌没识别到，别只凭剩余手牌判断有役。"]
+
+    targets: list[str] = []
+    cautions: list[str] = []
+    meld_counts = Counter(canonical_melds)
+    value_triplets = [tile for tile, count in meld_counts.items() if count >= 3 and tile in value_honors]
+    if value_triplets:
+        targets.append(f"已成役：役牌副露 {_tile_list(value_triplets)}")
+
+    canonical_shape = [_canonical_tile(tile) for tile in shape_tiles if _canonical_tile(tile) in TILE_TYPES]
+    if canonical_shape and all(is_simple(tile) for tile in canonical_shape):
+        targets.append("可成役：断幺九")
+    else:
+        non_honor_suits = {tile_suit(tile) for tile in canonical_shape if tile_suit(tile) in {"m", "p", "s"}}
+        if best_suit and len(non_honor_suits) == 1:
+            suit_name = SUIT_NAMES.get(best_suit, best_suit)
+            if any(is_honor(tile) for tile in canonical_shape):
+                targets.append(f"可成役：混一色({suit_name}子)")
+            else:
+                targets.append(f"可成役：清一色({suit_name}子)")
+
+    if not targets:
+        cautions.append("确认役种：没有役牌、断幺或染手时，副露手可能没役。")
+    return targets, cautions
+
+
+def _open_hand_direction(open_melds: int, efficiency: dict[str, Any]) -> str:
+    shanten = int(efficiency.get("current_shanten", 8))
+    if shanten <= 0:
+        return "副露听牌/收束"
+    if shanten == 1:
+        return "副露一向听"
+    if open_melds >= 2:
+        return "副露进听优先"
+    return "副露加速"
+
+
+def _open_hand_policy_line(open_melds: int) -> str:
+    if open_melds >= 3:
+        return "鸣牌：只开能听牌/和牌的牌，其他先别破坏待牌。"
+    if open_melds >= 2:
+        return "鸣牌：继续快攻，但只开能进听或明显增加有效牌的牌。"
+    return "鸣牌：能推进主线就开，开过后优先进听而不是改做大牌。"
 
 
 def _open_policy_line(
@@ -1167,7 +1465,7 @@ def _riichi_advice(
         else:
             action = "谨慎立直"
             reason = "愚形或枚数少"
-    return f"{action}：打{discard}听{wait_text}，有效{effective_types}种{effective_count}枚{visible_text}；{reason}{value_text}；本地快判，不等待 LLM。"
+    return f"{action}：打{discard}听{wait_text}，有效{effective_types}种{effective_count}枚{visible_text}；{reason}{value_text}；本地快判。"
 
 
 def _riichi_waits_after_discard(
