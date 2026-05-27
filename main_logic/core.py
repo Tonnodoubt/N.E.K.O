@@ -23,6 +23,7 @@ from typing import Any, Awaitable, Callable, Optional
 # None collapses both into the same code path and would let recovery /
 # proactive paths accidentally bind their messages to a newer request_id.
 _REQUEST_ID_UNSET: Any = object()
+CAMERA_ADVICE_NUDGE_INTERVAL_SECONDS = 8.0
 from datetime import datetime
 from websockets import exceptions as web_exceptions
 from fastapi import WebSocket, WebSocketDisconnect
@@ -920,6 +921,7 @@ class LLMSessionManager:
         # sync_message_queue 控制消息更原子：meta 与 turn end 事件
         # 同生共死，不会因为两条消息的时序错乱而把 avatar 轮当成 proactive。
         self._pending_turn_meta: Optional[dict] = None
+        self._last_camera_advice_nudge_at = 0.0
 
         # 内置 pseudo 工具（目前只有 recall_memory）。在 __init__ 末尾注册
         # 一份占位，此时 user_language 还可能是 None → 短码兜底回退 'en'；
@@ -4763,6 +4765,13 @@ class LLMSessionManager:
             logger.info("[%s] voice proactive nudge skipped (guard)", self.lanlan_name)
         return delivered
 
+    async def trigger_camera_advice_nudge(self) -> bool:
+        now = time.time()
+        if now - self._last_camera_advice_nudge_at < CAMERA_ADVICE_NUDGE_INTERVAL_SECONDS:
+            return False
+        self._last_camera_advice_nudge_at = now
+        return await self.trigger_voice_proactive_nudge()
+
     # ------------------------------------------------------------------
     # Proactive streaming helpers (Phase 2 流式 TTS + 完整文本投递)
     # ------------------------------------------------------------------
@@ -6370,6 +6379,8 @@ class LLMSessionManager:
 
                             # 语音模式直接发送图片
                             await self.session.stream_image(image_b64, image_source=input_type)
+                            if input_type == 'camera' and message.get('client_type') == 'nekocam':
+                                self._fire_task(self.trigger_camera_advice_nudge())
                     else:
                         logger.error("💥 Stream: 屏幕数据验证失败")
                         return

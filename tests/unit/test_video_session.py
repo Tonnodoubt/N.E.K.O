@@ -16,6 +16,11 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
+from main_logic import core as core_module
+from main_logic.core import (
+    CAMERA_ADVICE_NUDGE_INTERVAL_SECONDS,
+    LLMSessionManager,
+)
 from main_logic.omni_realtime_client import OmniRealtimeClient, TurnDetectionMode
 
 
@@ -147,3 +152,70 @@ async def test_non_native_vision_fallback():
     assert client._analyze_image_with_vision_model.call_args[0][0] == DUMMY_IMAGE_B64
     
     await client.close()
+
+
+@pytest.mark.unit
+async def test_camera_advice_nudge_is_throttled(monkeypatch):
+    mgr = LLMSessionManager.__new__(LLMSessionManager)
+    mgr._last_camera_advice_nudge_at = 0.0
+    mgr.trigger_voice_proactive_nudge = AsyncMock(return_value=True)
+
+    times = iter([
+        100.0,
+        100.0 + CAMERA_ADVICE_NUDGE_INTERVAL_SECONDS - 0.1,
+        100.0 + CAMERA_ADVICE_NUDGE_INTERVAL_SECONDS + 0.1,
+    ])
+    monkeypatch.setattr(core_module.time, "time", lambda: next(times))
+
+    assert await LLMSessionManager.trigger_camera_advice_nudge(mgr) is True
+    assert await LLMSessionManager.trigger_camera_advice_nudge(mgr) is False
+    assert await LLMSessionManager.trigger_camera_advice_nudge(mgr) is True
+    assert mgr.trigger_voice_proactive_nudge.await_count == 2
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("client_type", "expected_tasks"),
+    [("nekocam", 1), ("mobile", 0), (None, 0)],
+)
+async def test_camera_frame_schedules_advice_only_for_nekocam(
+    monkeypatch,
+    client_type,
+    expected_tasks,
+):
+    mgr = LLMSessionManager.__new__(LLMSessionManager)
+    mgr._starting_session_count = 0
+    mgr.session = _make_client("qwen-omni-turbo")
+    mgr.session.stream_image = AsyncMock()
+    mgr.is_active = True
+    mgr._session_start_circuit_open = False
+    mgr._avatar_position = None
+
+    scheduled = []
+
+    def fire_task(coro):
+        scheduled.append(coro)
+        coro.close()
+
+    mgr._fire_task = fire_task
+    monkeypatch.setattr(
+        core_module,
+        "process_screen_data",
+        AsyncMock(return_value=DUMMY_IMAGE_B64),
+    )
+
+    message = {
+        "input_type": "camera",
+        "data": f"data:image/jpeg;base64,{DUMMY_IMAGE_B64}",
+    }
+    if client_type is not None:
+        message["client_type"] = client_type
+
+    await LLMSessionManager._process_stream_data_internal(mgr, message)
+
+    mgr.session.stream_image.assert_awaited_once_with(
+        DUMMY_IMAGE_B64,
+        image_source="camera",
+    )
+    assert len(scheduled) == expected_tasks
+    await mgr.session.close()
