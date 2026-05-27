@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import lan_proxy
@@ -153,6 +154,28 @@ def test_nekocam_pairing_persists_client_type_and_capabilities(monkeypatch, tmp_
     assert resolved["client_type"] == "nekocam"
     assert resolved["capabilities"] == ["camera_frame", "camera_advice"]
     assert resolved["avatar"]["character"] == "momo"
+
+
+def test_pairing_payload_refreshes_current_character(monkeypatch, tmp_path):
+    _patch_pairing_paths(monkeypatch, tmp_path)
+
+    proxy = lan_proxy.LanProxy(
+        bind_host="192.168.50.10",
+        enable_cloud=False,
+        enable_stun=False,
+        character="test",
+    )
+
+    async def fake_current_character():
+        return "小天"
+
+    monkeypatch.setattr(proxy, "_get_current_character", fake_current_character)
+
+    asyncio.run(proxy._refresh_current_character())
+    info = proxy.get_connection_info(client_type="nekocam")
+
+    assert info["character"] == "小天"
+    assert info["avatar"]["character"] == "小天"
 
 
 def test_mobile_pairing_rejects_wrong_secret(monkeypatch, tmp_path):

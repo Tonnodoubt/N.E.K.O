@@ -484,6 +484,12 @@ class LanProxy:
 
         return "test"
 
+    async def _refresh_current_character(self) -> None:
+        """Refresh the advertised character before exposing pairing payloads."""
+        character = await self._get_current_character()
+        if character and (character != "test" or self.character == "test"):
+            self.character = character
+
     def _is_loopback_request(self, request: web.Request) -> bool:
         """Return whether the TCP peer is local to this machine."""
         import ipaddress
@@ -698,6 +704,7 @@ class LanProxy:
 
     async def handle_pairing_register(self, request: web.Request) -> web.Response:
         """Register a durable mobile pairing after the first QR/token bootstrap."""
+        await self._refresh_current_character()
         ok, code = self._consume_qr_token(self._extract_request_token(request))
         if not ok:
             status = 410 if code in {"qr_used", "qr_expired"} else 403
@@ -739,6 +746,7 @@ class LanProxy:
 
     async def handle_pairing_resolve(self, request: web.Request) -> web.Response:
         """Resolve a fresh runtime token from a previously stored durable pairing."""
+        await self._refresh_current_character()
         payload = {}
         if request.method != "GET" and request.can_read_body:
             try:
@@ -969,6 +977,7 @@ class LanProxy:
     # ── P2P 连接信息 ──
     async def handle_p2p_info(self, request: web.Request) -> web.Response:
         """返回 P2P 连接信息（用于生成二维码）"""
+        await self._refresh_current_character()
         public_host, public_port = _public_endpoint_from_request(request)
         client_type = _normalize_mobile_client_type(request.query.get("client_type"))
         info = self.get_connection_info(
@@ -988,6 +997,7 @@ class LanProxy:
             )
 
         try:
+            await self._refresh_current_character()
             # 获取连接信息
             public_host, public_port = _public_endpoint_from_request(request)
             client_type = _normalize_mobile_client_type(request.query.get("client_type"))
