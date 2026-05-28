@@ -16,23 +16,38 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin"
-if str(_PLUGIN_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PLUGIN_ROOT))
-
 import numpy as np
 from PIL import Image
 
-from plugins.mahjong_coach.perception.vit_tile_classifier_onnx import (
-    OnnxTilePrediction,
-    classify_tile_crops_onnx,
-    onnx_tile_classifier_available,
-)
+
+def _load_onnx_classifier_module():
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "plugin"
+        / "plugins"
+        / "mahjong_coach"
+        / "perception"
+        / "vit_tile_classifier_onnx.py"
+    )
+    spec = importlib.util.spec_from_file_location("mahjong_coach_vit_tile_classifier_onnx", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load ONNX classifier module: {path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_ONNX_CLASSIFIER = _load_onnx_classifier_module()
+OnnxTilePrediction = _ONNX_CLASSIFIER.OnnxTilePrediction
+classify_tile_crops_onnx = _ONNX_CLASSIFIER.classify_tile_crops_onnx
+onnx_tile_classifier_available = _ONNX_CLASSIFIER.onnx_tile_classifier_available
 
 TILE_CLASSES = [
     f"{rank}{suit}" for suit in ("m", "p", "s") for rank in range(1, 10)

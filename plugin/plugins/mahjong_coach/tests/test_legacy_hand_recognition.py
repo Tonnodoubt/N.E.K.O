@@ -12,6 +12,8 @@ from plugin.plugins.mahjong_coach.perception.calibration import CalibrationProfi
 from plugin.plugins.mahjong_coach.perception.fast_hand_path import detect_fast_hand_path
 from plugin.plugins.mahjong_coach.perception.hand_layout import build_hand_layout
 from plugin.plugins.mahjong_coach.perception.meld_state import build_self_meld_layout, detect_meld_state_path
+from plugin.plugins.mahjong_coach.perception.riichi_detector import detect_riichi_sticks
+from plugin.plugins.mahjong_coach.perception import tile_classifier_dispatch
 from plugin.plugins.mahjong_coach.perception.tile_classifier_dispatch import classify_hand_tile
 from plugin.plugins.mahjong_coach.perception.tile_templates import TileTemplateMatch, extract_tile_signature
 
@@ -139,6 +141,27 @@ def test_red_five_post_processing_with_template_result() -> None:
     assert match.tile == "0m"
 
 
+def test_hand_classifier_keeps_onnx_opt_in(monkeypatch) -> None:
+    crop = _tile_crop(72, 116, "5m")
+    payload = _template_payload({"5m": crop})
+
+    monkeypatch.delenv("MAHJONG_COACH_ONNX_HAND_ENABLED", raising=False)
+    monkeypatch.setattr(tile_classifier_dispatch, "onnx_discard_available", lambda: True)
+    monkeypatch.setattr(
+        tile_classifier_dispatch,
+        "_classify_hand_onnx",
+        lambda _crop: TileTemplateMatch(tile="9z", confidence=0.99, distance=1.0),
+    )
+
+    default_match = classify_hand_tile(crop, payload)
+    enabled_match = classify_hand_tile(crop, payload, use_onnx=True)
+
+    assert default_match is not None
+    assert default_match.tile == "5m"
+    assert enabled_match is not None
+    assert enabled_match.tile == "9z"
+
+
 def test_action_button_template_scan_detects_pon(tmp_path: Path) -> None:
     template_path = (
         Path(__file__).resolve().parents[1]
@@ -210,6 +233,39 @@ def test_action_detector_does_not_promote_color_metrics_without_templates(tmp_pa
 
     assert buttons == []
     assert meta["button_filter"]["rejected"] is False
+
+
+def test_riichi_stick_counter_reads_zero(tmp_path: Path) -> None:
+    frame_path = tmp_path / "riichi_counter_zero.png"
+    _counter_frame("0").save(frame_path)
+
+    result = detect_riichi_sticks(frame_path)
+
+    assert result.riichi_players == []
+    assert result.stick_count == 0
+
+
+def test_riichi_stick_counter_reads_nonzero(tmp_path: Path) -> None:
+    frame_path = tmp_path / "riichi_counter_one.png"
+    _counter_frame("1").save(frame_path)
+
+    result = detect_riichi_sticks(frame_path)
+
+    assert result.riichi_players == ["unknown"]
+    assert result.stick_count == 1
+
+
+def _counter_frame(digit: str) -> Image.Image:
+    image = Image.new("RGB", (1920, 1080), (18, 30, 45))
+    draw = ImageDraw.Draw(image)
+    draw.line((88, 145, 105, 165), fill=(240, 240, 235), width=6)
+    draw.line((105, 145, 88, 165), fill=(240, 240, 235), width=6)
+    if digit == "0":
+        draw.ellipse((120, 132, 144, 171), outline=(240, 240, 235), width=7)
+    else:
+        draw.rounded_rectangle((129, 132, 140, 172), radius=3, fill=(240, 240, 235))
+        draw.polygon([(126, 140), (139, 130), (142, 138), (130, 148)], fill=(240, 240, 235))
+    return image
 
 
 def _tile_crop(width: int, height: int, label: str, *, red_center: bool = False) -> Image.Image:

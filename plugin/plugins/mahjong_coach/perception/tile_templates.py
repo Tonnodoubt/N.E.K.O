@@ -84,7 +84,9 @@ def is_probably_occupied_hand_slot(slot_metrics: dict[str, Any], *, relaxed: boo
     stddev = _float_metric(slot_metrics, "slot_stddev", "stddev")
     if relaxed:
         return mean_luma >= 70.0 and stddev >= 10.0 and dark_ratio <= 0.75
-    return mean_luma >= 95.0 and bright_ratio >= 0.16 and dark_ratio <= 0.55 and stddev >= 18.0
+    normal_tile = mean_luma >= 95.0 and bright_ratio >= 0.16 and dark_ratio <= 0.55 and stddev >= 18.0
+    dimmed_tile = mean_luma >= 100.0 and dark_ratio <= 0.38 and stddev >= 30.0
+    return normal_tile or dimmed_tile
 
 
 def _is_usable_template_payload(payload: dict[str, Any]) -> bool:
@@ -203,4 +205,3 @@ def _float_metric(metrics: dict[str, Any], *names: str) -> float:
         except (TypeError, ValueError):
             continue
     return 0.0
-

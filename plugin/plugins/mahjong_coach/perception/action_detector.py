@@ -108,18 +108,46 @@ def _coarse_template_score(search: Image.Image, template: Image.Image) -> float:
 
     search_arr = np.asarray(search_small.convert("RGB"), dtype=np.float32)
     template_arr = np.asarray(template_small.convert("RGB"), dtype=np.float32)
-    stride = max(2, int(min(template_small.width, template_small.height) / 16))
+    mask = _template_content_mask(template_arr)
+    template_masked = template_arr[mask].reshape(-1, 3)
+    template_centered = template_masked - template_masked.mean(axis=0, keepdims=True)
+    template_norm = float(np.sqrt(np.sum(template_centered * template_centered)))
+    if template_norm <= 1.0:
+        return 0.0
+
+    stride = max(2, int(min(template_small.width, template_small.height) / 18))
     best = 0.0
     max_y = search_arr.shape[0] - template_arr.shape[0]
     max_x = search_arr.shape[1] - template_arr.shape[1]
     for y in range(0, max_y + 1, stride):
         for x in range(0, max_x + 1, stride):
             window = search_arr[y : y + template_arr.shape[0], x : x + template_arr.shape[1]]
-            diff = float(np.mean(np.abs(window - template_arr)))
-            score = 1.0 - diff / 255.0
+            window_masked = window[mask].reshape(-1, 3)
+            window_centered = window_masked - window_masked.mean(axis=0, keepdims=True)
+            window_norm = float(np.sqrt(np.sum(window_centered * window_centered)))
+            if window_norm <= 1.0:
+                continue
+            correlation = float(np.sum(window_centered * template_centered) / (window_norm * template_norm))
+            diff = float(np.mean(np.abs(window_masked - template_masked)))
+            diff_score = 1.0 - diff / 255.0
+            score = max(0.0, correlation) * 0.7 + diff_score * 0.3
             if score > best:
                 best = score
     return best
+
+
+def _template_content_mask(template_arr: np.ndarray) -> np.ndarray:
+    gray = template_arr.mean(axis=2)
+    median_color = np.median(template_arr.reshape(-1, 3), axis=0)
+    color_distance = np.linalg.norm(template_arr - median_color, axis=2)
+    grad_x = np.zeros_like(gray)
+    grad_y = np.zeros_like(gray)
+    grad_x[:, 1:] = np.abs(gray[:, 1:] - gray[:, :-1])
+    grad_y[1:, :] = np.abs(gray[1:, :] - gray[:-1, :])
+    mask = (color_distance > 20.0) | (np.maximum(grad_x, grad_y) > 12.0)
+    if float(mask.mean()) < 0.08:
+        return np.ones(gray.shape, dtype=bool)
+    return mask
 
 
 def _filter_plausible_buttons(buttons: list[str]) -> tuple[list[str], dict[str, Any]]:

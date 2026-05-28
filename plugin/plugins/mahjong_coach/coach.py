@@ -66,7 +66,8 @@ class RoundCoachEngine:
 
         if not self.state.opening_emitted:
             hand_result = self._detect_hand(path)
-            meld_result = self._detect_melds(path)
+            meld_result = self._detect_melds(path, hand_result=hand_result)
+            self._detect_riichi_players(path)
             if meld_result.ok:
                 self._remember_melds(meld_result)
             if not hand_result.ok and meld_result.ok and _play_style(self.config) == "fast":
@@ -207,6 +208,7 @@ class RoundCoachEngine:
             path,
             calibration_dir=self.calibration_dir,
             min_hand_tiles=max(1, int(min_hand_tiles or self._min_hand_tiles_for_scan())),
+            use_onnx_hand=self.config.onnx_hand_enabled,
         )
 
     def _min_hand_tiles_for_scan(self) -> int:
@@ -221,7 +223,7 @@ class RoundCoachEngine:
         hand_result = self._detect_hand(path)
         if hand_result.ok:
             self._remember_hand(hand_result)
-        meld_result = self._detect_melds(path)
+        meld_result = self._detect_melds(path, hand_result=hand_result)
         if meld_result.ok:
             self._remember_melds(meld_result)
         return hand_result, meld_result
@@ -238,10 +240,13 @@ class RoundCoachEngine:
         )
 
     def _detect_riichi_players(self, path: Path | None) -> list[str]:
+        if not self.config.opponent_riichi_recognition_enabled:
+            self.state.riichi_pending = {}
+            return []
         if path is None:
             return []
         result = detect_riichi_sticks(path)
-        detected = set(result.riichi_players)
+        detected = self._riichi_players_from_stick_counter(result)
         confirmed: list[str] = []
         pending = dict(self.state.riichi_pending)
         for player in detected:
@@ -255,12 +260,31 @@ class RoundCoachEngine:
         already = set(self.state.riichi_players)
         return sorted(set(confirmed) | already)
 
-    def _detect_melds(self, path: Path | None) -> MeldStateResult:
+    def _riichi_players_from_stick_counter(self, result: Any) -> set[str]:
+        stick_count = result.stick_count
+        if stick_count is not None:
+            self.state.last_riichi_stick_count = stick_count
+            if self.state.riichi_stick_baseline is None:
+                self.state.riichi_stick_baseline = stick_count
+                return set()
+            if stick_count > self.state.riichi_stick_baseline:
+                return {"unknown"}
+            return set()
+        if self.state.riichi_stick_baseline is None:
+            return set()
+        return set(result.riichi_players)
+
+    def _detect_melds(self, path: Path | None, *, hand_result: FastHandResult | None = None) -> MeldStateResult:
         if not self.config.meld_recognition_enabled:
             return MeldStateResult(reason="meld_recognition_disabled")
         if path is None:
             return MeldStateResult(reason="image_path_missing")
-        return detect_meld_state_path(path, min_confidence=self.config.meld_min_confidence)
+        closed_hand_count = len(hand_result.hand_tiles) if hand_result is not None and hand_result.hand_tiles else None
+        return detect_meld_state_path(
+            path,
+            min_confidence=self.config.meld_min_confidence,
+            closed_hand_count=closed_hand_count,
+        )
 
     def _river_result_from_state(self, reason: str, *, ok_if_cached: bool = True) -> RiverStateResult:
         has_cached = bool(self.state.last_discard_piles or self.state.last_visible_discards)
@@ -322,7 +346,8 @@ class RoundCoachEngine:
 
     def _remember_melds(self, meld_result: MeldStateResult) -> None:
         self.state.last_melds = [dict(item) for item in meld_result.melds]
-        self.state.last_meld_tiles = [str(tile) for tile in meld_result.tiles if str(tile).strip()]
+        tile_identity_reliable = meld_result.analysis_hints.get("tile_identity_reliable") is not False
+        self.state.last_meld_tiles = [str(tile) for tile in meld_result.tiles if str(tile).strip()] if tile_identity_reliable else []
         self.state.last_open_meld_count = meld_result.open_meld_count
         self.state.last_meld_confidence = float(meld_result.confidence)
 
@@ -587,6 +612,7 @@ class RoundCoachEngine:
             "river_recognition_backend": "onnx_discard_model",
             "meld_recognition_enabled": self.config.meld_recognition_enabled,
             "meld_recognition_backend": "onnx_tile_classifier",
+            "opponent_riichi_recognition_enabled": self.config.opponent_riichi_recognition_enabled,
         }
 
     def _open_meld_count_for_plan(self, meld_result: MeldStateResult | None) -> int | None:
@@ -596,6 +622,8 @@ class RoundCoachEngine:
 
     def _meld_tiles_for_plan(self, meld_result: MeldStateResult | None) -> list[str]:
         if meld_result is not None and meld_result.ok:
+            if meld_result.analysis_hints.get("tile_identity_reliable") is False:
+                return []
             return [str(tile) for tile in meld_result.tiles if str(tile).strip()]
         return list(self.state.last_meld_tiles)
 

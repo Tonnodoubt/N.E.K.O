@@ -40,13 +40,17 @@ def classify_discard_tiles_batch(
 def classify_hand_tile(
     crop: Image.Image,
     template_payload: dict[str, Any],
+    *,
+    use_onnx: bool | None = None,
+    fallback_to_onnx: bool = False,
 ) -> TileTemplateMatch | None:
-    """Classify a hand tile using ONNX when available, template fallback.
+    """Classify a hand tile using templates by default, ONNX only when enabled.
 
-    After fine-tuning on hand crops, the ONNX model is now the primary path.
-    Template matching serves as fallback when ONNX is unavailable.
+    The current bundled ONNX model is reliable for discard crops, but hand
+    tiles still need a fine-tuned model. Keep live hand recognition template
+    first until the retrained model is explicitly enabled.
     """
-    if onnx_discard_available():
+    if (onnx_hand_enabled() if use_onnx is None else bool(use_onnx)) and onnx_discard_available():
         onnx_match = _classify_hand_onnx(crop)
         if onnx_match is not None and onnx_match.confidence >= 0.5:
             return onnx_match
@@ -63,6 +67,10 @@ def classify_hand_tile(
         return onnx_match
 
     result = classify_tile_from_templates(crop, template_payload)
+    if fallback_to_onnx and onnx_discard_available() and (result is None or result.confidence < 0.3):
+        onnx_match = _classify_hand_onnx(crop)
+        if onnx_match is not None and onnx_match.confidence >= 0.75:
+            return onnx_match
     if result is None:
         return None
     return _apply_red_five(crop, result)
@@ -70,9 +78,7 @@ def classify_hand_tile(
 
 def onnx_hand_enabled() -> bool:
     value = os.environ.get("MAHJONG_COACH_ONNX_HAND_ENABLED", "")
-    if value.strip().lower() in {"0", "false", "no", "off"}:
-        return False
-    return True  # ONNX for hand tiles is now enabled by default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def detect_red_five(crop: Image.Image, classified_tile: str) -> str | None:

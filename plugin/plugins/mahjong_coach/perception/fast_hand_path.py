@@ -41,6 +41,7 @@ def detect_fast_hand_path(
     calibration_dir: Path | None = None,
     min_hand_tiles: int = 12,
     max_hand_tiles: int = 14,
+    use_onnx_hand: bool | None = None,
 ) -> FastHandResult:
     started = time.perf_counter()
     if not image_path.exists():
@@ -62,6 +63,7 @@ def detect_fast_hand_path(
         hand_tiles: list[str] = []
         confidences: list[float] = []
         raw_detections: list[dict[str, Any]] = []
+        empty_streak_after_hand = 0
         for slot in layout["hand"][:14]:
             metrics = collect_region_metrics(image, slot.box, sample_step=6)
             occupied = is_probably_occupied_hand_slot(
@@ -82,9 +84,19 @@ def detect_fast_hand_path(
             }
             if not occupied:
                 raw_detections.append(detection)
+                if hand_tiles:
+                    empty_streak_after_hand += 1
+                    if empty_streak_after_hand >= 2:
+                        break
                 continue
+            empty_streak_after_hand = 0
             crop = image.crop((slot.box.left, slot.box.top, slot.box.right, slot.box.bottom))
-            match = classify_hand_tile(crop, template_payload)
+            match = classify_hand_tile(
+                crop,
+                template_payload,
+                use_onnx=use_onnx_hand,
+                fallback_to_onnx=True,
+            )
             if match is None:
                 raw_detections.append(detection)
                 continue

@@ -52,12 +52,6 @@ class DefaultCaptureProvider:
         region = self._resolve_capture_region(context.binding_result)
         errors: list[str] = []
 
-        if platform.system().lower() == "windows" and context.binding_result.hwnd:
-            try:
-                return self._save_with_print_window(context.file_path, int(context.binding_result.hwnd))
-            except Exception as exc:
-                errors.append(f"print-window: {exc}")
-
         if region is not None and pyautogui is not None:
             try:
                 return self._save_with_pyautogui(context.file_path, region)
@@ -75,6 +69,12 @@ class DefaultCaptureProvider:
                 return self._save_with_imagegrab_window(context.file_path, int(context.binding_result.hwnd))
             except Exception as exc:
                 errors.append(f"imagegrab-window: {exc}")
+
+        if platform.system().lower() == "windows" and context.binding_result.hwnd:
+            try:
+                return self._save_with_print_window(context.file_path, int(context.binding_result.hwnd))
+            except Exception as exc:
+                errors.append(f"print-window: {exc}")
 
         if pyautogui is not None:
             try:

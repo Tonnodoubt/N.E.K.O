@@ -17,10 +17,11 @@ class MahjongCoachConfig:
     meld_min_confidence: float = 0.72
     river_recognition_enabled: bool = True
     river_min_confidence: float = 0.90
+    opponent_riichi_recognition_enabled: bool = True
     live_window_keywords: list[str] = field(default_factory=lambda: ["雀魂", "Mahjong Soul"])
     live_interval_ms: int = 400
     live_fast_interval_ms: int = 300
-    live_keep_frames: int = 200
+    live_keep_frames: int = 1000
     live_checkpoint_interval_seconds: int = 4
     live_overlay_enabled: bool = True
     live_save_format: str = "jpg"
@@ -47,10 +48,11 @@ class MahjongCoachConfig:
             meld_min_confidence=max(0.0, min(1.0, float(perception.get("meld_min_confidence") or 0.72))),
             river_recognition_enabled=bool(perception.get("river_recognition_enabled", True)),
             river_min_confidence=max(0.0, min(1.0, float(perception.get("river_min_confidence") or 0.90))),
+            opponent_riichi_recognition_enabled=bool(perception.get("opponent_riichi_recognition_enabled", True)),
             live_window_keywords=_string_list(live.get("window_keywords"), ["雀魂", "Mahjong Soul"]),
-            live_interval_ms=max(200, int(live.get("interval_ms") or 1200)),
+            live_interval_ms=max(200, int(live.get("interval_ms") or 400)),
             live_fast_interval_ms=max(100, int(live.get("fast_interval_ms") or 300)),
-            live_keep_frames=max(5, int(live.get("keep_frames") or 30)),
+            live_keep_frames=max(5, int(live.get("keep_frames") or 1000)),
             live_checkpoint_interval_seconds=max(4, int(live.get("checkpoint_interval_seconds") or 4)),
             live_overlay_enabled=bool(live.get("overlay_enabled", True)),
             live_save_format=str(live.get("save_format") or "jpg"),
@@ -93,6 +95,8 @@ class RoundCoachState:
     prev_discard_priority: list[str] = field(default_factory=list)
     riichi_players: list[str] = field(default_factory=list)
     riichi_pending: dict[str, int] = field(default_factory=dict)
+    riichi_stick_baseline: int | None = None
+    last_riichi_stick_count: int | None = None
     last_update_reason: str = ""
     update_count: int = 0
 

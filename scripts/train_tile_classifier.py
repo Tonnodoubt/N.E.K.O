@@ -27,6 +27,8 @@ import time
 from pathlib import Path
 
 import numpy as np
+import torch
+from PIL import Image
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -118,7 +120,6 @@ def build_model(num_classes: int, pretrained: str = "mobilenetv3_small_100"):
 
 def freeze_backbone(model):
     """Freeze all layers except the classifier head."""
-    import torch
     for name, param in model.named_parameters():
         if "classifier" not in name:
             param.requires_grad = False
@@ -126,22 +127,23 @@ def freeze_backbone(model):
 
 def unfreeze_last_n_layers(model, n: int = 2):
     """Unfreeze the last n blocks + classifier."""
-    import torch
-    # MobileNetV3 has blocks: features.X
-    # Count the feature layers
-    feature_names = [name for name, _ in model.named_parameters() if name.startswith("features.")]
-    # Get unique block indices
+    # timm MobileNetV3 uses blocks.X; keep features.X support for compatible backbones.
+    block_prefix = "blocks."
+    if not any(name.startswith(block_prefix) for name, _ in model.named_parameters()):
+        block_prefix = "features."
+
     blocks = set()
-    for name in feature_names:
+    for name, _ in model.named_parameters():
+        if not name.startswith(block_prefix):
+            continue
         parts = name.split(".")
-        if len(parts) >= 3 and parts[1].isdigit():
+        if len(parts) >= 2 and parts[1].isdigit():
             blocks.add(int(parts[1]))
 
-    # Unfreeze last n blocks + classifier
     unfreeze_blocks = sorted(blocks)[-n:] if blocks else []
     for name, param in model.named_parameters():
-        should_train = "classifier" in name
-        if name.startswith("features."):
+        should_train = "classifier" in name or name.startswith("conv_head")
+        if name.startswith(block_prefix):
             parts = name.split(".")
             if len(parts) >= 2 and parts[1].isdigit():
                 if int(parts[1]) in unfreeze_blocks:
@@ -199,6 +201,7 @@ def evaluate(model, loader, criterion, device):
 
 def export_onnx(model, output_path: Path, size: int = 224):
     import torch
+    model = model.to("cpu")
     model.eval()
     dummy = torch.randn(1, 3, size, size)
     torch.onnx.export(
@@ -209,6 +212,7 @@ def export_onnx(model, output_path: Path, size: int = 224):
         output_names=["output"],
         dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
         opset_version=13,
+        dynamo=False,
     )
     log.info(f"ONNX model exported to {output_path} ({output_path.stat().st_size / 1024 / 1024:.1f} MB)")
 
@@ -226,14 +230,13 @@ def write_model_artifacts(output_dir: Path, size: int = 224):
         "letterbox_pad": True,
     }
     labels = {str(i): label for i, label in enumerate(TILE_CLASSES)}
-    labels["34"] = "empty"
 
     config = {
         "backbone": "mobilenetv3_small",
         "timm_name": "mobilenetv3_small_100",
         "input_size": size,
-        "num_classes": 35,
-        "class_names": TILE_CLASSES + ["empty"],
+        "num_classes": NUM_TILE_CLASSES,
+        "class_names": TILE_CLASSES,
         "mean": IMAGENET_MEAN,
         "std": IMAGENET_STD,
     }
@@ -335,6 +338,7 @@ def main() -> None:
     log.info("Stage 2: Fine-tuning last layers")
 
     model.load_state_dict(torch.load(output_dir / "stage1_best.pt", map_location=device, weights_only=True))
+    torch.save(model.state_dict(), output_dir / "stage2_best.pt")
     unfreeze_last_n_layers(model, n=2)
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log.info(f"Trainable parameters: {trainable:,}")

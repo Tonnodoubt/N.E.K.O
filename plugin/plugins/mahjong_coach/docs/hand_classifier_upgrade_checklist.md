@@ -9,7 +9,7 @@
 ## 前置步骤
 
 ### 1. 重启 N.E.K.O
-让新代码生效（去重存帧 + 200帧上限）
+让新代码生效（持续存帧 + 1000帧上限）
 
 ### 2. 多打几局雀魂（目标 100+ 帧）
 - 每局会自动存不同手牌的截图
@@ -90,7 +90,7 @@ cp tmp/tile_model/preprocessor.json plugin/plugins/mahjong_coach/data/models/vit
 | `scripts/train_tile_classifier.py` | 新建：两阶段 fine-tune + ONNX 导出 |
 | `scripts/eval_tile_classifier.py` | 新建：分类评估 + 混淆矩阵 |
 | `perception/vit_tile_classifier_onnx.py` | 加 letterbox 预处理支持 |
-| `perception/tile_classifier_dispatch.py` | 手牌 ONNX 默认开启 + template 交叉验证 |
+| `perception/tile_classifier_dispatch.py` | 手牌 ONNX 可选开启 + template 兜底 |
 | `coach.py` | 修复防守建议只推荐手里有的牌 |
 | `__init__.py` | live loop 加 fingerprint 去重存帧 |
 | `models.py` | live_keep_frames 30→200 |

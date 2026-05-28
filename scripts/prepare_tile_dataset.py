@@ -38,6 +38,19 @@ NUM_CLASSES = len(TILE_CLASSES)  # 34
 
 IMG_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
+HF_LABEL_MAP = {
+    **{f"{rank}b": f"{rank}s" for rank in range(1, 10)},
+    **{f"{rank}n": f"{rank}m" for rank in range(1, 10)},
+    **{f"{rank}p": f"{rank}p" for rank in range(1, 10)},
+    "ew": "1z",
+    "sw": "2z",
+    "ww": "3z",
+    "nw": "4z",
+    "wd": "5z",
+    "gd": "6z",
+    "rd": "7z",
+}
+
 
 def _iter_images(directory: Path) -> list[Path]:
     return sorted(p for p in directory.rglob("*") if p.suffix.lower() in IMG_EXTENSIONS)
@@ -56,6 +69,8 @@ def load_hf_dataset(cache_dir: Path | None = None) -> dict[str, list[Path]]:
 
     log.info("Loading pjura/mahjong_souls_tiles from HuggingFace...")
     ds = load_dataset("pjura/mahjong_souls_tiles", split="train", cache_dir=str(cache_dir) if cache_dir else None)
+    label_feature = ds.features.get("label")
+    label_names = getattr(label_feature, "names", None) or []
 
     output_map: dict[str, list[Path]] = {}
     temp_dir = cache_dir / "hf_tile_crops" if cache_dir else Path("tmp/hf_tile_crops")
@@ -63,7 +78,10 @@ def load_hf_dataset(cache_dir: Path | None = None) -> dict[str, list[Path]]:
 
     for idx, row in enumerate(ds):
         img = row.get("image")
-        label = str(row.get("label", "")).strip()
+        raw_label = row.get("label", "")
+        if isinstance(raw_label, int) and 0 <= raw_label < len(label_names):
+            raw_label = label_names[raw_label]
+        label = HF_LABEL_MAP.get(str(raw_label).strip(), str(raw_label).strip())
         if not img or not label or label not in LABEL_TO_INDEX:
             continue
         label_dir = temp_dir / label
@@ -173,55 +191,27 @@ def build_dataset(
         "hf_discard": {},
         "local_hand": {},
         "augmented_hand": {},
+        "augmented_discard": {},
     }
 
     for label in TILE_CLASSES:
         hf_paths = hf_crops.get(label, [])
         local_paths = local_crops.get(label, [])
 
-        # Collect all (path, source) pairs
-        all_items: list[tuple[Path, str]] = []
-        all_items.extend((p, "hf_discard") for p in hf_paths)
-        all_items.extend((p, "local_hand") for p in local_paths)
+        # Split original crops first so augmented variants do not leak into val/test.
+        base_items: list[tuple[Path, str]] = []
+        base_items.extend((p, "hf_discard") for p in hf_paths)
+        base_items.extend((p, "local_hand") for p in local_paths)
+        if not base_items:
+            continue
+        rng.shuffle(base_items)
 
-        rng.shuffle(all_items)
-
-        # Apply hand-crop augmentation to boost hand data
-        augmented: list[tuple[Path, str]] = []
-        for path, source in local_paths:
-            for copy_idx in range(hand_augment_copies):
-                aug_seed = rng.randint(0, 2**31)
-                aug_path = output_dir / "_aug_cache" / f"{label}" / f"aug_{path.stem}_{copy_idx}.png"
-                aug_path.parent.mkdir(parents=True, exist_ok=True)
-                if not aug_path.exists():
-                    with Image.open(path) as img:
-                        aug = augment_hand_crop(img, aug_seed)
-                        aug.save(aug_path)
-                augmented.append((aug_path, "augmented_hand"))
-                stats["augmented_hand"][label] = stats["augmented_hand"].get(label, 0) + 1
-
-        # Apply discard augmentation
-        for path in hf_paths:
-            for copy_idx in range(discard_augment_copies):
-                aug_seed = rng.randint(0, 2**31)
-                aug_path = output_dir / "_aug_cache" / f"{label}" / f"hf_aug_{path.stem}_{copy_idx}.png"
-                aug_path.parent.mkdir(parents=True, exist_ok=True)
-                if not aug_path.exists():
-                    with Image.open(path) as img:
-                        aug = augment_discard_crop(img, aug_seed)
-                        aug.save(aug_path)
-                augmented.append((aug_path, "hf_discard"))
-
-        all_items.extend(augmented)
-        rng.shuffle(all_items)
-
-        # Split
-        n = len(all_items)
-        n_test = max(1, int(n * test_ratio))
-        n_val = max(1, int(n * val_ratio))
+        n = len(base_items)
+        n_test = max(1, int(n * test_ratio)) if n >= 3 else 0
+        n_val = max(1, int(n * val_ratio)) if n - n_test >= 2 else 0
         n_train = n - n_test - n_val
 
-        for i, (path, source) in enumerate(all_items):
+        for i, (path, source) in enumerate(base_items):
             if i < n_test:
                 split = "test"
             elif i < n_test + n_val:
@@ -231,6 +221,31 @@ def build_dataset(
             splits[split].append((path, label))
             stats.setdefault(source, {}).setdefault(label, 0)
             stats[source][label] = stats[source].get(label, 0) + 1
+
+            if split != "train":
+                continue
+            if source == "local_hand":
+                for copy_idx in range(hand_augment_copies):
+                    aug_seed = rng.randint(0, 2**31)
+                    aug_path = output_dir / "_aug_cache" / f"{label}" / f"aug_{path.stem}_{copy_idx}.png"
+                    aug_path.parent.mkdir(parents=True, exist_ok=True)
+                    if not aug_path.exists():
+                        with Image.open(path) as img:
+                            aug = augment_hand_crop(img, aug_seed)
+                            aug.save(aug_path)
+                    splits["train"].append((aug_path, label))
+                    stats["augmented_hand"][label] = stats["augmented_hand"].get(label, 0) + 1
+            elif source == "hf_discard":
+                for copy_idx in range(discard_augment_copies):
+                    aug_seed = rng.randint(0, 2**31)
+                    aug_path = output_dir / "_aug_cache" / f"{label}" / f"hf_aug_{path.stem}_{copy_idx}.png"
+                    aug_path.parent.mkdir(parents=True, exist_ok=True)
+                    if not aug_path.exists():
+                        with Image.open(path) as img:
+                            aug = augment_discard_crop(img, aug_seed)
+                            aug.save(aug_path)
+                    splits["train"].append((aug_path, label))
+                    stats["augmented_discard"][label] = stats["augmented_discard"].get(label, 0) + 1
 
     # Shuffle each split
     for split_name in splits:

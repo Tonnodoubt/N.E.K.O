@@ -39,12 +39,13 @@ meld_recognition_enabled = true
 meld_min_confidence = 0.72
 river_recognition_enabled = true
 river_min_confidence = 0.90
+opponent_riichi_recognition_enabled = true
 
 [live]
 window_keywords = ["雀魂", "Mahjong Soul"]
-interval_ms = 1200
+interval_ms = 400
 fast_interval_ms = 300
-keep_frames = 30
+keep_frames = 1000
 checkpoint_interval_seconds = 20
 overlay_enabled = true
 save_format = "jpg"

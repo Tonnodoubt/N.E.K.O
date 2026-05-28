@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from plugin.plugins.mahjong_coach import MahjongCoachPlugin
+from plugin.plugins.mahjong_coach import coach as coach_module
 from plugin.plugins.mahjong_coach.coach import RoundCoachEngine, build_round_plan
 from plugin.plugins.mahjong_coach.models import LiveSessionState, MahjongCoachConfig
 from plugin.plugins.mahjong_coach.overlay import _overlay_geometry, overlay_text_from_payload
@@ -49,7 +50,14 @@ def test_fast_style_after_opening_uses_open_hand_threshold(monkeypatch: pytest.M
     engine.state.opening_emitted = True
     seen: dict[str, int] = {}
 
-    def fake_detect(_path: Path, *, calibration_dir=None, min_hand_tiles: int = 12, max_hand_tiles: int = 14) -> FastHandResult:
+    def fake_detect(
+        _path: Path,
+        *,
+        calibration_dir=None,
+        min_hand_tiles: int = 12,
+        max_hand_tiles: int = 14,
+        use_onnx_hand: bool | None = None,
+    ) -> FastHandResult:
         seen["min_hand_tiles"] = min_hand_tiles
         seen["max_hand_tiles"] = max_hand_tiles
         return FastHandResult(ok=True, hand_tiles=["1m", "2m", "3m", "4p"], confidence=0.77, reason="test_open_hand")
@@ -69,7 +77,14 @@ def test_fast_style_late_open_hand_can_track_two_tiles(monkeypatch: pytest.Monke
     engine.state.last_hand_tiles = ["1m", "2m", "3m", "4p", "5p"]
     seen: dict[str, int] = {}
 
-    def fake_detect(_path: Path, *, calibration_dir=None, min_hand_tiles: int = 12, max_hand_tiles: int = 14) -> FastHandResult:
+    def fake_detect(
+        _path: Path,
+        *,
+        calibration_dir=None,
+        min_hand_tiles: int = 12,
+        max_hand_tiles: int = 14,
+        use_onnx_hand: bool | None = None,
+    ) -> FastHandResult:
         seen["min_hand_tiles"] = min_hand_tiles
         return FastHandResult(ok=True, hand_tiles=["1m", "2m"], confidence=0.64, reason="test_late_open_hand")
 
@@ -85,7 +100,14 @@ def test_fast_style_opening_still_requires_full_starting_hand(monkeypatch: pytes
     engine = RoundCoachEngine(MahjongCoachConfig(play_style="fast"))
     seen: dict[str, int] = {}
 
-    def fake_detect(_path: Path, *, calibration_dir=None, min_hand_tiles: int = 12, max_hand_tiles: int = 14) -> FastHandResult:
+    def fake_detect(
+        _path: Path,
+        *,
+        calibration_dir=None,
+        min_hand_tiles: int = 12,
+        max_hand_tiles: int = 14,
+        use_onnx_hand: bool | None = None,
+    ) -> FastHandResult:
         seen["min_hand_tiles"] = min_hand_tiles
         return FastHandResult(reason="unstable_hand_count")
 
@@ -362,7 +384,7 @@ def test_checkpoint_plan_uses_onnx_meld_state(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         engine,
         "_detect_melds",
-        lambda _path: MeldStateResult(
+        lambda _path, **_kwargs: MeldStateResult(
             ok=True,
             open_meld_count=2,
             melds=[{"player": "self", "meld_index": 1, "tiles": [{"tile": "5z"}]}],
@@ -424,6 +446,52 @@ def test_riichi_players_trigger_defense_checkpoint(monkeypatch: pytest.MonkeyPat
     assert decision.decision_type == "defense_alert"
     assert decision.action_required is True
     assert decision.coach_state["attack_defense_bias"] == "defense"
+
+
+def test_opponent_riichi_detection_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = RoundCoachEngine(MahjongCoachConfig(opponent_riichi_recognition_enabled=False))
+    engine.state.opening_emitted = True
+    engine.state.update_count = 2
+    monkeypatch.setattr(
+        engine,
+        "_detect_hand",
+        lambda _path: FastHandResult(ok=True, hand_tiles=list(HAND), confidence=0.91, reason="test_hand"),
+    )
+    monkeypatch.setattr(
+        coach_module,
+        "detect_riichi_sticks",
+        lambda _path: (_ for _ in ()).throw(AssertionError("opponent riichi detector should be opt-in")),
+    )
+
+    decision = engine.analyze_frame("frame.png")
+
+    assert decision.decision_type != "defense_alert"
+    assert decision.engine_meta["opponent_riichi_recognition_enabled"] is False
+
+
+def test_opponent_riichi_detection_ignores_existing_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = RoundCoachEngine(MahjongCoachConfig())
+    monkeypatch.setattr(
+        coach_module,
+        "detect_riichi_sticks",
+        lambda _path: SimpleNamespace(riichi_players=["unknown"], stick_count=1),
+    )
+
+    assert engine._detect_riichi_players(Path("frame.png")) == []
+    assert engine.state.riichi_stick_baseline == 1
+
+
+def test_opponent_riichi_detection_uses_counter_increase(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = RoundCoachEngine(MahjongCoachConfig())
+    engine.state.riichi_stick_baseline = 0
+    engine.state.riichi_pending = {"unknown": 1}
+    monkeypatch.setattr(
+        coach_module,
+        "detect_riichi_sticks",
+        lambda _path: SimpleNamespace(riichi_players=["unknown"], stick_count=1),
+    )
+
+    assert engine._detect_riichi_players(Path("frame.png")) == ["unknown"]
 
 
 def test_riichi_defense_uses_recognized_riichi_player_river(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -543,10 +611,11 @@ def test_live_config_from_payload() -> None:
     assert cfg.live_save_format == "jpg"
 
 
-def test_live_config_defaults_are_disk_friendly() -> None:
+def test_live_config_defaults_keep_training_material() -> None:
     cfg = MahjongCoachConfig.from_payload({})
 
-    assert cfg.live_keep_frames == 30
+    assert cfg.live_interval_ms == 400
+    assert cfg.live_keep_frames == 1000
     assert cfg.live_save_format == "jpg"
 
 
